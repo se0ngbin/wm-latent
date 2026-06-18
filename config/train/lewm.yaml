@@ -36,8 +36,18 @@ optimizer:
 num_preds: 1
 
 loss:
-  sigreg:
-    weight: 0.09
-    kwargs:
-      knots: 17
-      num_proj: 1024
+  regularizers:
+    sigreg:
+      weight: 0.09
+      kwargs:
+        knots: 17
+        num_proj: 1024
+    # temporal_lipschitz:
+    #   weight: 1.0
+    #   kwargs: {gamma: 1.0}
+    # vicreg:
+    #   weight: 1.0
+    #   kwargs: {var_weight: 1.0, cov_weight: 0.04, std_target: 1.0}
+    # jacobian:
+    #   weight: 0.1
+    #   kwargs: {target_L: 1.0, n_probes: 1}

@@ -34,6 +34,88 @@ class SIGReg(torch.nn.Module):
         err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
         statistic = (err @ self.weights) * proj.size(-2)
         return statistic.mean() # average over projections and time
+
+
+class TemporalLipschitzReg(nn.Module):
+    """Hinge penalty on latent velocity beyond action-scaled budget.
+
+    Encourages ||z_{t+1} - z_t||^2 <= gamma * ||a_t||^2 so a CBF margin
+    in latent space maps to a bounded one in observation space.
+    """
+
+    def __init__(self, gamma=1.0):
+        super().__init__()
+        self.gamma = gamma
+
+    def forward(self, emb, act_emb=None):
+        # emb: (B, T, D); act_emb: (B, T, A) or None
+        dz2 = (emb[:, 1:] - emb[:, :-1]).pow(2).sum(-1)  # (B, T-1)
+        if act_emb is None:
+            return dz2.mean()
+        da2 = act_emb[:, :-1].pow(2).sum(-1)
+        return F.relu(dz2 - self.gamma * da2).mean()
+
+
+class VICRegCovReg(nn.Module):
+    """VICReg-style variance + covariance regularizer on the latent.
+
+    Pushes per-dim std toward `std_target` and off-diagonal covariances
+    toward zero -- second-moment isotropy without forcing Gaussianity.
+    """
+
+    def __init__(self, var_weight=1.0, cov_weight=0.04, std_target=1.0):
+        super().__init__()
+        self.var_weight = var_weight
+        self.cov_weight = cov_weight
+        self.std_target = std_target
+
+    def forward(self, emb):
+        # emb: (B, T, D) -> (N, D)
+        z = emb.reshape(-1, emb.size(-1))
+        z = z - z.mean(0, keepdim=True)
+        std = (z.var(0, unbiased=False) + 1e-4).sqrt()
+        var_loss = F.relu(self.std_target - std).mean()
+        N, D = z.size(0), z.size(1)
+        cov = (z.T @ z) / max(N - 1, 1)
+        off = cov - torch.diag(torch.diagonal(cov))
+        cov_loss = off.pow(2).sum() / D
+        return self.var_weight * var_loss + self.cov_weight * cov_loss
+
+
+class JacobianNormReg(nn.Module):
+    """Stochastic Jacobian-norm penalty on the encoder.
+
+    Estimates ||J_enc|| via Hutchinson-style VJPs and pulls it toward
+    `target_L`. Directly controls the obs->latent Lipschitz constant
+    that a latent-space CBF margin depends on.
+    """
+
+    def __init__(self, target_L=1.0, n_probes=1):
+        super().__init__()
+        self.target_L = target_L
+        self.n_probes = n_probes
+
+    def forward(self, encode_fn, pixels):
+        # pixels: (B, C, H, W) or (B, T, C, H, W)
+        if pixels.dim() == 5:
+            pixels = pixels[:, 0]
+        # Flash/efficient SDPA kernels lack double-backward; force math kernel
+        # so autograd.grad(..., create_graph=True) works through ViT attention.
+        from torch.nn.attention import sdpa_kernel, SDPBackend
+        with torch.enable_grad(), sdpa_kernel(SDPBackend.MATH):
+            pixels = pixels.float().detach().requires_grad_(True)
+            z = encode_fn(pixels)
+            total = 0.0
+            for _ in range(self.n_probes):
+                v = torch.randn_like(z)
+                v = v / (v.norm(dim=-1, keepdim=True) + 1e-8)
+                Jtv = torch.autograd.grad(
+                    z, pixels, grad_outputs=v,
+                    create_graph=self.training, retain_graph=True,
+                )[0]
+                jnorm = Jtv.flatten(1).norm(dim=1)
+                total = total + (jnorm - self.target_L).pow(2).mean()
+        return total / self.n_probes
     
 class FeedForward(nn.Module):
     """FeedForward network used in Transformers"""

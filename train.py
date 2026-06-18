@@ -7,11 +7,39 @@ import lightning as pl
 import stable_pretraining as spt
 import stable_worldmodel as swm
 import torch
+from torch import nn
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from module import SIGReg
+from module import SIGReg, TemporalLipschitzReg, VICRegCovReg, JacobianNormReg
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
+
+
+REGULARIZERS = {
+    "sigreg": SIGReg,
+    "temporal_lipschitz": TemporalLipschitzReg,
+    "vicreg": VICRegCovReg,
+    "jacobian": JacobianNormReg,
+}
+
+
+def _call_regularizer(name, module, output, batch, model):
+    emb = output["emb"]
+    act_emb = output["act_emb"]
+    if name == "sigreg":
+        return module(emb.transpose(0, 1))
+    if name == "temporal_lipschitz":
+        return module(emb, act_emb)
+    if name == "vicreg":
+        return module(emb)
+    if name == "jacobian":
+        encoder = model.encoder
+        projector = model.projector
+        def encode_fn(p):
+            out = encoder(p, interpolate_pos_encoding=True)
+            return projector(out.last_hidden_state[:, 0])
+        return module(encode_fn, batch["pixels"])
+    raise ValueError(f"Unknown regularizer: {name}")
 
 
 def lejepa_forward(self, batch, stage, cfg):
@@ -19,7 +47,6 @@ def lejepa_forward(self, batch, stage, cfg):
 
     ctx_len = cfg.history_size
     n_preds = cfg.num_preds
-    lambd = cfg.loss.sigreg.weight
 
     # Replace NaN values with 0 (occurs at sequence boundaries)
     batch["action"] = torch.nan_to_num(batch["action"], 0.0)
@@ -37,8 +64,15 @@ def lejepa_forward(self, batch, stage, cfg):
 
     # LeWM loss
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
-    output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
+
+    total_reg = torch.zeros((), device=output["pred_loss"].device)
+    for name, module in self.regularizers.items():
+        weight = float(cfg.loss.regularizers[name].weight)
+        reg_loss = _call_regularizer(name, module, output, batch, self.model)
+        output[f"{name}_loss"] = reg_loss
+        total_reg = total_reg + weight * reg_loss
+    output["reg_loss"] = total_reg
+    output["loss"] = output["pred_loss"] + total_reg
 
     losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
@@ -94,9 +128,13 @@ def run(cfg):
     }
 
     data_module = spt.data.DataModule(train=train, val=val)
+    regularizers = nn.ModuleDict({
+        name: REGULARIZERS[name](**(spec.get("kwargs", {}) or {}))
+        for name, spec in cfg.loss.regularizers.items()
+    })
     world_model = spt.Module(
         model = world_model,
-        sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
+        regularizers = regularizers,
         forward=partial(lejepa_forward, cfg=cfg),
         optim=optimizers,
     )
