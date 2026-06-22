@@ -19,7 +19,7 @@ set -uo pipefail
 #   <STABLEWM_HOME>/checkpoints/<run_name>/weights_epoch_*.pt
 : "${STABLEWM_HOME:=/data/seongbin/lewm}"
 # : "${EPOCHS:=100}"
-: "${EPOCHS:=10}"
+: "${EPOCHS:=50}"
 : "${DATA:=pusht}"
 : "${EXTRA_ARGS:=}"
 : "${ONLY:=}"
@@ -34,12 +34,12 @@ mkdir -p logs
 RUNS=(
   "sigreg_only|baseline_on||"
   "no_reg|baseline_off||"
-  "temporal_lipschitz__sigreg_on|on|temporal_lipschitz|{weight: 1.0, kwargs: {gamma: 1.0}}"
-  "temporal_lipschitz__sigreg_off|off|temporal_lipschitz|{weight: 1.0, kwargs: {gamma: 1.0}}"
-  "vicreg__sigreg_on|on|vicreg|{weight: 1.0, kwargs: {var_weight: 1.0, cov_weight: 0.04, std_target: 1.0}}"
-  "vicreg__sigreg_off|off|vicreg|{weight: 1.0, kwargs: {var_weight: 1.0, cov_weight: 0.04, std_target: 1.0}}"
-  "jacobian__sigreg_on|on|jacobian|{weight: 0.1, kwargs: {target_L: 1.0, n_probes: 1}}"
-  "jacobian__sigreg_off|off|jacobian|{weight: 0.1, kwargs: {target_L: 1.0, n_probes: 1}}"
+  # "temporal_lipschitz__sigreg_on|on|temporal_lipschitz|{weight: 1.0, kwargs: {gamma: 1.0}}"
+  # "temporal_lipschitz__sigreg_off|off|temporal_lipschitz|{weight: 1.0, kwargs: {gamma: 1.0}}"
+  # "vicreg__sigreg_on|on|vicreg|{weight: 1.0, kwargs: {var_weight: 1.0, cov_weight: 0.04, std_target: 1.0}}"
+  # "vicreg__sigreg_off|off|vicreg|{weight: 1.0, kwargs: {var_weight: 1.0, cov_weight: 0.04, std_target: 1.0}}"
+  # "jacobian__sigreg_on|on|jacobian|{weight: 0.1, kwargs: {target_L: 1.0, n_probes: 1}}"
+  # "jacobian__sigreg_off|off|jacobian|{weight: 0.1, kwargs: {target_L: 1.0, n_probes: 1}}"
 )
 
 should_run() {
@@ -52,17 +52,18 @@ dispatch_run() {
   local spec="$1"
   local run_name flag name val
   IFS='|' read -r run_name flag name val <<< "$spec"
+  local tagged="${run_name}_${DATA}"
   echo
   echo "================================================================"
-  echo "[$(date +%H:%M:%S)] [GPU ${CUDA_VISIBLE_DEVICES:-?}] Run: $run_name"
+  echo "[$(date +%H:%M:%S)] [GPU ${CUDA_VISIBLE_DEVICES:-?}] Run: $tagged"
   echo "================================================================"
   local args=(
     data="$DATA"
     wandb.enabled=false
     trainer.max_epochs="$EPOCHS"
-    "output_model_name=$run_name"
-    "subdir=$run_name"
-    "hydra.run.dir=outputs/$run_name"
+    "output_model_name=$tagged"
+    "subdir=$tagged"
+    "hydra.run.dir=outputs/$tagged"
   )
   case "$flag" in
     baseline_off) args+=('~loss.regularizers.sigreg') ;;
@@ -71,7 +72,7 @@ dispatch_run() {
     baseline_on)  : ;;
   esac
   # shellcheck disable=SC2086
-  $PY train.py "${args[@]}" $EXTRA_ARGS 2>&1 | tee "logs/${run_name}.log"
+  $PY train.py "${args[@]}" $EXTRA_ARGS 2>&1 | tee "logs/${tagged}.log"
 }
 
 # Filter by ONLY and round-robin assign each run to a GPU queue.
