@@ -1,3 +1,4 @@
+import os
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -36,50 +37,98 @@ class SIGReg(torch.nn.Module):
         return statistic.mean() # average over projections and time
 
 
-class TemporalLipschitzReg(nn.Module):
-    """Hinge penalty on latent velocity beyond action-scaled budget.
+class StateLipschitzReg(nn.Module):
+    """Bound latent change by true-state change (obs_state-Lipschitz, FD form).
 
-    Encourages ||z_{t+1} - z_t||^2 <= gamma * ||a_t||^2 so a CBF margin
-    in latent space maps to a bounded one in observation space.
+    The le-wm encoder is pixel-only, so d embed / d state is not directly available.
+    Using the state present in the batch, bound the embedding distance between frames
+    by their state distance with a hinge:
+        relu(||emb_i - emb_j||^2 - L^2 ||state_i - state_j||^2).
+    This makes the pixel->embed map Lipschitz in the *underlying state*, so a latent
+    CBF margin converts to a state-space margin. The bounding quantity is the state
+    change -- the correct one, since a small action does not imply a small state
+    transition.
     """
 
-    def __init__(self, gamma=1.0):
+    def __init__(self, target_L=1.0):
         super().__init__()
-        self.gamma = gamma
+        self.target_L = target_L
 
-    def forward(self, emb, act_emb=None):
-        # emb: (B, T, D); act_emb: (B, T, A) or None
-        dz2 = (emb[:, 1:] - emb[:, :-1]).pow(2).sum(-1)  # (B, T-1)
-        if act_emb is None:
-            return dz2.mean()
-        da2 = act_emb[:, :-1].pow(2).sum(-1)
-        return F.relu(dz2 - self.gamma * da2).mean()
+    def forward(self, emb, state):
+        # emb: (B, T, D); state: (B, T, S). Temporally-adjacent frame pairs.
+        de2 = (emb[:, 1:] - emb[:, :-1]).pow(2).sum(-1)       # (B, T-1)
+        ds2 = (state[:, 1:] - state[:, :-1]).float().pow(2).sum(-1)
+        return F.relu(de2 - (self.target_L ** 2) * ds2).mean()
 
 
-class VICRegCovReg(nn.Module):
-    """VICReg-style variance + covariance regularizer on the latent.
+class PixelLipschitzReg(nn.Module):
+    """Regress the encoder's FINITE-perturbation sensitivity toward target_L.
 
-    Pushes per-dim std toward `std_target` and off-diagonal covariances
-    toward zero -- second-moment isotropy without forcing Gaussianity.
+    Apply delta = sigma * u, u ~ N(0, I), and regress the per-unit latent response
+        ||enc(x + delta) - enc(x)|| / sigma     (its expected square is ||J||_F^2)
+    toward target_L (TWO-SIDED, like `JacobianNormReg`). delta is applied to the SAME
+    frame, so it is a controlled perturbation (not adjacent frames, which differ by
+    uncontrolled dynamics/drift). Differs from `JacobianNormReg(mode="fd")` only in
+    using a FINITE perturbation (sigma, default 0.1) -- a real perturbation ball rather
+    than the infinitesimal derivative. The two-sided regress (vs the earlier one-sided
+    hinge) pins the norm to target_L regardless of dataset, avoiding the hinge's
+    dataset-dependent "constraint already satisfied -> reg goes inactive" failure.
     """
 
-    def __init__(self, var_weight=1.0, cov_weight=0.04, std_target=1.0):
+    def __init__(self, target_L=1.0, sigma=0.1, n_probes=1):
         super().__init__()
-        self.var_weight = var_weight
-        self.cov_weight = cov_weight
-        self.std_target = std_target
+        self.target_L = target_L
+        self.sigma = sigma
+        self.n_probes = n_probes
 
-    def forward(self, emb):
-        # emb: (B, T, D) -> (N, D)
-        z = emb.reshape(-1, emb.size(-1))
-        z = z - z.mean(0, keepdim=True)
-        std = (z.var(0, unbiased=False) + 1e-4).sqrt()
-        var_loss = F.relu(self.std_target - std).mean()
-        N, D = z.size(0), z.size(1)
-        cov = (z.T @ z) / max(N - 1, 1)
-        off = cov - torch.diag(torch.diagonal(cov))
-        cov_loss = off.pow(2).sum() / D
-        return self.var_weight * var_loss + self.cov_weight * cov_loss
+    def forward(self, encode_fn, pixels):
+        # pixels: (B, T, C, H, W) or (B, C, H, W) -> use one frame per sequence
+        if pixels.dim() == 5:
+            pixels = pixels[:, 0]
+        x = pixels.float()
+        z0 = encode_fn(x)
+        fro2 = torch.zeros(z0.size(0), device=z0.device)
+        for _ in range(self.n_probes):
+            delta = torch.randn_like(x) * self.sigma
+            z1 = encode_fn(x + delta)
+            # ||Δemb||/sigma ~= ||J u||; E||J u||^2 = ||J||_F^2 for u ~ N(0, I)
+            fro2 = fro2 + (z1 - z0).flatten(1).pow(2).sum(1) / (self.sigma ** 2)
+        fro_norm = (fro2 / self.n_probes + 1e-12).sqrt()
+        if os.environ.get("DEBUG_PIXLIP"):
+            print(f"[PIXLIP] fro_norm median={fro_norm.median().item():.4g} target_L={self.target_L}")
+        return (fro_norm - self.target_L).pow(2).mean()
+
+
+class InvarianceReg(nn.Module):
+    """Minimize latent change under a controlled perturbation (positive-only invariance).
+
+        minimize ||enc(x + delta) - enc(x)||^2,   delta = sigma * N(0, I).
+
+    SimSiam/VICReg-style invariance term that relies on SIGReg to prevent collapse
+    (no negatives, no target). The loss weight -- balanced against sigreg + the
+    prediction loss -- implicitly sets the equilibrium encoder Lipschitz constant.
+    Pushes the upper-Lipschitz / robustness leg; does NOT enforce lower-bound
+    separability (sigreg only guards the *global* marginal, not local aliasing), so
+    on a CBF this may over-smooth. delta perturbs the SAME frame (controlled), not
+    adjacent frames (uncontrolled drift).
+    """
+
+    def __init__(self, sigma=0.1, n_probes=1):
+        super().__init__()
+        self.sigma = sigma
+        self.n_probes = n_probes
+
+    def forward(self, encode_fn, pixels):
+        if pixels.dim() == 5:
+            pixels = pixels[:, 0]
+        x = pixels.float()
+        z0 = encode_fn(x)
+        loss = 0.0
+        for _ in range(self.n_probes):
+            delta = torch.randn_like(x) * self.sigma
+            z1 = encode_fn(x + delta)
+            loss = loss + (z1 - z0).flatten(1).pow(2).sum(1).mean()  # ||delta z||^2
+        return loss / self.n_probes
 
 
 class JacobianNormReg(nn.Module):
@@ -90,32 +139,49 @@ class JacobianNormReg(nn.Module):
     that a latent-space CBF margin depends on.
     """
 
-    def __init__(self, target_L=1.0, n_probes=1):
+    def __init__(self, target_L=1.0, n_probes=1, mode="exact", fd_eps=0.01):
         super().__init__()
         self.target_L = target_L
         self.n_probes = n_probes
+        self.mode = mode          # "exact" (double-backward VJP) | "fd" (finite-difference JVP)
+        self.fd_eps = fd_eps
 
     def forward(self, encode_fn, pixels):
         # pixels: (B, C, H, W) or (B, T, C, H, W)
         if pixels.dim() == 5:
             pixels = pixels[:, 0]
+        if self.mode == "fd":
+            # Finite-difference JVP: for u ~ N(0, I), E||J u||^2 = ||J||_F^2, with
+            # J u ~= (enc(x + eps*u) - enc(x)) / eps. Two forwards, no double-backward
+            # (cheap), at the cost of an O(eps) curvature bias. Grads flow into encoder.
+            x = pixels.float()
+            z0 = encode_fn(x)
+            fro2 = torch.zeros(z0.size(0), device=z0.device)
+            for _ in range(self.n_probes):
+                u = torch.randn_like(x)
+                z1 = encode_fn(x + self.fd_eps * u)
+                fro2 = fro2 + (z1 - z0).flatten(1).pow(2).sum(1) / (self.fd_eps ** 2)
+            fro_norm = (fro2 / self.n_probes + 1e-12).sqrt()
+            return (fro_norm - self.target_L).pow(2).mean()
         # Flash/efficient SDPA kernels lack double-backward; force math kernel
         # so autograd.grad(..., create_graph=True) works through ViT attention.
         from torch.nn.attention import sdpa_kernel, SDPBackend
         with torch.enable_grad(), sdpa_kernel(SDPBackend.MATH):
             pixels = pixels.float().detach().requires_grad_(True)
             z = encode_fn(pixels)
-            total = 0.0
+            # Hutchinson Frobenius estimate: for v ~ N(0, I), E||J^T v||^2 = ||J||_F^2,
+            # so target_L pins the true Frobenius norm (unit-normalized v would instead
+            # pin a sqrt(D)-scaled quantity, making target_L dimension-dependent).
+            fro2 = torch.zeros(z.size(0), device=z.device)
             for _ in range(self.n_probes):
                 v = torch.randn_like(z)
-                v = v / (v.norm(dim=-1, keepdim=True) + 1e-8)
                 Jtv = torch.autograd.grad(
                     z, pixels, grad_outputs=v,
                     create_graph=self.training, retain_graph=True,
                 )[0]
-                jnorm = Jtv.flatten(1).norm(dim=1)
-                total = total + (jnorm - self.target_L).pow(2).mean()
-        return total / self.n_probes
+                fro2 = fro2 + Jtv.flatten(1).pow(2).sum(1)
+            fro_norm = (fro2 / self.n_probes + 1e-12).sqrt()
+        return (fro_norm - self.target_L).pow(2).mean()
     
 class FeedForward(nn.Module):
     """FeedForward network used in Transformers"""
@@ -253,20 +319,15 @@ class Transformer(nn.Module):
             )
 
     def forward(self, x, c=None):
-
-        if hasattr(self, "input_proj"):
-            x = self.input_proj(x)
-
-        if c is not None and hasattr(self, "cond_proj"):
+        x = self.input_proj(x)
+        if c is not None:
             c = self.cond_proj(c)
 
         for block in self.layers:
             x = block(x) if isinstance(block, Block) else block(x, c)
         x = self.norm(x)
 
-        if hasattr(self, "output_proj"):
-            x = self.output_proj(x)
-        return x
+        return self.output_proj(x)
 
 class Embedder(nn.Module):
     def __init__(

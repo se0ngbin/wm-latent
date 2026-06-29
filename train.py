@@ -11,28 +11,26 @@ from torch import nn
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from module import SIGReg, TemporalLipschitzReg, VICRegCovReg, JacobianNormReg
+from module import SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg, InvarianceReg
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
 
 
 REGULARIZERS = {
     "sigreg": SIGReg,
-    "temporal_lipschitz": TemporalLipschitzReg,
-    "vicreg": VICRegCovReg,
     "jacobian": JacobianNormReg,
+    "state_lipschitz": StateLipschitzReg,
+    "pixel_lipschitz": PixelLipschitzReg,
+    "invariance": InvarianceReg,
 }
 
 
 def _call_regularizer(name, module, output, batch, model):
     emb = output["emb"]
-    act_emb = output["act_emb"]
     if name == "sigreg":
         return module(emb.transpose(0, 1))
-    if name == "temporal_lipschitz":
-        return module(emb, act_emb)
-    if name == "vicreg":
-        return module(emb)
-    if name == "jacobian":
+    if name == "state_lipschitz":
+        return module(emb, batch["state"])
+    if name in ("jacobian", "pixel_lipschitz", "invariance"):
         encoder = model.encoder
         projector = model.projector
         def encode_fn(p):
@@ -109,7 +107,7 @@ def run(cfg):
         dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen
     )
 
-    train = torch.utils.data.DataLoader(train_set, **cfg.loader,shuffle=True, drop_last=True, generator=rnd_gen)
+    train = torch.utils.data.DataLoader(train_set, **cfg.loader, shuffle=True, drop_last=True, generator=rnd_gen)
     val = torch.utils.data.DataLoader(val_set, **cfg.loader, shuffle=False, drop_last=False)
     
     ##############################
