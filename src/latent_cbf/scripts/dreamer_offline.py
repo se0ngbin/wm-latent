@@ -225,7 +225,13 @@ class Dreamer(nn.Module):
                     cont_loss = torch.tensor(0.0, device=embed.device)
                 
                 model_loss = kl_loss + recon_loss + cont_loss
-                
+
+                enc_lip_weight = getattr(self._config, "enc_lip_weight", 0.0)
+                if enc_lip_weight > 0.0:
+                    enc_lip_loss = self._encoder_lipschitz_reg(data, training)
+                    model_loss = model_loss + enc_lip_weight * enc_lip_loss
+                    metrics["enc_lip_loss"] = to_np(enc_lip_loss)
+
                 # Only optimize if training
                 if training:
                     metrics.update(self.pretrain_opt(torch.mean(model_loss), self.pretrain_params))
@@ -246,6 +252,91 @@ class Dreamer(nn.Module):
                 metrics["post_ent"] = to_np(torch.mean(wm.dynamics.get_dist(post).entropy()))
         
         return metrics, post, prior
+
+    def _encoder_branch_fn(self, encoder, key):
+        """Return the sub-map embed_branch = f(input[key]) for a single encoder input.
+
+        Only that input's branch is run, so the resulting Jacobian is exactly the
+        block of d embed / d input[key] (the other branch is independent of it).
+        Valid while each branch has a single key (mlp_keys / cnn_keys), as configured.
+        """
+        if key in getattr(encoder, "mlp_shapes", {}):
+            return encoder._mlp
+        if key in getattr(encoder, "cnn_shapes", {}):
+            # encoder._cnn does an in-place `obs -= 0.5`; clone so the leaf input
+            # is not mutated (autograd forbids in-place on a leaf requiring grad).
+            return lambda t: encoder._cnn(t.clone())
+        return None
+
+    def _encoder_lipschitz_reg(self, data, training):
+        """Pin the encoder's per-input Jacobian norm toward target_L.
+
+        For each key in enc_lip_keys, push ||d embed / d input[key]||_F toward
+        target_L so a latent CBF margin converts to an input-space margin:
+            ||x - x'|| >= ||embed(x) - embed(x')|| / L.
+        "obs_state" regularizes the mlp branch, "image" the cnn (pixel) branch.
+
+        enc_lip_mode selects how ||J||_F is estimated, both unbiased in expectation:
+          "exact": Hutchinson VJP, v ~ N(0,I) so E||J^T v||^2 = ||J||_F^2. Requires a
+                   second-order (double-backward) graph -- exact but ~5x costlier on pixels.
+          "fd":    finite-difference JVP, u ~ N(0,I) so E||J u||^2 = ||J||_F^2, with
+                   J u ~= (embed(x + eps*u) - embed(x)) / eps. Two forward passes, no
+                   double-backward -- cheap, but carries an O(eps) curvature bias.
+        """
+        encoder = self._wm.encoder
+        target_L = float(self._config.enc_lip_target_L)
+        n_probes = int(getattr(self._config, "enc_lip_probes", 4))
+        keys = list(getattr(self._config, "enc_lip_keys", ["obs_state"]))
+        mode = str(getattr(self._config, "enc_lip_mode", "exact"))
+        eps = float(getattr(self._config, "enc_lip_fd_eps", 0.01))
+
+        total = torch.zeros((), device=data[keys[0]].device)
+        n_terms = 0
+        for key in keys:
+            branch = self._encoder_branch_fn(encoder, key)
+            if branch is None or key not in data:
+                continue
+            # fp32 + math path so the (double-)backward is well-behaved.
+            with torch.enable_grad(), torch.amp.autocast("cuda", enabled=False):
+                if mode == "invariance":
+                    # Minimize ||embed(x+delta) - embed(x)||^2, delta = sigma*N(0,I).
+                    # No target_L: a pure positive-only smoothness term (the LE-WM
+                    # InvarianceReg analog). Relies on the reconstruction loss to
+                    # prevent latent collapse.
+                    sigma = float(getattr(self._config, "enc_lip_sigma", 0.1))
+                    x = data[key].float()
+                    z0 = branch(x)
+                    inv = torch.zeros(z0.shape[:-1], device=z0.device)
+                    for _ in range(n_probes):
+                        delta = torch.randn_like(x) * sigma
+                        z1 = branch(x + delta)
+                        inv = inv + (z1 - z0).pow(2).sum(-1)
+                    total = total + (inv / n_probes).mean()
+                    n_terms += 1
+                    continue
+                if mode == "fd":
+                    x = data[key].float()
+                    z0 = branch(x)  # (B, T, feat); grads flow into encoder
+                    fro2 = torch.zeros(z0.shape[:-1], device=z0.device)
+                    for _ in range(n_probes):
+                        u = torch.randn_like(x)
+                        z1 = branch(x + eps * u)
+                        fro2 = fro2 + ((z1 - z0).pow(2).sum(-1)) / (eps * eps)
+                else:  # "exact"
+                    x = data[key].float().detach().requires_grad_(True)
+                    z = branch(x)  # (B, T, feat)
+                    fro2 = torch.zeros(z.shape[:-1], device=z.device)
+                    for _ in range(n_probes):
+                        v = torch.randn_like(z)
+                        Jtv = torch.autograd.grad(
+                            z, x, grad_outputs=v,
+                            create_graph=training, retain_graph=True,
+                        )[0]  # J^T v, shape of x
+                        fro2 = fro2 + Jtv.reshape(*Jtv.shape[:2], -1).pow(2).sum(-1)
+                fro_norm = (fro2 / n_probes + 1e-12).sqrt()  # ~= ||J||_F per (B, T)
+            total = total + (fro_norm - target_L).pow(2).mean()
+            n_terms += 1
+        return total / max(n_terms, 1)
 
     def _margin_gp_step(self, safe_dataset, unsafe_dataset, training=True):
         """Unified margin GP training/evaluation"""
@@ -530,14 +621,39 @@ if __name__ == "__main__":
     parser.add_argument("--relu_weight", type=float, default=1.0)
     parser.add_argument("--gp_weight", type=float, default=10.0)
     parser.add_argument("--zs_weight", type=float, default=0.1)
+    parser.add_argument("--enc_lip_weight", type=float, default=0.0)
+    parser.add_argument("--enc_lip_target_L", type=float, default=1.0)
+    parser.add_argument("--enc_lip_probes", type=int, default=4)
+    parser.add_argument("--enc_lip_keys", type=str, nargs="+", default=["obs_state"],
+                        help="encoder inputs to regularize: obs_state and/or image")
+    parser.add_argument("--enc_lip_mode", type=str, default="exact",
+                        choices=["exact", "fd", "invariance"],
+                        help="exact/fd = regress ||J||_F toward target_L; "
+                             "invariance = minimize ||embed(x+delta)-embed(x)||^2 (no target)")
+    parser.add_argument("--enc_lip_fd_eps", type=float, default=0.01,
+                        help="finite-difference step for enc_lip_mode=fd")
+    parser.add_argument("--enc_lip_sigma", type=float, default=0.1,
+                        help="perturbation std for enc_lip_mode=invariance (delta = sigma*N(0,I))")
+    parser.add_argument("--logdir", type=str, default=None)
+    parser.add_argument("--steps", type=int, default=None,
+                        help="override DreamerConfig.steps (WM pretrain steps)")
 
     args = parser.parse_args()
 
     config = DreamerConfig()
+    if args.steps is not None:
+        config.steps = args.steps
     config.relu_weight = args.relu_weight
     config.gp_weight = args.gp_weight
     config.zs_weight = args.zs_weight
-    config.logdir = f"{DREAMER_DIR}" #/relu_weight_{args.relu_weight}_gp_weight_{args.gp_weight}_zs_weight_{args.zs_weight}"
+    config.enc_lip_weight = args.enc_lip_weight
+    config.enc_lip_target_L = args.enc_lip_target_L
+    config.enc_lip_probes = args.enc_lip_probes
+    config.enc_lip_keys = args.enc_lip_keys
+    config.enc_lip_mode = args.enc_lip_mode
+    config.enc_lip_fd_eps = args.enc_lip_fd_eps
+    config.enc_lip_sigma = args.enc_lip_sigma
+    config.logdir = args.logdir if args.logdir else f"{DREAMER_DIR}"
     env_conf = Config()
 
     config.turnRate = env_conf.max_angular_velocity
