@@ -28,6 +28,7 @@ from io import BytesIO
 from PIL import Image
 import matplotlib.patches as patches
 import io
+from pathlib import Path
 to_np = lambda x: x.detach().cpu().numpy()
 from PyHJ.data import Collector, VectorReplayBuffer, BehaviorCollector
 from PyHJ.env import DummyVectorEnv
@@ -44,7 +45,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import our modules
 from configs import DreamerConfig, Config
-from configs.paths import TEST_RSSM_CHECKPOINT, TRAJS_DIR
+from configs.paths import RSSM_CHECKPOINT, TRAJS_DIR
 # import Dreamer from scripts/dreamer_offline.py
 from dreamer_offline import Dreamer
 
@@ -101,15 +102,31 @@ def main(config):
 
 
     print("Simulate agent.")
-    agent = Dreamer(
-        observation_space,
-        action_space,
-        config,
-        logger,
-        None,
-    ).to(config.device)
-    filepath = str(TEST_RSSM_CHECKPOINT)
-    agent.load_state_dict(torch.load(filepath)['agent_state_dict'])
+    if getattr(config, "wm_backend", "dreamer") == "lewm":
+        from latent_cbf.adapters import LEWMWorldModel
+        ckpt = config.lewm_ckpt_path or config.lewm_run_name
+        assert ckpt, "wm_backend=lewm requires lewm_ckpt_path or lewm_run_name"
+        wm = LEWMWorldModel(config, ckpt).to(config.device)
+        if config.lewm_margin_ckpt:
+            margin_sd = torch.load(config.lewm_margin_ckpt, map_location=config.device)
+            wm.heads["margin_gp"].load_state_dict(margin_sd["margin_gp"])
+            wm.heads["margin_nogp"].load_state_dict(margin_sd["margin_nogp"])
+        wm.eval()
+
+        class _AgentShim:
+            pass
+        agent = _AgentShim()
+        agent._wm = wm
+    else:
+        agent = Dreamer(
+            observation_space,
+            action_space,
+            config,
+            logger,
+            None,
+        ).to(config.device)
+        filepath = str(RSSM_CHECKPOINT)
+        agent.load_state_dict(torch.load(filepath)['agent_state_dict'])
 
 
 
@@ -179,7 +196,51 @@ def main(config):
         traj_filepath = str(TRAJS_DIR / "wm_test_lr.h5")
     else:
         traj_filepath = str(TRAJS_DIR / "wm_test.h5")
-    
+
+    # Aggregate per-trajectory success/violation metrics. Violation = any
+    # failure step. Success requires goal_state on the h5 (PushT: block pose
+    # within eps of goal) — when absent (current dubins test files) we fall
+    # back to "no collision" as a proxy success signal.
+    metrics_out = getattr(config, "results_out", None)
+    if metrics_out:
+        import json
+        n_traj = 0
+        viols = []
+        succs = []
+        with h5py.File(traj_filepath, 'r') as f:
+            trajs = f['trajectories']
+            goal = f.attrs.get('goal_state', None)
+            eps_pos = float(f.attrs.get('eps_pos', 20.0))
+            eps_ang = float(f.attrs.get('eps_ang', np.pi / 9))
+            for tname in trajs.keys():
+                traj = trajs[tname]
+                failures = traj['failures'][:]
+                states = traj['states'][:]
+                viol = bool(np.any(failures > 0))
+                viols.append(viol)
+                tgoal = traj.attrs.get('goal_state', goal)
+                if tgoal is not None and states.shape[-1] >= 5:
+                    bx, by, ba = states[-1, 2], states[-1, 3], states[-1, 4]
+                    pos_diff = float(np.hypot(bx - tgoal[0], by - tgoal[1]))
+                    ang_diff = float(np.abs((ba - tgoal[2] + np.pi) % (2 * np.pi) - np.pi))
+                    succ = (pos_diff < eps_pos) and (ang_diff < eps_ang) and (not viol)
+                else:
+                    succ = not viol
+                succs.append(bool(succ))
+                n_traj += 1
+        out = {
+            "n_trajectories": n_traj,
+            "violation_rate": float(np.mean(viols)) if viols else 0.0,
+            "success_rate": float(np.mean(succs)) if succs else 0.0,
+            "filter_mode": config.filter_mode,
+            "wm_backend": getattr(config, "wm_backend", "dreamer"),
+            "lewm_run_name": getattr(config, "lewm_run_name", ""),
+        }
+        Path(metrics_out).parent.mkdir(parents=True, exist_ok=True)
+        with open(metrics_out, "w") as fout:
+            json.dump(out, fout, indent=2)
+        print(f"wrote metrics -> {metrics_out}: {out}")
+
     chunk = 8
     hist = 5
     action_vis = True
@@ -363,10 +424,25 @@ if __name__ == "__main__":
     parser.add_argument('--filter_mode', type=str, default='none', choices=['none', 'cbf', 'lr'],
                        help='Filter mode to use for WM prediction')
     parser.add_argument('--no_gp', action='store_true', default=False, help='Use no GP')
+    parser.add_argument('--wm_backend', type=str, default=None, choices=[None, 'dreamer', 'lewm'])
+    parser.add_argument('--lewm_run_name', type=str, default=None)
+    parser.add_argument('--lewm_ckpt_path', type=str, default=None)
+    parser.add_argument('--lewm_margin_ckpt', type=str, default=None)
+    parser.add_argument('--results_out', type=str, default=None,
+                        help='Optional path to dump aggregated metrics as JSON.')
     cli_args = parser.parse_args()
     args = DreamerConfig()
     args.filter_mode = cli_args.filter_mode
     args.no_gp = cli_args.no_gp
+    if cli_args.wm_backend is not None:
+        args.wm_backend = cli_args.wm_backend
+    if cli_args.lewm_run_name is not None:
+        args.lewm_run_name = cli_args.lewm_run_name
+    if cli_args.lewm_ckpt_path is not None:
+        args.lewm_ckpt_path = cli_args.lewm_ckpt_path
+    if cli_args.lewm_margin_ckpt is not None:
+        args.lewm_margin_ckpt = cli_args.lewm_margin_ckpt
+    args.results_out = cli_args.results_out
     env_conf = Config()
 
     args.turnRate = env_conf.max_angular_velocity

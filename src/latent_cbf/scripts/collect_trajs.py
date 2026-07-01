@@ -16,6 +16,9 @@ import argparse
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Also expose `latent_cbf` (the parent package) so `from latent_cbf.adapters import …`
+# resolves; used by diffusion_controller's LE-WM branch.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import our modules
 from configs import (
@@ -227,8 +230,18 @@ class TrajectoryCollector:
         
         for i in range(n_trajectories):
             seed = seeds[i] if i < len(seeds) else i
+            # Pin global RNGs so non-env-scoped randomness (goal-jitter via
+            # global np.random in dubins_env, DDPM noise via torch.randn in
+            # the diffusion policy) is reproducible across runs.
+            import random
+            random.seed(seed)
+            np.random.seed(seed)
+            import torch as _torch
+            _torch.manual_seed(seed)
+            if _torch.cuda.is_available():
+                _torch.cuda.manual_seed_all(seed)
             initial_state = initial_states[i] if initial_states is not None else None
-            
+
             trajectory = self.collect_single_trajectory(
                 episode_idx=i,
                 seed=seed,
@@ -514,6 +527,15 @@ def main():
     parser.add_argument('--filter_mode', type=str, default='none', choices=['none', 'cbf', 'lr'],
                        help='Filter mode to use for WM prediction')
     parser.add_argument('--no_gp', action='store_true', help='Disable GP filter')
+    parser.add_argument('--wm_backend', type=str, default='dreamer', choices=['dreamer', 'lewm'])
+    parser.add_argument('--lewm_ckpt_path', type=str, default='')
+    parser.add_argument('--lewm_run_name', type=str, default='')
+    parser.add_argument('--lewm_margin_ckpt', type=str, default='')
+    parser.add_argument('--lewm_img_size', type=int, default=224)
+    parser.add_argument('--filter_directory_gp', type=str, default=None,
+                        help='Override path to GP DDPG policy.pth.')
+    parser.add_argument('--filter_directory_nogp', type=str, default=None,
+                        help='Override path to NoGP DDPG policy.pth.')
     args = parser.parse_args()
     
     # Select configuration
@@ -551,6 +573,15 @@ def main():
         # Set history length from command line argument
         wm_config.wm_history_length = args.wm_history_length
         wm_config.no_gp = args.no_gp
+        wm_config.wm_backend = args.wm_backend
+        wm_config.lewm_ckpt_path = args.lewm_ckpt_path
+        wm_config.lewm_run_name = args.lewm_run_name
+        wm_config.lewm_margin_ckpt = args.lewm_margin_ckpt
+        wm_config.lewm_img_size = args.lewm_img_size
+        if args.filter_directory_gp:
+            wm_config.filter_directory_gp = args.filter_directory_gp
+        if args.filter_directory_nogp:
+            wm_config.filter_directory_nogp = args.filter_directory_nogp
     if args.filename is not None:
         out_filename = args.filename
     elif args.controller == 'diffusion' and wm_config is not None:

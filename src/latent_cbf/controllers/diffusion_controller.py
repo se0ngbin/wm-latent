@@ -292,7 +292,11 @@ class FilteredDiffusionController:
     
     def init_filter(self):
         config = self.wm_config
-        config.state_shape = (1,1,544,)
+        # state_shape must match the WM's feat size so the loaded DDPG critic /
+        # actor weight shapes line up. Dreamer V3 RSSM: stoch(32)+deter(512)=544.
+        # LE-WM: embed_dim (192 for ViT-tiny). Pull from the loaded WM.
+        feat_size = int(getattr(self.wm, "embed_dim", 0)) or 544
+        config.state_shape = (feat_size,)
         config.action_shape = (1,)
         config.max_action = 1
 
@@ -303,6 +307,7 @@ class FilteredDiffusionController:
             config.action_shape,
             hidden_sizes=config.critic_net,
             activation=critic_activation,
+            norm_layer=torch.nn.LayerNorm,   # match wm_ddpg.py critic (trained with LayerNorm)
             concat=True,
             device=config.device
         )
@@ -328,14 +333,21 @@ class FilteredDiffusionController:
         actor_optim=actor_optim,
         actor_gradient_steps=config.actor_gradient_steps,
         )
-        if config.no_gp:
-            print("Loading no GP policy")
-            policy_ckpt = torch.load(config.filter_directory_nogp)
+        # The CBF policy is only consulted in 'cbf'/'lr' filter modes; nominal
+        # ('none') rollouts use the world model alone, so skip the load there
+        # (avoids requiring a matched filter checkpoint just to evaluate nominal).
+        if getattr(config, "filter_mode", "none") == "none":
+            print("filter_mode=none: skipping CBF policy load")
+            self.policy = policy
         else:
-            print("Loading GP policy")
-            policy_ckpt = torch.load(config.filter_directory_gp)
-        policy.load_state_dict(policy_ckpt)
-        self.policy = policy
+            if config.no_gp:
+                print("Loading no GP policy")
+                policy_ckpt = torch.load(config.filter_directory_nogp)
+            else:
+                print("Loading GP policy")
+                policy_ckpt = torch.load(config.filter_directory_gp)
+            policy.load_state_dict(policy_ckpt)
+            self.policy = policy
     
     def init_wm(self):
         config = self.wm_config
@@ -343,7 +355,7 @@ class FilteredDiffusionController:
         self.action_space = gym.spaces.Box(
             low=-config.turnRate, high=config.turnRate, shape=(1,), dtype=np.float32
         )
-    
+
         # dreamer wm takes in tuples of (o_t+1, a_t)
         self.action_history.append(self.action_space.sample()*0)
 
@@ -352,39 +364,49 @@ class FilteredDiffusionController:
         high = np.array([config.x_max, config.y_max, np.pi])
         midpoint = (low + high) / 2.0
         interval = high - low
-        
+
         gt_observation_space = gym.spaces.Box(
             np.float32(midpoint - interval/2),
             np.float32(midpoint + interval/2),
         )
-        
+
         image_size = config.size[0] if hasattr(config, 'size') else 128
         image_observation_space = gym.spaces.Box(
             low=0, high=255, shape=(image_size, image_size, 3), dtype=np.uint8
         )
-        
+
         obs_observation_space = gym.spaces.Box(
             low=-1, high=1, shape=(2,), dtype=np.float32
         )
-        
+
         self.observation_space = gym.spaces.Dict({
             'state': gt_observation_space,
             'obs_state': obs_observation_space,
             'image': image_observation_space
         })
-        
+
         # Set number of actions
         config.num_actions = self.action_space.shape[0]
-        
-        # Initialize world model
-        self.wm = WorldModel(self.observation_space, self.action_space, 0, config)
-        self.wm.to(self.device)
-        self.wm.eval()
-        
-        
-        print('wm', self.wm)
-        # Load checkpoint
-        self._load_checkpoint(self.wm_config.wm_checkpoint_path)
+
+        # Backend branch: 'lewm' loads a frozen LE-WM (JEPA) via the adapter
+        # and (optionally) pre-trained margin heads; 'dreamer' keeps the
+        # original RSSM path.
+        if getattr(config, "wm_backend", "dreamer") == "lewm":
+            from latent_cbf.adapters import LEWMWorldModel
+            ckpt = config.lewm_ckpt_path or config.lewm_run_name
+            assert ckpt, "wm_backend=lewm requires lewm_ckpt_path or lewm_run_name"
+            self.wm = LEWMWorldModel(config, ckpt).to(self.device)
+            if getattr(config, "lewm_margin_ckpt", ""):
+                sd = torch.load(config.lewm_margin_ckpt, map_location=self.device)
+                self.wm.heads["margin_gp"].load_state_dict(sd["margin_gp"])
+                self.wm.heads["margin_nogp"].load_state_dict(sd["margin_nogp"])
+            self.wm.eval()
+            print(f"LE-WM loaded: {ckpt}; embed_dim={self.wm.embed_dim}")
+        else:
+            self.wm = WorldModel(self.observation_space, self.action_space, 0, config)
+            self.wm.to(self.device)
+            self.wm.eval()
+            self._load_checkpoint(self.wm_config.wm_checkpoint_path)
         print("World Model initialized successfully")
         
     def _load_checkpoint(self, checkpoint_path: str):
@@ -459,9 +481,10 @@ class FilteredDiffusionController:
             if self.wm_config.filter_mode == 'cbf':
                 B = 25
                 sample_acs = np.linspace(-1, 1, B)[:, None]
-                feat_tiled = np.tile(feat_latest, (B+1, 1))
+                safe_ac_policy = self.eval_policy(feat_latest).detach().cpu().numpy().reshape(1, -1)
+                feat_tiled = np.tile(feat_latest, (B+2, 1))
 
-                sample_acs = np.concatenate([acs, sample_acs], axis=0)
+                sample_acs = np.concatenate([acs, safe_ac_policy, sample_acs], axis=0)
                 qvals = self.eval_Q(feat_tiled, sample_acs)
 
                 dec = qvals/qvals.max()

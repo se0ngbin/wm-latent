@@ -11,6 +11,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(parent_dir)
+# Also make `latent_cbf` (src/latent_cbf parent) importable for adapters/.
+_src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if _src_dir not in sys.path:
+    sys.path.append(_src_dir)
 from dreamerv3_torch import models
 from dreamerv3_torch import tools
 import ruamel.yaml as yaml
@@ -35,23 +39,42 @@ from PyHJ.data import Batch
 import matplotlib.pyplot as plt
 from configs import DreamerConfig, Config, get_diffusion_config
 from dreamer_offline import make_dataset
-from controllers.factory import create_controller_from_config
 
 
 
+
+
+def _build_wm(env, config):
+    """Construct the world model used by the CBF pipeline. Branches on
+    ``config.wm_backend``: 'dreamer' uses the original RSSM checkpoint;
+    'lewm' wraps a frozen LE-WM (JEPA) checkpoint via the adapter."""
+    if getattr(config, "wm_backend", "dreamer") == "lewm":
+        from latent_cbf.adapters import LEWMWorldModel
+        ckpt = config.lewm_ckpt_path or config.lewm_run_name
+        assert ckpt, "wm_backend=lewm requires lewm_ckpt_path or lewm_run_name"
+        wm = LEWMWorldModel(config, ckpt).to(config.device)
+        if config.lewm_margin_ckpt:
+            margin_sd = torch.load(config.lewm_margin_ckpt, map_location=config.device)
+            wm.heads["margin_gp"].load_state_dict(margin_sd["margin_gp"])
+            wm.heads["margin_nogp"].load_state_dict(margin_sd["margin_nogp"])
+        wm.eval()
+        return wm
+
+    wm = models.WorldModel(env.observation_space_full, env.action_space, 0, config)
+    ckpt_path = config.rssm_ckpt_path
+    checkpoint = torch.load(ckpt_path)
+    state_dict = {k[14:]: v for k, v in checkpoint['agent_state_dict'].items() if '_wm' in k}
+    wm.load_state_dict(state_dict)
+    wm.eval()
+    return wm
 
 
 def main(exp_config, config):
     env = gymnasium.make(config.task, params = [config])
     config.num_actions = env.action_space.n if hasattr(env.action_space, "n") else env.action_space.shape[0]
-    wm = models.WorldModel(env.observation_space_full, env.action_space, 0, config)
+    wm = _build_wm(env, config)
 
-    ckpt_path = config.rssm_ckpt_path
-    checkpoint = torch.load(ckpt_path)
-    state_dict = {k[14:]:v for k,v in checkpoint['agent_state_dict'].items() if '_wm' in k}
-    wm.load_state_dict(state_dict)
-    wm.eval()
-
+    from controllers.factory import create_controller_from_config
     dp = create_controller_from_config(exp_config)
 
     config.batch_size = 1
@@ -97,6 +120,7 @@ def main(exp_config, config):
             config.state_shape,
             config.action_shape,
             hidden_sizes=config.critic_net,
+            norm_layer=torch.nn.LayerNorm,
             activation=critic_activation,
             concat=True,
             device=config.device
@@ -174,12 +198,11 @@ def main(exp_config, config):
 
 
     def save_best_fn(policy, epoch=epoch):
+        target_dir = log_path + "/epoch_id_{}".format(epoch)
+        os.makedirs(target_dir, exist_ok=True)
         torch.save(
-            policy.state_dict(), 
-            os.path.join(
-                log_path+"/epoch_id_{}".format(epoch),
-                "policy.pth"
-            )
+            policy.state_dict(),
+            os.path.join(target_dir, "policy.pth"),
         )
 
 
@@ -244,13 +267,58 @@ def main(exp_config, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--no_gp", action="store_true", default=False)
+    parser.add_argument("--wm_backend", type=str, default=None, choices=[None, "dreamer", "lewm"])
+    parser.add_argument("--lewm_run_name", type=str, default=None)
+    parser.add_argument("--lewm_ckpt_path", type=str, default=None)
+    parser.add_argument("--lewm_margin_ckpt", type=str, default=None)
+    parser.add_argument("--buffer_path", type=str, default=None,
+                        help="Override the dataset path used for env reset seeding.")
+    parser.add_argument("--step_per_epoch", type=int, default=None)
+    parser.add_argument("--total_episodes", type=int, default=None)
+    parser.add_argument("--uniform_reset", action="store_true",
+                        help="Sample env reset states uniformly over the safe region instead of from the offline buffer; gives the DDPG critic broader latent coverage.")
+    parser.add_argument("--gamma_pyhj", type=float, default=None,
+                        help="DDPG discount factor; default 0.9999 collapses the bootstrap to ≈ margin reward over short rollouts. Try 0.99 for actual Bellman propagation.")
+    parser.add_argument("--reward_scale", type=float, default=None,
+                        help="Multiply env reward (tanh'd margin) by this. Sharpens the Bellman signal.")
+    parser.add_argument("--logdir", type=str, default=None,
+                        help="Override DDPG output root. Default writes to data/dreamer/PyHJ/{gp,nogp}/... which collides across LE-WM variants; pass a per-variant dir.")
+    parser.add_argument("--rssm-ckpt", type=str, default=None,
+                        help="Override the world-model checkpoint path. Defaults to <logdir>/rssm_ckpt.pt when --logdir is set.")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="PyHJ training seed (for multi-seed error bars). Use a per-seed --logdir to avoid clobbering.")
     args = parser.parse_args()
     exp_config = get_diffusion_config()
     config = DreamerConfig()
-    if args.no_gp:
-        config.no_gp = True
+    if args.seed is not None:
+        config.seed = args.seed
+    config.no_gp = bool(args.no_gp)
+    if args.wm_backend is not None:
+        config.wm_backend = args.wm_backend
+    if args.lewm_run_name is not None:
+        config.lewm_run_name = args.lewm_run_name
+    if args.lewm_ckpt_path is not None:
+        config.lewm_ckpt_path = args.lewm_ckpt_path
+    if args.lewm_margin_ckpt is not None:
+        config.lewm_margin_ckpt = args.lewm_margin_ckpt
+    if args.buffer_path is not None:
+        config.dataset_path = args.buffer_path
+    if args.step_per_epoch is not None:
+        config.step_per_epoch = args.step_per_epoch
+    if args.total_episodes is not None:
+        config.total_episodes = args.total_episodes
+    if args.logdir is not None:
+        config.logdir = args.logdir
+        config.rssm_ckpt_path = os.path.join(args.logdir, "rssm_ckpt.pt")
+    if args.rssm_ckpt is not None:
+        config.rssm_ckpt_path = args.rssm_ckpt
+    config.uniform_reset = bool(args.uniform_reset)
+    if args.gamma_pyhj is not None:
+        config.gamma_pyhj = args.gamma_pyhj
+    if args.reward_scale is not None:
+        config.reward_scale = args.reward_scale
     else:
-        config.no_gp = False
+        config.reward_scale = getattr(config, "reward_scale", 1.0)
     config.size = exp_config.environment.image_size
     config.turnRate = exp_config.max_angular_velocity
     main(exp_config, config)

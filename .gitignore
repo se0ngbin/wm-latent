@@ -140,7 +140,7 @@ dmypy.json
 
 # Project-specific
 visualizations/
-data/
+data
 *.mp4
 *.gif
 *.png
@@ -160,3 +160,4 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+results/

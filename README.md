@@ -145,6 +145,61 @@ python scripts/wm_trajectory_stats.py \
     --traj-h5 "<DATA_ROOT>/trajs/diffusion_trajectories_19500.h5"
 ```
 
+### 6b. Encoder-Lipschitz regularization (optional)
+
+The CBF margin is defined in latent space; for a latent margin to imply a real
+margin in observation space the encoder must be Lipschitz. This is enforced by
+pinning the encoder Jacobian norm toward a target `L`:
+
+```
+||x - x'||  >=  ||embed(x) - embed(x')|| / L
+```
+
+Enable it on the world-model training run:
+
+```bash
+python scripts/dreamer_offline.py \
+    --enc_lip_weight 0.1 \           # 0 = off (default)
+    --enc_lip_target_L 1.0 \         # value to pin ||J||_F toward
+    --enc_lip_keys obs_state \       # which encoder input(s): obs_state and/or image
+    --enc_lip_mode exact \           # exact (double-backward) | fd (finite-difference)
+    --enc_lip_probes 4               # Hutchinson probes (use 1 for the pixel path)
+```
+
+- `--enc_lip_keys obs_state` regularizes the low-dim state branch (cheap, recommended).
+  `image` regularizes the pixel/conv branch; it is ~5x costlier under `--enc_lip_mode exact`
+  because the Jacobian-norm penalty requires a double-backward through the conv. Use
+  `--enc_lip_mode fd` (finite differences, two forwards, no double-backward) for a cheaper,
+  slightly biased pixel estimate.
+- `--steps N` overrides the number of pretrain steps (default 40000).
+
+Sweep helper (trains baseline / obs_state / image-exact / image-fd into separate ckpt
+dirs, round-robin across `GPUS`):
+
+```bash
+bash scripts/run.sh wm baseline obs_state image image_fd
+# weight-1.0 variant into a separate dir:  WEIGHT=1.0 SWEEP=enc_lip_sweep_w1 bash scripts/run.sh wm obs_state image image_fd
+```
+
+LE-WM (JEPA) has the pixel-only equivalent as `JacobianNormReg` in `le-wm/module.py`
+(enable via the `jacobian` entry in `le-wm/config/train/lewm.yaml`); it uses the same
+`v ~ N(0, I)` Frobenius estimator so `target_L` means the same thing in both repos.
+
+Evaluate the trained world models **without** the CBF filter (nominal success/collision):
+
+```bash
+python scripts/collect_trajs.py \
+    --controller diffusion --config diffusion_wm \
+    --use_wm_prediction --wm_history_length 8 \
+    --wm_checkpoint "<ckpt_dir>/rssm_ckpt.pt" \
+    --filename nom_<name> --n_trajectories 1000 --filter_mode none
+# or sweep all four world models:  MODE=nominal bash scripts/run.sh eval baseline obs_state image image_fd
+```
+
+For the CBF-filtered numbers you need a `gp`/`nogp` policy trained on **that** world
+model (see step 7); a filter trained on a different world model is an architecture/identity
+mismatch and will not load cleanly.
+
 ### 7. Train the HJ safety value function
 
 ```bash
@@ -174,6 +229,16 @@ python scripts/eval_dreamer.py --filter_mode cbf
 ```
 
 Gifs and plots land in `src/latent_cbf/visualizations/`.
+
+To run steps 7–8 end-to-end (PyHJ `gp`+`nogp` training then CBF eval) for several world
+models and seeds at once:
+
+```bash
+# dreamer backend:
+SEEDS="0 1 2" bash scripts/run.sh cbf baseline obs_state image image_fd
+# LE-WM backend (trains the margin head first; needs le-wm on PYTHONPATH, handled by the script):
+BACKEND=lewm SEEDS="0 1 2" bash scripts/run.sh cbf no_reg_dubins jacobian_w1_dubins state_lipschitz_w1_dubins
+```
 
 ## Acknowledgements
 
