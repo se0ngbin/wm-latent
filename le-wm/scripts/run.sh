@@ -39,7 +39,7 @@ run_one() {  # preset name
   spec="${RUNS[$name]:-}"
   [ -z "$spec" ] && { echo "[skip] unknown preset: $name" >&2; return 1; }
   IFS='|' read -r data epochs override <<< "$spec"
-  local args=(data="$data" wandb.enabled=false "trainer.max_epochs=${EPOCHS:-$epochs}"
+  local args=(data="$data" "wandb.enabled=${WANDB:-true}" "trainer.max_epochs=${EPOCHS:-$epochs}"
     "output_model_name=$name" "subdir=$name" "hydra.run.dir=outputs/$name")
   [ -n "$override" ] && args+=("$override")
   echo "[$(date +%H:%M:%S)] start $name (data=$data epochs=${EPOCHS:-$epochs})"
