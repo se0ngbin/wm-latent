@@ -1,0 +1,314 @@
+# Making a world-model planner safer and more controllable with regularization
+
+*A plain-language report. No linear algebra required — technical details are in
+clearly-marked "Under the hood" boxes you can skip.*
+
+---
+
+## 1. The setup, in one picture
+
+We have an AI that drives a little car to a goal while avoiding two obstacles.
+The AI never learned a driving policy. Instead it learned a **world model** — an
+imagination of "if I take these steering actions, here's what the world will look
+like next." To drive, it *plans*: it imagines many possible action sequences,
+predicts where each ends up, and picks the one whose predicted future looks most
+like the goal picture. (This is called CEM planning / model-predictive control.)
+
+The world model has two parts, and this whole project is about regularizing them
+**separately, according to their different jobs**:
+
+- **The encoder** — "the eyes." Turns a camera image into a compact internal
+  summary (a list of numbers we call the *latent*). Its job is to be **robust**:
+  ignore meaningless changes (lighting, rendering noise) and keep the summary
+  stable.
+- **The predictor** — "the imagination." Given the current summary and an action,
+  predicts the next summary. Its job is to be **responsive**: different actions
+  should lead to genuinely different predicted futures.
+
+> **The core idea:** the encoder should be *invariant* (ignore nuisances), the
+> predictor should be *separating* (keep actions distinct). So we regularize them
+> with different tools, matched to those two jobs.
+
+We tested this on two tasks: **Dubins** (the simple car above) and **PushT** (a
+harder task: push a T-shaped block to a target — visually rich, lots going on).
+
+---
+
+## 2. Headline results
+
+| | What we changed | Did it help? |
+|---|---|---|
+| **Encoder, Dubins** | "Jacobian" regularizer (caps how twitchy the eyes are) | ✅ **Big win.** Success 62.5% → **81.5%**, collisions **halved** (50% → 22.5%). Reproducible across 3 seeds. |
+| **Predictor, Dubins (fast-forward mode)** | "pull" regularizer (keeps actions distinct) | ✅ **Rescues a failure.** When we fast-forward 5 steps at a time the model normally breaks (30% success); this brings it back to ~60%+. |
+| **Either regularizer, PushT** | same tools | ⚪❌ **Neutral to harmful.** Nothing helped; the predictor tool actively hurt. |
+
+**The one-sentence takeaway:** these regularizers are *targeted medicines for
+specific diseases*, not vitamins you give everyone. Each one helps exactly when
+the model has the particular problem it treats — and can hurt when it doesn't.
+
+---
+
+## 3. Why the encoder fix works (the interesting part)
+
+We dug into *why* the Jacobian regularizer helps Dubins so much. The answer turned
+out to be more specific — and more interesting — than we first guessed.
+
+### The disease: the eyes get obsessed with noise
+
+The training pushes the encoder to produce a "varied" summary (so the model uses
+its full capacity). But a Dubins scene is almost entirely blank white background —
+there's very little real variety to summarize. So the encoder **cheats**: it cranks
+up its sensitivity to a few meaningless pixel details (aliasing on edges,
+sub-pixel jitter) and treats those as if they were important.
+
+> **In plain terms:** imagine a photographer told to "capture lots of variety" in a
+> photo of a plain white wall. Having nothing real to work with, they start
+> obsessing over invisible specks of sensor noise, cranking the contrast until
+> those specks dominate the picture. That's what the baseline encoder does.
+
+**We measured this directly.** We can break the encoder's sensitivity down "by
+direction" (see box). The baseline encoder puts **50% of its entire visual
+sensitivity into a single direction** — one meaningless pixel pattern dominates
+everything it sees. A healthy encoder would spread its attention out.
+
+![Encoder sensitivity on Dubins, before vs after the fix](report_figures/jac_diagnostics_dubins.png)
+
+*Left: total sensitivity (‖J‖_F) per frame — baseline scattered around 20–40, the
+fixed model a tight spike at ~1. Right: sensitivity broken down by direction (log
+scale) — the baseline's top few directions tower over the rest (the "obsession");
+the fixed model's are flat and balanced.*
+
+> **Under the hood (skip if you like):** the encoder's input→output sensitivity is
+> the *Jacobian matrix* J = ∂(latent)/∂(image). Its *singular values* σ₁ ≥ σ₂ ≥ …
+> say how much it amplifies each independent input direction; the total size is the
+> Frobenius norm ‖J‖_F = √(Σσᵢ²). The Jacobian regularizer penalizes ‖J‖_F² and
+> pulls it toward 1. Full measured spectrum (mean over held-out frames):
+>
+> | Dubins encoder | σ₁ | σ₂ | σ₅ | σ₁₀ | ‖J‖_F | energy in σ₁ | energy in top-5 | # sig. directions | condition # |
+> |---|---|---|---|---|---|---|---|---|---|
+> | baseline | 7.83 | 4.29 | 2.40 | 0.96 | 11.0 | **50.5%** | 88.9% | 11 | 142 |
+> | + Jacobian | 0.31 | 0.28 | 0.18 | 0.14 | 1.01 | 9.5% | 30.3% | 91 | 4 |
+>
+> ("# sig. directions" = singular values above 10% of σ₁; "condition #" = σ₁/σ₅₀,
+> a standard anisotropy measure.) So the fix cuts total sensitivity ~28×, drops the
+> top direction's share of it from 50% to 9.5%, and spreads the work from ~11
+> directions to ~91.
+>
+> **Nice subtlety (and a correction worth stating carefully):** the regularizer
+> penalizes only *total* sensitivity — equivalently the sum of squared matrix
+> entries or the sum of squared singular values (‖J‖_F² = Σᵢⱼ Jᵢⱼ² = Σσᵢ²; these
+> are the same number). It says nothing about conditioning, and in fact by itself
+> it *can't* change conditioning: its gradient is proportional to J, so it shrinks
+> every singular value in the same proportion, leaving all the ratios — and thus
+> the condition number — untouched. It is a pure *scale* knob.
+>
+> So why does conditioning improve 35× (142 → 4)? Not from this penalty directly,
+> but from what capping the size **removes**. The baseline satisfied the "make the
+> summary varied" pressure (from a separate regularizer, SIGReg) the cheap way — by
+> blowing one direction up to ~28. Capping total sensitivity at ~1 kills that
+> shortcut: the encoder can no longer fake variety with a single spike, so to stay
+> "varied" it must spread its now-limited sensitivity across many directions. The
+> spreading is done by the variety pressure; the size cap just forces it to be
+> honest. Conditioning improves as a *consequence of removing the cheat*, not as a
+> direct effect of the norm penalty.
+>
+> **This is deterministic, not a lucky run.** The same spectrum appears for every
+> training seed we tried:
+>
+> | Dubins + Jacobian | σ₁ | ‖J‖_F | energy in σ₁ | # sig. directions |
+> |---|---|---|---|---|
+> | seed 3072 | 0.310 | 1.007 | 9.5% | 91 |
+> | seed 100 | 0.308 | 1.006 | 9.4% | 94 |
+> | seed 200 | 0.306 | 1.008 | 9.2% | 99 |
+>
+> The reg produces the same latent geometry every time — which is exactly why it
+> produces the same planning result every time (success 81.5/85.0/82.5, collision
+> 22.5 on all three).
+
+### The consequence: bad comparisons → collisions
+
+Because the baseline's "eyes" are twitchy, its internal summary jumps around for
+meaningless reasons. When the planner compares an imagined future to the goal, that
+comparison gets swamped by noise — especially near obstacles, where the car is in
+unusual positions the model isn't confident about. So the planner can't reliably
+tell "this path grazes the obstacle" from "this path clears it."
+
+The Jacobian regularizer caps the twitchiness. We measured that it makes the eyes
+**~5× more robust to a meaningless brightness change**, and it sharpens the
+planner's sense of distance-to-goal exactly where precision matters most.
+
+> **Under the hood — the planner's "distance" sense.** The planner scores a
+> candidate by the latent distance between its imagined future and the goal. For
+> that to work, latent distance must shrink as the car physically approaches the
+> goal. Measured on expert trajectories (see `jac_costsurface.png`):
+> - **Robustness (signal-to-nuisance):** ratio of the latent's response to a real
+>   one-step move vs. to a 2% brightness change. Baseline **8.5**, Jacobian **45** —
+>   the baseline latent moves ~1/8 of a real step for a pure lighting nuisance; the
+>   Jacobian one barely flinches.
+> - **Near-goal sharpness:** the Jacobian model's latent cost rises steeply within
+>   0.5 units of the goal then flattens — a strong gradient right around the 0.2-unit
+>   success threshold, so the planner homes in precisely and can tell "grazes the
+>   obstacle" from "clears it." The baseline's cost rises shallowly and even dips.
+>
+> **Honest caveat:** measured *globally* (across the whole map), the baseline's cost
+> is actually a bit *more* linear/smooth (rank-correlation with true distance 0.60
+> vs 0.35). So the win is **not** "smoother everywhere," as we first assumed — it is
+> specifically (a) nuisance rejection and (b) a sharp cost gradient right where the
+> car needs precision (near the goal and obstacle edges). A more precise, and more
+> defensible, claim.
+
+![Planner's latent cost vs true distance to goal](report_figures/jac_costsurface.png)
+
+*How the planner's internal "distance to goal" (vertical) tracks the real distance
+(horizontal). Right panel: the fixed model (orange) climbs steeply in the last 0.5
+units before the goal — a strong, usable signal exactly where the car needs to be
+precise — then flattens; the baseline (blue) rises shallowly and dips.*
+
+### The proof: the car actually drives with more clearance
+
+If the story is right, the safer model should physically keep more distance from
+obstacles. It does. We recorded 100 planned trajectories per model and measured how
+close the car got to an obstacle:
+
+| | Closest it ever got to an obstacle (avg) | Episodes that went *inside* an obstacle |
+|---|---|---|
+| baseline | **−0.03** (on average it clips *into* the obstacle) | 46% |
+| Jacobian | **+0.08** (keeps a real margin) | 20% |
+
+(Difference is statistically overwhelming, p < 0.0001. The "% going inside" matches
+the collision rates, confirming the measurement is faithful.)
+
+And crucially — **only the Jacobian fix moves obstacle clearance.** We ran the same
+measurement on every other regularizer we tried, and they all sit right at the
+baseline:
+
+| Regularizer | closest approach (avg) | % episodes inside |
+|---|---|---|
+| baseline | −0.03 | 46% |
+| **Jacobian (encoder)** | **+0.08** | **20%** |
+| noise-robustness (encoder) | −0.02 | 45% |
+| color-jitter (encoder) | −0.01 | 49% |
+| keep-actions-distinct, "floor" (predictor) | −0.02 | 48% |
+| keep-actions-distinct, "pull" (predictor) | −0.06 | 51% |
+
+Even the two encoder regularizers that *mildly* raised the success rate did **not**
+improve obstacle clearance — their small gains came from somewhere else, not from
+driving more safely. The Jacobian fix is the only one that is genuinely a *safety*
+regularizer.
+
+![How close the car drives to obstacles](report_figures/obstacle_distance.png)
+
+*Distance from the car to the nearest obstacle edge; the red dashed line is the
+obstacle boundary (left of it = inside the obstacle). Left: each episode's closest
+approach — the baseline (blue) spills well across the line into the obstacle; the
+fixed model (orange) piles up just on the safe side. Right: average clearance along
+the whole path.*
+
+---
+
+### A detour we tried: teaching robustness with augmentations
+
+Before the Jacobian fix, we tried the more obvious way to make the "eyes" robust:
+show the encoder the same frame with random nuisance changes — brightness, color
+shifts, blur, small blocked-out patches — and require its summary to stay the same.
+The idea is sound (it's standard in vision), but it taught us a sharp lesson about
+this specific task.
+
+![The augmentation variations we showed the encoder](report_figures/dubins_augs.png)
+
+*Original frame (far left) and five randomly-augmented versions. Notice the third
+and fifth columns: aggressive color changes turn the scene grey or recolor it.*
+
+In Dubins, **color is not a nuisance — it's the meaning.** The goal is a green dot,
+the car is blue, obstacles are red. When we told the encoder to ignore color, we
+told it to ignore the very thing that distinguishes goal from obstacle — and
+planning collapsed (success fell to 15%). Gentle augmentations (mild
+brightness/blur/noise) were harmless but did nothing special; aggressive
+color-destroying ones were catastrophic. This is the same "targeted vs. blanket"
+lesson: a generic robustness recipe backfires when it erases task-relevant signal.
+The Jacobian regularizer wins because it caps *how much* the eyes react without
+dictating *what* they react to.
+
+## 4. Why it does NOT help PushT (same story, backwards)
+
+We ran the exact same measurement on PushT. The prediction: if the disease is
+"blank scene forces the eyes to obsess over noise," then a **visually rich** scene
+like PushT shouldn't have the disease — and the fix shouldn't help. Confirmed:
+
+| Baseline encoder | sensitivity concentration | how sick? |
+|---|---|---|
+| Dubins | 50% in one direction, ~11 directions used | very sick → fix helps a lot |
+| PushT | 32% in one direction, ~22 directions used | already fairly healthy → fix does nothing |
+
+PushT has real stuff to look at, so its encoder never needed to cheat. The medicine
+only helps the patient who's actually sick. **You could even predict, before
+training, whether the Jacobian fix will help a new task — just by checking how
+"concentrated" its baseline encoder's sensitivity is.**
+
+> **Under the hood — full cross-task numbers.** The baseline encoder's health is
+> the whole story; the Jacobian version looks similar on both tasks.
+>
+> | model | ‖J‖_F | condition # | # sig. directions | energy in σ₁ |
+> |---|---|---|---|---|
+> | Dubins baseline | 28.0 | **142** | 12 | 50.5% |
+> | Dubins + Jacobian | 1.1 | 4 | 86 | 9.5% |
+> | PushT baseline | 6.7 | **37** | 22.5 | 32.1% |
+> | PushT + Jacobian | 1.0 | 2 | 137 | 3.4% |
+>
+> The Dubins baseline is ~4× sicker than the PushT baseline on every measure
+> (4× larger sensitivity, 4× worse conditioning, half as many directions used).
+> The rich PushT scene gives the encoder real variety to summarize, so it never
+> resorts to amplifying noise — and the fix has little to fix.
+
+![Encoder sensitivity on PushT, before vs after the fix](report_figures/jac_diagnostics_pusht.png)
+
+*The same plot as for Dubins, now on PushT. Compare the right panels: PushT's
+baseline (blue) is already far less "peaked" than Dubins' baseline was — its top
+directions don't tower over the rest nearly as much, because the busy scene gave it
+real things to encode. There's little disease for the fix to cure.*
+
+---
+
+## 5. The predictor side (briefly)
+
+The predictor regularizer keeps different actions leading to different predicted
+futures. On normal Dubins it does nothing — because the model already keeps actions
+distinct, so there's nothing to fix. But in "fast-forward" mode (predicting 5 steps
+at once), the model normally **collapses**: it stops paying attention to actions
+(they're too hard to predict that far ahead), and planning breaks (success crashes
+to 30%). The predictor regularizer forbids that collapse and brings success back to
+~60%. Same lesson: it helps exactly when the specific failure is present.
+
+*(One nuance for the record: this predictor effect is real but noisier across
+random seeds — 46–66% depending on the seed — whereas the encoder result is rock
+solid.)*
+
+---
+
+## 6. What to trust, and what's still open
+
+**Solid:**
+- Jacobian encoder fix on Dubins: +19% success, collisions halved, confirmed across
+  3 training seeds, with a fully measured mechanism and a physical trajectory-level
+  confirmation.
+- The "targeted medicine" thesis, confirmed on both a task where it helps (Dubins)
+  and one where it shouldn't and doesn't (PushT).
+
+**Still open / to disclose:**
+1. Most secondary numbers come from a single training run (one random seed).
+2. Everything on Dubins used one planning horizon.
+3. We never combined the two winning regularizers (encoder + predictor) in one run.
+4. **The original goal — provable safety (control-barrier functions) — isn't wired
+   up yet.** We measured a planning *proxy* (success/collision/clearance), which is
+   very encouraging, but the formal safety layer is the natural next step.
+
+---
+
+*All figures are embedded inline above and also live in the `report_figures/`
+folder next to this document:*
+- `dubins_augs.png` — the augmentation variations we tried (§3 detour).
+- `jac_diagnostics_dubins.png` / `jac_diagnostics_pusht.png` — the encoder's
+  sensitivity, before vs after the fix, on each task (§3, §4).
+- `jac_costsurface.png` — how well the planner's internal "distance to goal" tracks
+  the real distance (§3).
+- `obstacle_distance.png` — how close the car actually drives to obstacles (§3).
