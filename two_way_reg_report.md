@@ -55,11 +55,13 @@ out to be more specific — and more interesting — than we first guessed.
 
 ### The disease: the eyes get obsessed with noise
 
-The training pushes the encoder to produce a "varied" summary (so the model uses
-its full capacity). But a Dubins scene is almost entirely blank white background —
-there's very little real variety to summarize. So the encoder **cheats**: it cranks
-up its sensitivity to a few meaningless pixel details (aliasing on edges,
-sub-pixel jitter) and treats those as if they were important.
+A separate regularizer (**SIGReg**) pushes the encoder to produce a "varied"
+summary — specifically, it forces the *cloud* of summaries across all images to be
+spread out and round (equally varied in every direction). But a Dubins scene is
+almost entirely blank white background — there's very little real variety to
+summarize. So the encoder **cheats**: it cranks up its sensitivity to a few
+meaningless pixel details (aliasing on edges, sub-pixel jitter) and treats those as
+if they were important.
 
 > **In plain terms:** imagine a photographer told to "capture lots of variety" in a
 > photo of a plain white wall. Having nothing real to work with, they start
@@ -77,6 +79,26 @@ everything it sees. A healthy encoder would spread its attention out.
 fixed model a tight spike at ~1. Right: sensitivity broken down by direction (log
 scale) — the baseline's top few directions tower over the rest (the "obsession");
 the fixed model's are flat and balanced.*
+
+> **"Wait — doesn't SIGReg already force everything to be uniform? How can one
+> direction blow up?"** This is the crux, and the answer is that SIGReg and the
+> blow-up live in *two different spaces*:
+> - **SIGReg constrains the output — the cloud of summaries.** It makes the pile of
+>   summary-vectors (across all images) a round, evenly-spread ball. In *output*
+>   space, nothing is blown up; it's uniform, exactly as advertised.
+> - **The blow-up is in the *input→summary map*, not the output.** "50% of
+>   sensitivity in one direction" means the encoder over-reacts to one *pixel
+>   pattern* — a fact about *which image changes move the summary*, a different space
+>   entirely from the shape of the output cloud.
+>
+> These coexist with no contradiction: the encoder can be hair-trigger to a few
+> pixel patterns (lopsided map) while still producing a perfectly round cloud of
+> summaries (uniform output). *Why* it does this on Dubins: SIGReg demands a fully
+> varied output, but the input barely varies (a near-blank scene), so the only way
+> to manufacture that variety is to apply enormous gain to the few pixel directions
+> that do change. SIGReg only inspects the output cloud, so it never notices — or
+> penalizes — that the map achieving it is a hair-trigger. The Jacobian fix works
+> because it constrains that map directly, which SIGReg never does.
 
 > **Under the hood (skip if you like):** the encoder's input→output sensitivity is
 > the *Jacobian matrix* J = ∂(latent)/∂(image). Its *singular values* σ₁ ≥ σ₂ ≥ …
