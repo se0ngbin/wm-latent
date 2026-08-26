@@ -226,6 +226,47 @@ approach — the baseline (blue) spills well across the line into the obstacle; 
 fixed model (orange) piles up just on the safe side. Right: average clearance along
 the whole path.*
 
+### But is this really "safety"? A stress test
+
+An important caveat about what "safety" means here: **the planner has no
+obstacle-avoidance objective at all.** It scores every candidate path by one thing —
+how close its predicted end-state looks to the goal — and in this environment
+obstacles are "soft" (they don't block the car; we just flag it if the car passes
+through one). So nothing in the system is *trying* to avoid obstacles. Collision
+avoidance is an emergent side effect.
+
+Where does it come from, then? Two possible sources: (a) the goals are placed right
+*beside* obstacles, so reaching them precisely happens to mean not clipping them; and
+(b) the world model was trained only on expert data that avoided obstacles, so its
+imagined rollouts naturally curve around them. To find out which, we ran a stress
+test: re-place the goals on the *far side* of an obstacle, so the straight-line path
+now goes *through* it and avoiding it requires a detour that *hurts* the goal-distance
+objective. If the safety benefit were just source (a), the advantage should collapse.
+
+**It didn't.** On identical far-side goals:
+
+| | goal beside obstacle | goal on far side (path crosses it) |
+|---|---|---|
+| baseline collision | 50% | 60% |
+| Jacobian collision | 22.5% | **30%** |
+| **gap** | 27.5 pts | **30 pts — held** |
+
+The Jacobian model still collides about half as often, even when the greedy path
+cuts straight through the obstacle, and it barely degrades from its beside-obstacle
+numbers. So the benefit is **not** an artifact of goal placement. The dominant source
+of avoidance is (b) — the world model inherited "go around" from expert data, and
+*both* models have it. The Jacobian fix's real contribution is **executing that
+learned avoidance cleanly** (a faithful latent → precise paths → less sloppy
+clipping), which halves collisions regardless of where the goal sits.
+
+The honest bottom line stays the same, and is sharpened: safety here is **emergent**
+(from learned dynamics + navigation precision), not an explicit guarantee. It's robust
+to goal placement — better than we'd feared — but it still rests on the expert data
+having avoided obstacles and would offer no protection if reaching the goal genuinely
+required driving through one. That is exactly the gap a real safety layer (a
+control-barrier function, the original project goal) is meant to close: making
+avoidance a hard constraint rather than a fortunate side effect.
+
 ---
 
 ### A detour we tried: teaching robustness with augmentations

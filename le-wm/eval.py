@@ -13,6 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
+import dubins_swm_env  # noqa: F401  (registers swm/Dubins-v0)
 
 def img_transform(cfg):
     transform = transforms.Compose(
@@ -55,7 +56,8 @@ def run(cfg: DictConfig):
 
     # create world environment
     cfg.world.max_episode_steps = 2 * cfg.eval.eval_budget
-    world = swm.World(**cfg.world, image_shape=(224, 224))
+    image_shape = tuple(cfg.eval.get("world_image_shape", (224, 224)))
+    world = swm.World(**cfg.world, image_shape=image_shape)
 
     # create the transform
     transform = {
@@ -92,6 +94,8 @@ def run(cfg: DictConfig):
         model.interpolate_pos_encoding = True
         config = swm.PlanConfig(**cfg.plan_config)
         solver = hydra.utils.instantiate(cfg.solver, model=model)
+        if hasattr(solver, "set_process"):  # safe_cem: needs dataset scalers
+            solver.set_process(process)
         policy = swm.policy.WorldModelPolicy(
             solver=solver, config=config, process=process, transform=transform
         )
@@ -116,9 +120,79 @@ def run(cfg: DictConfig):
     )
 
     # remove all the lines of dataset for which dataset['step_idx'] > max_start_per_row
-    valid_mask = dataset.get_col_data("step_idx") <= max_start_per_row
+    step_idx_col = dataset.get_col_data("step_idx")
+    if cfg.eval.get("goal_at_episode_end", False):
+        # Pin the goal to each episode's final frame: the only valid start per
+        # episode is exactly goal_offset steps before the end. Keeps the goal
+        # marker at the true target so rendered frames match the goal image.
+        valid_mask = step_idx_col == max_start_per_row
+    else:
+        valid_mask = step_idx_col <= max_start_per_row
     valid_indices = np.nonzero(valid_mask)[0]
-    print(valid_mask.sum(), "valid starting points found for evaluation.")
+
+    # Optional: keep only starts whose goal (state at start+goal_offset) sits in
+    # an annulus *around* an obstacle — outside the disk (reachable, not inside)
+    # but close to it, so the task exercises obstacle avoidance. Keep goals whose
+    # distance to the NEAREST obstacle edge is in (avoid_margin, near_margin].
+    obstacles = cfg.eval.get("goal_avoid_obstacles", None)
+    if obstacles and not cfg.eval.get("goal_crosses_obstacle", False):
+        avoid = float(cfg.eval.get("goal_avoid_margin", 0.05))   # min clearance from edge
+        near = float(cfg.eval.get("goal_near_margin", 0.5))       # max distance from edge
+        state_col = dataset.get_col_data("state")
+        goal_pos = state_col[valid_indices + cfg.eval.goal_offset_steps][:, :2]
+        edge_dist = np.full(len(valid_indices), np.inf)
+        for ox, oy, r in obstacles:
+            edge_dist = np.minimum(
+                edge_dist, np.linalg.norm(goal_pos - np.array([ox, oy]), axis=1) - r
+            )
+        keep = (edge_dist > avoid) & (edge_dist <= near)
+        valid_indices = valid_indices[keep]
+        print(int(keep.sum()), f"goals in annulus ({avoid}, {near}] around an obstacle")
+
+    # Optional (far-side stress test): keep only starts whose STRAIGHT LINE to the
+    # goal crosses an obstacle disk — so the greedy path goes *through* it and
+    # avoidance requires a detour that opposes the goal-distance objective. Goal
+    # itself must be outside all obstacles (reachable). Complements the annulus
+    # filter (which puts goals *beside* an obstacle so precision == avoidance).
+    if cfg.eval.get("goal_crosses_obstacle", False):
+        obs = cfg.eval.get("goal_avoid_obstacles")
+        state_col = dataset.get_col_data("state")
+        p0 = state_col[valid_indices][:, :2]                              # start
+        p1 = state_col[valid_indices + cfg.eval.goal_offset_steps][:, :2]  # goal
+        crosses = np.zeros(len(valid_indices), bool)
+        goal_outside = np.ones(len(valid_indices), bool)
+        for ox, oy, r in obs:
+            c = np.array([ox, oy]); d = p1 - p0; f = p0 - c
+            t = np.clip(-(f * d).sum(1) / ((d * d).sum(1) + 1e-9), 0.0, 1.0)  # closest-point param
+            seg_dist = np.linalg.norm(p0 + t[:, None] * d - c, axis=1)         # segment-to-center
+            crosses |= seg_dist < r
+            goal_outside &= np.linalg.norm(p1 - c, axis=1) > r
+        keep = crosses & goal_outside
+        valid_indices = valid_indices[keep]
+        print(int(keep.sum()), "goals whose straight-line path crosses an obstacle (far-side)")
+
+    # Optional: only draw goals from clean-SUCCESS source episodes — the source
+    # trajectory reaches the goal region (end x>x_min, |y|<y_abs) AND never
+    # collides. Makes the sub-goals genuine expert midpoints (pushT-comparable),
+    # not midpoints of exploratory/crash rollouts in the mixed buffer.
+    if cfg.eval.get("goal_clean_source", False):
+        ep_col_all = dataset.get_col_data(col_name)
+        fail = np.asarray(dataset.get_col_data("failures")).reshape(-1)
+        st_all = dataset.get_col_data("state")
+        gx = float(cfg.eval.get("clean_goal_x_min", 1.0))
+        gy = float(cfg.eval.get("clean_goal_y_abs", 0.8))
+        uniq, offs, lens = np.unique(ep_col_all, return_index=True, return_counts=True)
+        order = np.argsort(offs)
+        offs, lens, eids = offs[order], lens[order], uniq[order]
+        end_st = st_all[offs + lens - 1]
+        reaches = (end_st[:, 0] > gx) & (np.abs(end_st[:, 1]) < gy)
+        ep_coll = np.add.reduceat((fail > 0).astype(np.int64), offs) > 0
+        clean_map = dict(zip(eids.tolist(), (reaches & ~ep_coll).tolist()))
+        keep = np.array([clean_map[int(ep_col_all[r])] for r in valid_indices])
+        valid_indices = valid_indices[keep]
+        print(int(keep.sum()), "goals from clean-success source episodes")
+
+    print(len(valid_indices), "valid starting points found for evaluation.")
 
     g = np.random.default_rng(cfg.seed)
     random_episode_indices = g.choice(
@@ -151,7 +225,18 @@ def run(cfg: DictConfig):
         video=results_path,
     )
     end_time = time.time()
-    
+
+    # Per-episode collision rate for envs that expose it (e.g. Dubins). In
+    # dataset-eval 'wait' mode each env runs exactly one episode, so the env's
+    # `_collided` flag at the end is that episode's outcome.
+    pool_envs = getattr(world.envs, "envs", None)
+    if pool_envs is not None and all(
+        hasattr(e.unwrapped, "_collided") for e in pool_envs
+    ):
+        collided = np.array([bool(e.unwrapped._collided) for e in pool_envs])
+        metrics["collision_rate"] = float(collided.mean() * 100.0)
+        metrics["episode_collisions"] = collided
+
     print(metrics)
 
     results_path = results_path / cfg.output.filename
