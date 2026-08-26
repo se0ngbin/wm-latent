@@ -111,8 +111,11 @@ the fixed model's are flat and balanced.*
 > | baseline | 7.83 | 4.29 | 2.40 | 0.96 | 11.0 | **50.5%** | 88.9% | 11 | 142 |
 > | + Jacobian | 0.31 | 0.28 | 0.18 | 0.14 | 1.01 | 9.5% | 30.3% | 91 | 4 |
 >
-> ("# sig. directions" = singular values above 10% of σ₁; "condition #" = σ₁/σ₅₀,
-> a standard anisotropy measure.) So the fix cuts total sensitivity ~28×, drops the
+> ("# sig. directions" = singular values above 10% of σ₁; **"condition #" = biggest
+> stretch ÷ smallest stretch (σ₁/σ₅₀) — how *lopsided* the sensitivity is: ~1 means
+> the encoder reacts evenly across directions, large means one direction dominates.**
+> It is separate from ‖J‖, which is the *total* amount of sensitivity — think volume
+> vs. how uneven the graphic-equalizer bands are.) So the fix cuts total sensitivity ~28×, drops the
 > top direction's share of it from 50% to 9.5%, and spreads the work from ~11
 > directions to ~91.
 >
