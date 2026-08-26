@@ -171,6 +171,21 @@ def run(cfg: DictConfig):
         valid_indices = valid_indices[keep]
         print(int(keep.sum()), "goals whose straight-line path crosses an obstacle (far-side)")
 
+    # Optional (TwoRoom): keep only start/goal pairs in DIFFERENT rooms — i.e. on
+    # opposite sides of the dividing wall — so reaching the goal requires threading
+    # the door. Isolates the cases that actually exercise the wall. Reads a
+    # configurable position column (proprio for TwoRoom) and wall coordinate.
+    if cfg.eval.get("goal_cross_wall", False):
+        col = cfg.eval.get("pos_col", "proprio")
+        ax = int(cfg.eval.get("wall_axis_coord", 0))          # 0=x
+        wpos = float(cfg.eval.get("wall_pos", 112.0))
+        pos = dataset.get_col_data(col)
+        s0 = pos[valid_indices][:, ax]
+        s1 = pos[valid_indices + cfg.eval.goal_offset_steps][:, ax]
+        keep = (s0 - wpos) * (s1 - wpos) < 0                  # opposite sides
+        valid_indices = valid_indices[keep]
+        print(int(keep.sum()), "start/goal pairs in different rooms (cross-wall)")
+
     # Optional: only draw goals from clean-SUCCESS source episodes — the source
     # trajectory reaches the goal region (end x>x_min, |y|<y_abs) AND never
     # collides. Makes the sub-goals genuine expert midpoints (pushT-comparable),

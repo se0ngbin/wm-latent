@@ -374,6 +374,19 @@ there as a clearance number. The navigation-quality improvement is real in both;
 only *looks* like a safety margin when the obstacle is soft. (Same lesson as the
 far-side test: "safety" here is emergent and depends on the environment's structure.)
 
+We pushed on this: we re-ran restricted to only the goals in the *other* room (the
+~27% that force the agent to thread the doorway) — expecting that's where any
+door-threading advantage would show. It wasn't there. On those cross-room goals,
+baseline and Jacobian are neck-and-neck (success 91 vs 90, door clearance ~5 px for
+both), and the same held at double the horizon (58 vs 60). Working backwards, the
+whole +11 success gain lives in the *within-room* goals, not the wall cases. So on
+TwoRoom the Jacobian benefit is **generic navigation precision that has nothing to do
+with the wall** — the hard wall is a shared bottleneck both models handle the same. It
+is the clean mirror image of Dubins: identical underlying gain (a less-noisy encoder →
+better navigation), but it only *surfaces as safety* when the obstacle is soft enough
+for precision to matter. Against a wall that already stops you, the environment
+supplies the safety and the model's improvement goes elsewhere.
+
 ---
 
 ## 5. The predictor side (briefly)
