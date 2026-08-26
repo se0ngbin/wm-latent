@@ -330,6 +330,47 @@ baseline (blue) is already far less "peaked" than Dubins' baseline was — its t
 directions don't tower over the rest nearly as much, because the busy scene gave it
 real things to encode. There's little disease for the fix to cure.*
 
+### A third environment (TwoRoom) sharpens the rule
+
+We ran the same test on a third task — **TwoRoom**, where an agent navigates
+between two rooms through a doorway in a wall. It gave a result that *corrected* our
+first guess about the rule, so it's worth including.
+
+TwoRoom's baseline sits in between: like Dubins it's a mostly-empty scene (a small
+agent in a big plain room), so its encoder is **very sensitive** (‖J‖ ≈ 22–35, as
+high as Dubins). But unlike Dubins its sensitivity is **well spread out**, not
+crammed into one direction:
+
+> | model | ‖J‖_F | condition # | # sig. directions | energy in σ₁ | Jacobian → task success |
+> |---|---|---|---|---|---|
+> | Dubins baseline | 28 | 142 | 12 | 50.5% | **+19 pts** |
+> | TwoRoom baseline | ~25 | 18 | 38 | 17.6% | **+11 pts** |
+> | PushT baseline | 6.7 | 37 | 22 | 32.1% | ~0 (neutral) |
+
+Our first rule was "the fix helps when the baseline is *badly conditioned*." TwoRoom
+breaks that — it's the *best*-conditioned of the three, yet the fix still helped
+success by +11. **The better predictor is the baseline's raw sensitivity ‖J‖ (how
+twitchy/noisy it is), not its conditioning:** ‖J‖ 6.7 → nothing to gain, ‖J‖ ~25 →
+big gain, in both TwoRoom and Dubins. Conditioning is a *second* axis — it says how
+*concentrated* the noise is — which is why Dubins, bad on *both* (high ‖J‖ *and*
+terrible conditioning), got the largest boost of all.
+
+![Encoder sensitivity on TwoRoom, before vs after the fix](report_figures/jac_diagnostics_tworoom.png)
+
+*TwoRoom baseline (blue): total sensitivity is high (left, ‖J‖ 20–50) but the
+spectrum (right) slopes down gently with no single towering direction — hypersensitive
+yet balanced, unlike Dubins' sharp spike.*
+
+One more TwoRoom wrinkle worth flagging: the fix improved *task success* (+11) but
+**not wall-clearance** (both models thread the doorway with the same margin). That's
+because TwoRoom's wall is a *hard* obstacle — the environment physically stops the
+agent from entering it — so clearance has a floor no model can beat. Dubins obstacles
+are *soft* (the car can drive right through — 18% of baseline trajectory points are
+literally inside an obstacle), which is the only reason the safety benefit showed up
+there as a clearance number. The navigation-quality improvement is real in both; it
+only *looks* like a safety margin when the obstacle is soft. (Same lesson as the
+far-side test: "safety" here is emergent and depends on the environment's structure.)
+
 ---
 
 ## 5. The predictor side (briefly)
