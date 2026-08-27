@@ -238,15 +238,20 @@ obstacles are "soft" (they don't block the car; we just flag it if the car passe
 through one). So nothing in the system is *trying* to avoid obstacles. Collision
 avoidance is an emergent side effect.
 
-Where does it come from, then? Two possible sources: (a) the goals are placed right
-*beside* obstacles, so reaching them precisely happens to mean not clipping them; and
-(b) the world model was trained only on expert data that avoided obstacles, so its
-imagined rollouts naturally curve around them. To find out which, we ran a stress
-test: re-place the goals on the *far side* of an obstacle, so the straight-line path
-now goes *through* it and avoiding it requires a detour that *hurts* the goal-distance
-objective. If the safety benefit were just source (a), the advantage should collapse.
+Where does it come from, then? It is **not** that the world model learned to avoid.
+Two facts rule that out: the training data is ~half unsafe (47.6% of episodes have a
+collision, 16.7% of all frames are inside an obstacle — the model sees plenty of
+through-obstacle motion), and because the obstacles are *soft*, the true dynamics are
+**obstacle-independent** — motion is pure kinematics with no obstacle term, so there
+is no avoidance behavior in the dynamics to learn. The encoder does see the (fixed)
+obstacles, but a constant in every frame doesn't affect latent *distances*, so the
+planner's cost is driven purely by the agent's position — it is effectively
+**obstacle-blind**. The model has no notion of safety at all.
 
-**It didn't.** On identical far-side goals:
+So the only remaining source of the collision reduction is **navigation precision**,
+and a stress test confirms it: we re-placed the goals on the *far side* of an
+obstacle (straight-line path crosses it) and the advantage held rather than
+collapsing:
 
 | | goal beside obstacle | goal on far side (path crosses it) |
 |---|---|---|
@@ -254,19 +259,18 @@ objective. If the safety benefit were just source (a), the advantage should coll
 | Jacobian collision | 22.5% | **30%** |
 | **gap** | 27.5 pts | **30 pts — held** |
 
-The Jacobian model still collides about half as often, even when the greedy path
-cuts straight through the obstacle, and it barely degrades from its beside-obstacle
-numbers. So the benefit is **not** an artifact of goal placement. The dominant source
-of avoidance is (b) — the world model inherited "go around" from expert data, and
-*both* models have it. The Jacobian fix's real contribution is **executing that
-learned avoidance cleanly** (a faithful latent → precise paths → less sloppy
-clipping), which halves collisions regardless of where the goal sits.
+The Jacobian model collides about half as often at *both* goal placements. The reason
+is the same in each case: a cleaner latent → a sharper cost gradient near the goal →
+the planner reaches goals via cleaner, less-wandering paths, and cleaner paths clip
+the nearby obstacles less. It is purely a *precision* effect — the planner is not
+avoiding anything, it is just reaching the goal tidily, and tidy goal-reaching next to
+(or past) an obstacle happens to enter it less.
 
-The honest bottom line stays the same, and is sharpened: safety here is **emergent**
-(from learned dynamics + navigation precision), not an explicit guarantee. It's robust
-to goal placement — better than we'd feared — but it still rests on the expert data
-having avoided obstacles and would offer no protection if reaching the goal genuinely
-required driving through one. That is exactly the gap a real safety layer (a
+The honest bottom line, sharpened: safety here is **emergent from navigation
+precision alone** — the model has zero safety awareness, obstacles don't even enter
+the objective. It's robust to goal placement, but it is a statistical side effect, not
+a guarantee, and it would offer no protection the moment reaching the goal genuinely
+*required* driving through an obstacle. That is exactly the gap a real safety layer (a
 control-barrier function, the original project goal) is meant to close: making
 avoidance a hard constraint rather than a fortunate side effect.
 
