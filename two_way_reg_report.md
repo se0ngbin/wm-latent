@@ -461,11 +461,70 @@ nuisance *without* the blur).
 
 ---
 
+## Appendix: how each number was computed
+
+*For readers checking the method. Scripts are in `le-wm/scripts/`.*
+
+**Encoder Jacobian & singular values** (`jac_singular.py`, `jac_diagnostics.py`).
+The Jacobian is `J = ∂z/∂x`, the derivative of the D=192-dim latent `z` w.r.t. the
+3×224×224 input image. For the **singular values** (and everything derived from
+them — condition number, effective rank, energy fractions) we build `J`
+*explicitly*: for each of the 192 latent coordinates we take `torch.autograd.grad`
+of that coordinate w.r.t. every input pixel, giving one 150,528-long row; stacking
+all 192 gives the exact `J` (192 × 150,528), and `torch.linalg.svdvals(J)` gives its
+192 singular values. This is done per frame under the *math* attention kernel (flash
+attention lacks the needed backward), and **averaged over 12–16 held-out frames**.
+Definitions: condition number = σ₁/σ₅₀; effective rank = participation ratio
+`(Σσᵢ)²/Σσᵢ²`; "energy in σ₁" = σ₁²/Σσᵢ²; "# significant directions" = count of
+σᵢ > 0.1·σ₁.
+
+**Total sensitivity ‖J‖_F.** Two estimators appear. The singular-value *table* uses
+the exact `√Σσᵢ²` from the SVD above. The ‖J‖_F *histogram* uses a cheaper
+finite-difference Hutchinson estimate — `E‖Ju‖² = ‖J‖_F²` for `u ~ N(0,I)`,
+approximated by `‖enc(x+σu) − enc(x)‖²/σ²` over a few probes — so it can cover more
+frames. They mostly agree; where they diverge (TwoRoom ~35 est. vs ~22 exact) the
+exact SVD value is authoritative.
+
+**Signal-to-nuisance ratio** (`jac_costsurface.py`). Median ‖Δz‖ from a real
+one-step motion (consecutive expert frames) ÷ median ‖Δz‖ from a 2% brightness
+change on the same frames. Higher = more robust to nuisance.
+
+**Cost surface** (`jac_costsurface.py`). On expert trajectories, goal = final frame;
+we plot the planner's latent cost `‖z_t − z_goal‖` against the true
+position-distance-to-goal. Global rank-correlation is Spearman over all pairs; the
+"steep near goal" claim is the binned mean cost vs distance.
+
+**Obstacle / wall clearance** (`obstacle_dist.py`, `traj_patch*.py`,
+`tworoom_wall_dist.py`). We monkeypatch the env's `step` to record the agent's
+position each timestep during the actual CEM planning eval, then compute distance to
+the obstacle edge. Dubins: `‖pos − center‖ − r` (negative = inside a soft obstacle).
+TwoRoom: distance transform of the solid-wall mask (hard wall). Reported per episode:
+closest approach and mean clearance, over 100 episodes; significance by
+Mann-Whitney.
+
+**Safe/unsafe probe** (`safety_probe.py`). Label dubins frames by distance to nearest
+obstacle edge (unsafe < 0.1, safe > 0.4, balanced classes), encode with each model,
+70/30 train/test split. AUC/accuracy from `LogisticRegression` on the latent;
+distance-R² from `Ridge` regressing the continuous edge-distance. Standardized
+features, `random_state=0`.
+
+**Planning eval protocol.** Dubins: sub-goals 25 steps ahead, filtered to a
+clean-success trajectory whose goal sits in a 0.05–0.5-unit annulus around an
+obstacle (`goal_avoid_obstacles` + `goal_clean_source`); planner horizon 25,
+action_block 1, receding 25, budget 50; 200 episodes, seed 42; success = within 0.2
+of goal, collision = ever inside an obstacle disk. The far-side and cross-room
+variants swap the goal filter (`goal_crosses_obstacle`, `goal_cross_wall`). PushT/
+TwoRoom use frameskip 5 (horizon 5 / action_block 5). Seeds: the two headline dubins
+claims were rerun with training seeds 100/200 in addition to 3072; all other numbers
+are single-seed.
+
+---
+
 *All figures are embedded inline above and also live in the `report_figures/`
 folder next to this document:*
 - `dubins_augs.png` — the augmentation variations we tried (§3 detour).
-- `jac_diagnostics_dubins.png` / `jac_diagnostics_pusht.png` — the encoder's
-  sensitivity, before vs after the fix, on each task (§3, §4).
+- `jac_diagnostics_dubins.png` / `jac_diagnostics_pusht.png` / `jac_diagnostics_tworoom.png`
+  — the encoder's sensitivity, before vs after the fix, on each task (§3, §4).
 - `jac_costsurface.png` — how well the planner's internal "distance to goal" tracks
   the real distance (§3).
 - `obstacle_distance.png` — how close the car actually drives to obstacles (§3).
