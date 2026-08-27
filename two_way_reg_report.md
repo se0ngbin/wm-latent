@@ -451,13 +451,21 @@ nuisance *without* the blur).
    up yet.** We measured a planning *proxy* (success/collision/clearance), which is
    very encouraging, but the formal safety layer is the natural next step.
 
-**Now in progress:**
-- A **predictor-anchored** encoder regularizer (§5b): instead of capping *all*
-  sensitivity (which blurs), suppress only the sensitivity the world model can't
-  predict — the dynamics themselves define signal vs nuisance, with no privileged
-  labels. Prediction: it keeps the navigation win *without* the fine-resolution
-  blur, i.e. it should *raise* the safe/unsafe distance R² where the Jacobian fix
-  lowered it. Training/eval on Dubins is running.
+**Tried and failed (a useful negative result):**
+- A **predictor-anchored** encoder regularizer — suppress only the sensitivity the
+  world model can't predict, `relu(‖Δz‖² − λ‖Δz_pred‖²)`, letting the dynamics define
+  signal vs nuisance (no labels). It **backfired**: planning fell *below* baseline
+  (45% vs 62.5%) and the encoder got worse on every measure (‖J‖ 28→50, condition
+  142→229, even more concentrated). The reason is a sign error in the design: by
+  *crediting* predictor-visible sensitivity, the cheapest way to dodge the penalty is
+  to *amplify* a few predictor-aligned directions — i.e. it *rewards* the fake-variance
+  pathology instead of punishing nuisance. The idea (dynamics define signal) may still
+  be right, but the fix is to penalize the *unpredictable* component absolutely
+  (project Δz onto the predictor's null space and penalize only that), not to credit
+  the predictable one.
+
+**Still the natural next step:** wire the (Jacobian) encoder into an explicit
+control-barrier-function safety layer — the goal all of this was building toward.
 
 ---
 
