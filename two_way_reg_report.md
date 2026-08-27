@@ -405,6 +405,35 @@ solid.)*
 
 ---
 
+## 5b. What the encoder fix does NOT do: tell safe from unsafe
+
+Since the goal is downstream safety, we checked directly whether the Jacobian fix
+makes *safe* states (clear of obstacles) more distinguishable from *unsafe* ones
+(near/inside an obstacle) in the latent — the kind of separation a safety monitor
+would rely on. We trained a simple linear classifier to read "safe vs unsafe" off
+each encoder's latent.
+
+The answer is **no, it doesn't help — and slightly hurts the fine version.** Both
+encoders already separate the coarse safe/unsafe classes essentially perfectly (the
+position is the main thing they encode). But when we ask for the *fine-grained*
+distance-to-obstacle, the **baseline is actually a touch better** (it recovers the
+exact distance with R² 0.95 vs the fixed model's 0.91). That's the flip side of
+smoothing: capping sensitivity everywhere also compresses the fine resolution near
+the boundary.
+
+This is an important negative result. The Jacobian fix is an *invariance* tool
+(ignore nuisance), not a *separation* tool (pull safe and unsafe apart). It gives a
+cleaner, more robust latent to build on, but the safety distinction itself is already
+present in both and isn't what the fix improves — which is consistent with its
+planning benefit coming from robustness and execution precision, not from a better
+safety representation. **If we want the latent to genuinely separate safe from unsafe
+(for a learned safety margin), that calls for a different, *separation*-flavored
+regularizer** — which is the direction we're now prototyping (a label-free term that
+keeps only the sensitivity the world model can actually predict, so it rejects
+nuisance *without* the blur).
+
+---
+
 ## 6. What to trust, and what's still open
 
 **Solid:**
@@ -421,6 +450,14 @@ solid.)*
 4. **The original goal — provable safety (control-barrier functions) — isn't wired
    up yet.** We measured a planning *proxy* (success/collision/clearance), which is
    very encouraging, but the formal safety layer is the natural next step.
+
+**Now in progress:**
+- A **predictor-anchored** encoder regularizer (§5b): instead of capping *all*
+  sensitivity (which blurs), suppress only the sensitivity the world model can't
+  predict — the dynamics themselves define signal vs nuisance, with no privileged
+  labels. Prediction: it keeps the navigation win *without* the fine-resolution
+  blur, i.e. it should *raise* the safe/unsafe distance R² where the Jacobian fix
+  lowered it. Training/eval on Dubins is running.
 
 ---
 

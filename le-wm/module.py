@@ -131,6 +131,253 @@ class InvarianceReg(nn.Module):
         return loss / self.n_probes
 
 
+class AugInvarianceReg(nn.Module):
+    """Encoder invariance to nuisance augmentations: ||enc(aug(x)) - enc(x)||^2.
+
+    Generalizes `InvarianceReg` (Gaussian pixel noise) to a real nuisance
+    pipeline: color jitter (brightness/contrast/saturation/hue), random
+    grayscale, Gaussian blur, random convolution (network-randomization
+    style), and small cutout. NO geometric augs (crop/shift/rotate): in
+    dubins/pushT position IS the state, so translation invariance would
+    alias exactly the information the planner/CBF needs.
+
+    Pixels arrive ImageNet-normalized, so the pipeline denormalizes to
+    [0, 1] RGB, augments with per-sample random parameters (batched tensor
+    ops, no kornia), and renormalizes. Both views run in ONE 2B-sized
+    encoder forward (shared BatchNorm stats in the projector). Positive-only
+    invariance; SIGReg guards collapse.
+    """
+
+    def __init__(self, p_jitter=0.8, brightness=0.3, contrast=0.3, saturation=0.3,
+                 hue=0.1, p_gray=0.2, p_blur=0.5, blur_sigma=(0.1, 1.5),
+                 p_randconv=0.3, p_cutout=0.5, cutout_frac=0.2, noise_sigma=0.0):
+        super().__init__()
+        # noise_sigma: additive Gaussian noise in NORMALIZED pixel space (applied
+        # after renorm), matching InvarianceReg's sigma so results are comparable.
+        # CAUTION (dubins eval, 2026-07-04): color IS semantic in color-coded envs
+        # (green goal / blue agent / red obstacles) — hue/grayscale/randconv
+        # invariance aliases the goal marker and collapsed planner success
+        # 62.5% -> 15.5%. Use color-preserving settings there: hue=0, saturation
+        # low/0, p_gray=0, p_randconv=0, p_cutout=0.
+        self.noise_sigma = noise_sigma
+        self.p_jitter = p_jitter
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
+        self.p_gray = p_gray
+        self.p_blur = p_blur
+        self.blur_sigma = tuple(blur_sigma)
+        self.p_randconv = p_randconv
+        self.p_cutout = p_cutout
+        self.cutout_frac = cutout_frac
+        self.register_buffer("im_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("im_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    @staticmethod
+    def _gray(x):
+        w = x.new_tensor([0.299, 0.587, 0.114]).view(1, 3, 1, 1)
+        return (x * w).sum(1, keepdim=True)
+
+    def _augment(self, x):
+        """x: (B, 3, H, W) in [0, 1]."""
+        B, _, H, W = x.shape
+        dev = x.device
+
+        def rand(lo, hi):
+            return torch.empty(B, 1, 1, 1, device=dev).uniform_(lo, hi)
+
+        def bern(p):
+            return (torch.rand(B, 1, 1, 1, device=dev) < p).float()
+
+        # color jitter: brightness / contrast / saturation / hue-rotation
+        if self.p_jitter > 0:
+            m = bern(self.p_jitter)
+            y = x * rand(1 - self.brightness, 1 + self.brightness)
+            y = (y - y.mean((1, 2, 3), keepdim=True)) * rand(1 - self.contrast, 1 + self.contrast) \
+                + y.mean((1, 2, 3), keepdim=True)
+            g = self._gray(y)
+            y = g + (y - g) * rand(1 - self.saturation, 1 + self.saturation)
+            if self.hue > 0:
+                # rotate RGB about the gray axis (batched hue approximation)
+                theta = torch.empty(B, 1, 1, device=dev).uniform_(-1, 1) * self.hue * 2 * torch.pi
+                k = y.new_tensor([1.0, 1.0, 1.0]).div(3 ** 0.5)
+                K = y.new_tensor([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+                eye = torch.eye(3, device=dev)
+                R = eye * theta.cos() + K * theta.sin() + torch.outer(k, k) * (1 - theta.cos())
+                y = torch.einsum("bij,bjhw->bihw", R, y)
+            x = m * y.clamp(0, 1) + (1 - m) * x
+
+        # random grayscale
+        if self.p_gray > 0:
+            m = bern(self.p_gray)
+            x = m * self._gray(x).expand_as(x) + (1 - m) * x
+
+        # Gaussian blur (one sigma per call, per-sample Bernoulli apply)
+        if self.p_blur > 0:
+            sigma = float(torch.empty(1).uniform_(*self.blur_sigma))
+            ksize = 9
+            t = torch.arange(ksize, device=dev, dtype=x.dtype) - ksize // 2
+            k1d = torch.exp(-t.pow(2) / (2 * sigma ** 2))
+            k1d = (k1d / k1d.sum()).view(1, 1, 1, ksize).expand(3, 1, 1, ksize)
+            y = F.conv2d(x, k1d, padding=(0, ksize // 2), groups=3)
+            y = F.conv2d(y, k1d.transpose(2, 3), padding=(ksize // 2, 0), groups=3)
+            m = bern(self.p_blur)
+            x = m * y + (1 - m) * x
+
+        # random convolution (one He-init 3x3 kernel per call), min-max renormalized
+        if self.p_randconv > 0:
+            w = torch.randn(3, 3, 3, 3, device=dev, dtype=x.dtype) * (2.0 / 27) ** 0.5
+            y = F.conv2d(x, w, padding=1)
+            lo = y.amin((1, 2, 3), keepdim=True)
+            hi = y.amax((1, 2, 3), keepdim=True)
+            y = (y - lo) / (hi - lo + 1e-6)
+            m = bern(self.p_randconv)
+            x = m * y + (1 - m) * x
+
+        # small cutout filled with per-image mean color
+        if self.p_cutout > 0:
+            fh = torch.empty(B, device=dev).uniform_(0.05, self.cutout_frac)
+            fw = torch.empty(B, device=dev).uniform_(0.05, self.cutout_frac)
+            ch = (torch.rand(B, device=dev) * H).long()
+            cw = (torch.rand(B, device=dev) * W).long()
+            rows = torch.arange(H, device=dev).view(1, H)
+            cols = torch.arange(W, device=dev).view(1, W)
+            in_h = (rows >= (ch - fh * H / 2).view(B, 1)) & (rows < (ch + fh * H / 2).view(B, 1))
+            in_w = (cols >= (cw - fw * W / 2).view(B, 1)) & (cols < (cw + fw * W / 2).view(B, 1))
+            hole = (in_h.view(B, 1, H, 1) & in_w.view(B, 1, 1, W)).float()
+            hole = hole * bern(self.p_cutout)
+            x = hole * x.mean((2, 3), keepdim=True) + (1 - hole) * x
+
+        return x.clamp(0, 1)
+
+    def forward(self, encode_fn, pixels):
+        if pixels.dim() == 5:
+            pixels = pixels[:, 0]
+        x = pixels.float()
+        with torch.no_grad():
+            x01 = (x * self.im_std + self.im_mean).clamp(0, 1)
+            x_aug = (self._augment(x01) - self.im_mean) / self.im_std
+            if self.noise_sigma > 0:
+                x_aug = x_aug + torch.randn_like(x_aug) * self.noise_sigma
+        z = encode_fn(torch.cat([x, x_aug], dim=0))
+        z0, z1 = z.chunk(2, dim=0)
+        return (z1 - z0).pow(2).sum(-1).mean()
+
+
+class ActionSeparationReg(nn.Module):
+    """Lower-bound predicted-latent separation by action separation (predictor leg).
+
+    Counterfactual pair: same context, same past actions, only the LAST context
+    action swapped with another batch sample's. Require the predicted next
+    latents to differ at least in proportion to the action difference:
+        relu(L^2 ||a - a'||^2 - ||pred(z, a) - pred(z, a')||^2).
+    Context embeddings are detached, so the gradient shapes the predictor and
+    action encoder only (the "separate" leg), while invariance/Lipschitz regs
+    shape the encoder (the "invariant" leg). Directly penalizes the
+    control-authority collapse where pred_loss stays low but actions stop
+    mattering (the fs=5 dubins failure). Both branches run in one 2B-sized
+    predictor forward.
+
+    One-way by design: the upper side ("not too much" separation) is already
+    guarded by pred_loss, which anchors pred(z, a) to the TRUE next latent
+    (scale pinned by sigreg), so over-separation shows up as prediction error.
+    Only under-separation is invisible to pred_loss. `target_U` adds an
+    optional upper hinge relu(||dz||^2 - U^2 ||da||^2) as a safety valve;
+    disabled (None) by default. `last_ratio` exposes the observed median
+    ||dz||/||da|| for logging.
+    """
+
+    def __init__(self, target_L=1.0, target_U=None, pull_target=None):
+        super().__init__()
+        # pull_target: if set, replaces the hinges with an always-on two-sided
+        # regression (||dz|| - pull_target*||da||)^2 -- the predictor-side
+        # analogue of JacobianNormReg's (||J|| - L)^2. Difference form (not a
+        # ratio) so near-identical permuted actions don't blow up the loss.
+        self.target_L = target_L
+        self.target_U = target_U
+        self.pull_target = pull_target
+        self.last_ratio = 0.0
+
+    def forward(self, model, ctx_emb, ctx_act):
+        # ctx_emb: (B, T, D); ctx_act: (B, T, A) normalized raw actions
+        z = ctx_emb.detach()
+        perm = torch.randperm(ctx_act.size(0), device=ctx_act.device)
+        alt_act = ctx_act.clone()
+        alt_act[:, -1] = ctx_act[perm, -1]
+        acts = torch.cat([ctx_act, alt_act], dim=0)
+        preds = model.predict(z.repeat(2, 1, 1), model.action_encoder(acts))
+        pred, alt_pred = preds.chunk(2, dim=0)
+        dz2 = (pred[:, -1] - alt_pred[:, -1]).pow(2).sum(-1)
+        da2 = (ctx_act[:, -1] - alt_act[:, -1]).float().pow(2).sum(-1)
+        with torch.no_grad():
+            valid = da2 > 1e-8  # perm can map a sample to itself
+            self.last_ratio = (
+                (dz2[valid] / da2[valid]).sqrt().median().item() if valid.any() else 0.0
+            )
+        if self.pull_target is not None:
+            dz = (dz2 + 1e-12).sqrt()
+            da = da2.sqrt()
+            return (dz - self.pull_target * da).pow(2).mean()
+        loss = F.relu((self.target_L ** 2) * da2 - dz2).mean()
+        if self.target_U is not None:
+            loss = loss + F.relu(dz2 - (self.target_U ** 2) * da2).mean()
+        return loss
+
+
+class PredAnchorReg(nn.Module):
+    """Suppress encoder sensitivity the PREDICTOR cannot carry forward (label-free).
+
+    Perturb the last context frame (sigma * N(0,I) in pixel space), get the
+    encoder's response dz = enc(x+δ) − enc(x). Roll BOTH the clean and perturbed
+    last-latent through the predictor and measure how much of dz reaches the
+    next-step prediction, dpred. A nuisance perturbation moves the latent (dz>0)
+    but the predictor can't propagate it (dpred≈0, since unpredictable = regressed
+    to mean); a signal perturbation propagates (dpred≈dz). Penalize the excess:
+        relu(||dz||^2 − λ||dpred||^2).
+    So the dynamics (the predictor) DEFINE signal vs nuisance — no privileged
+    state, no per-env slice, no hand-picked augmentations. Unlike a uniform ||J||
+    cap it is DIRECTIONAL: it suppresses only predictor-invisible sensitivity, so
+    it should reject nuisance WITHOUT blurring the fine signal resolution a CBF
+    needs. `last_ratio` logs median ||dpred||/||dz|| (how predictor-aligned the
+    encoder's sensitivity is).
+
+    Early-training note: with AdaLN-zero the predictor is ~identity at init, so
+    dpred≈dz and the penalty is ~0; it becomes discriminative (and directional)
+    only as the predictor learns to damp the unpredictable part — graceful, acts
+    like a mild jacobian early then specializes.
+    """
+
+    def __init__(self, sigma=0.1, lam=1.0, n_probes=1):
+        super().__init__()
+        self.sigma = sigma
+        self.lam = lam
+        self.n_probes = n_probes
+        self.last_ratio = 0.0
+
+    def forward(self, model, encode_fn, ctx_emb, ctx_act, last_frame):
+        # ctx_emb: (B,T,D) latents; ctx_act: (B,T,A_emb) encoded actions;
+        # last_frame: (B,C,H,W) pixels of the final context step.
+        ref = ctx_emb.detach()
+        z0 = ref[:, -1]
+        pred0 = model.predict(ref, ctx_act).detach()[:, -1]
+        x = last_frame.float()
+        loss = 0.0
+        ratios = []
+        for _ in range(self.n_probes):
+            zp = encode_fn(x + self.sigma * torch.randn_like(x))       # encoder response (grad)
+            dz2 = (zp - z0).pow(2).sum(-1)
+            ctxp = torch.cat([ref[:, :-1], zp.unsqueeze(1)], dim=1)
+            predp = model.predict(ctxp, ctx_act)[:, -1]
+            dpred2 = (predp - pred0).pow(2).sum(-1)
+            loss = loss + F.relu(dz2 - self.lam * dpred2).mean()
+            with torch.no_grad():
+                ratios.append((dpred2 / (dz2 + 1e-8)).sqrt().median())
+        with torch.no_grad():
+            self.last_ratio = float(torch.stack(ratios).mean())
+        return loss / self.n_probes
+
+
 class JacobianNormReg(nn.Module):
     """Stochastic Jacobian-norm penalty on the encoder.
 

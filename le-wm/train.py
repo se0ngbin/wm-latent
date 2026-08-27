@@ -11,7 +11,10 @@ from torch import nn
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from module import SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg, InvarianceReg
+from module import (
+    SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg,
+    InvarianceReg, AugInvarianceReg, ActionSeparationReg, PredAnchorReg,
+)
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
 
 
@@ -21,6 +24,9 @@ REGULARIZERS = {
     "state_lipschitz": StateLipschitzReg,
     "pixel_lipschitz": PixelLipschitzReg,
     "invariance": InvarianceReg,
+    "aug_invariance": AugInvarianceReg,
+    "action_separation": ActionSeparationReg,
+    "pred_anchor": PredAnchorReg,
 }
 
 
@@ -30,13 +36,27 @@ def _call_regularizer(name, module, output, batch, model):
         return module(emb.transpose(0, 1))
     if name == "state_lipschitz":
         return module(emb, batch["state"])
-    if name in ("jacobian", "pixel_lipschitz", "invariance"):
+    if name in ("jacobian", "pixel_lipschitz", "invariance", "aug_invariance"):
         encoder = model.encoder
         projector = model.projector
         def encode_fn(p):
             out = encoder(p, interpolate_pos_encoding=True)
             return projector(out.last_hidden_state[:, 0])
         return module(encode_fn, batch["pixels"])
+    if name == "action_separation":
+        ctx_emb = output["ctx_emb"]
+        loss = module(model, ctx_emb, batch["action"][:, : ctx_emb.size(1)])
+        output["action_sep_ratio"] = torch.as_tensor(module.last_ratio, device=loss.device)
+        return loss
+    if name == "pred_anchor":
+        ctx_emb = output["ctx_emb"]
+        def encode_fn(p):
+            out = model.encoder(p, interpolate_pos_encoding=True)
+            return model.projector(out.last_hidden_state[:, 0])
+        last_frame = batch["pixels"][:, ctx_emb.size(1) - 1]
+        loss = module(model, encode_fn, ctx_emb, output["ctx_act"], last_frame)
+        output["pred_anchor_ratio"] = torch.as_tensor(module.last_ratio, device=loss.device)
+        return loss
     raise ValueError(f"Unknown regularizer: {name}")
 
 
@@ -54,8 +74,8 @@ def lejepa_forward(self, batch, stage, cfg):
     emb = output["emb"]  # (B, T, D)
     act_emb = output["act_emb"]
 
-    ctx_emb = emb[:, :ctx_len]
-    ctx_act = act_emb[:, : ctx_len]
+    ctx_emb = output["ctx_emb"] = emb[:, :ctx_len]
+    ctx_act = output["ctx_act"] = act_emb[:, : ctx_len]
 
     tgt_emb = emb[:, n_preds:] # label
     pred_emb = self.model.predict(ctx_emb, ctx_act) # pred
@@ -72,7 +92,7 @@ def lejepa_forward(self, batch, stage, cfg):
     output["reg_loss"] = total_reg
     output["loss"] = output["pred_loss"] + total_reg
 
-    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
+    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k or "ratio" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
     return output
 
