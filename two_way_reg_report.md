@@ -530,9 +530,17 @@ and the margin match the HJ ground truth near-perfectly (~0.97–0.99 sign-accur
 broken safety heads — with jacobian the one that recovers Dreamer-level accuracy. So
 a clean latent is what makes a learnable CBF even possible in this world model.
 
-**Bottom line:** the gt safety layer is a clean win (0 collisions); the learned CBF
-is the open frontier — currently net-harmful, but jacobian's rollouts make it ~2.6×
-safer in the loop, which is the lever to make it net-positive.
+**Bottom line:** the gt safety layer is a clean win (0 collisions). The learned CBF
+is net-harmful, and we traced *why*: it's bottlenecked by the predictor's multi-step
+rollout **drift**, not the margin head or the encoder. The margin is already
+rollout-trained and statically accurate (~0.94), but the in-loop filter evaluates it
+on *imagined* future latents that drift too far to be reliable — which is exactly why
+gt (true-state rollout, zero drift) is perfect and jacobian (cleaner rollouts, less
+drift) is ~2.6× safer than baseline but still not enough. A calibration sweep confirms
+this: adding conservatism (raising the required margin) *increases* collisions rather
+than reducing them, so the margin is unreliable, not merely optimistic. The lever to a
+net-positive learned CBF is therefore the *predictor's* rollout fidelity (or a shorter
+safety-rollout horizon that limits drift), not the safety head.
 
 ---
 
