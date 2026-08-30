@@ -473,6 +473,69 @@ control-barrier-function safety layer — the goal all of this was building towa
 
 ---
 
+## 7. The safety layer (the original goal)
+
+We wired the encoder into an explicit safety filter: a control-barrier-function
+"safe action map" inside the planner that, at every step, only lets through actions
+predicted to keep the car in a safe set. It runs in two modes — **gt** (the true
+Hamilton-Jacobi safety *value function* on the real state) and **learned** (a small
+head that predicts that value from the latent). The questions were: does filtering
+work in the loop, and does the encoder quality matter for it.
+
+**First, a sharper way to score it.** Raw "success" counts an episode as a win even
+if it collided on the way to the goal. Splitting every episode into a 2×2 —
+reached-goal (✓/✗) × stayed-safe (no collision) — exposes those hidden collisions:
+
+| run | safe ✓ | unsafe ✓ | safe ✗ | unsafe ✗ | (success / collision) |
+|---|---|---|---|---|---|
+| baseline, no filter | 41.0% | 21.5% | 9.0% | 28.5% | 62.5 / 50.0 |
+| jacobian, no filter | 68.5% | 13.0% | 9.0% | 9.5% | 81.5 / 22.5 |
+| baseline, learned filter | 20.5% | 23.0% | 10.0% | 46.5% | 43.5 / 69.5 |
+| jacobian, learned filter | 54.0% | 15.0% | 11.5% | 19.5% | 69.0 / 34.5 |
+| baseline, **gt filter** | **76.0%** | 0.0% | 24.0% | 0.0% | 76.0 / 0.0 |
+| jacobian, **gt filter** | **77.0%** | 0.0% | 23.0% | 0.0% | 77.0 / 0.0 |
+
+Read the "unsafe ✓" column: without a filter, ~21% (baseline) / 13% (jacobian) of
+"successes" actually collided. So **safe-✓** (reached the goal *and* never collided)
+is the honest metric, and by it the story is:
+
+**1. The safety layer works — with the true value function.** Both gt runs are **0%
+collision** (both unsafe columns empty), and safe-✓ *rises* to 76–77% — higher than
+any un-filtered run — because eliminating collisions also rescues the would-be
+unsafe-successes. The filter pays its cost purely as *safe failures* (23–24%: it
+refuses an unsafe action, so the car sometimes can't reach the goal, but never
+crashes). That is exactly the behavior a CBF should have.
+
+**2. The *learned* filter doesn't work yet — it's net-harmful.** Both learned runs
+collide *more* than no filter (baseline 50→69.5%, jacobian 22.5→34.5%). Filtering on
+an inaccurate margin steers *into* danger; you can see it in baseline's 46.5%
+unsafe-✗ spike.
+
+**3. But the encoder quality hugely changes the *in-loop* learned filter — and not
+for the reason you'd guess.** Jacobian's learned filter collides half as often as
+baseline's (34.5 vs 69.5%). Yet a controlled test showed the two encoders' *static*
+margin accuracy is essentially **equal** (both ~0.94 when the classifier head is
+sized adequately — the earlier gap was a classifier artifact, not a latent one). So
+the in-loop difference is **not** the static safety representation; it's the
+**predictor's imagined rollouts**. The in-loop CBF builds its margin from *imagined*
+next-states, and jacobian's cleaner dynamics make those imagined states accurate, so
+the safe-action map picks genuinely safe actions; baseline's noisy rollouts imagine
+wrong futures, so its "safe" choices are actually dangerous. This is the same theme
+as the far-side and cost-surface results — **the encoder benefit lives in the
+rollouts, not the instantaneous latent** — now shown directly on the safety layer.
+
+For calibration: in the *original* Dreamer-based world model, both the value function
+and the margin match the HJ ground truth near-perfectly (~0.97–0.99 sign-accuracy)
+*regardless* of encoder. LE-WM's JEPA latent is far more fragile — most encoders yield
+broken safety heads — with jacobian the one that recovers Dreamer-level accuracy. So
+a clean latent is what makes a learnable CBF even possible in this world model.
+
+**Bottom line:** the gt safety layer is a clean win (0 collisions); the learned CBF
+is the open frontier — currently net-harmful, but jacobian's rollouts make it ~2.6×
+safer in the loop, which is the lever to make it net-positive.
+
+---
+
 ## Appendix: how each number was computed
 
 *For readers checking the method. Scripts are in `le-wm/scripts/`.*
