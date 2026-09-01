@@ -1,0 +1,25 @@
+_target_: safe_solver.SafeCEMSolver
+model: ???
+batch_size: 1
+num_samples: 300
+var_scale: 1.0
+n_steps: 30
+topk: 30
+device: "cuda"
+seed: ${seed}
+# safe-by-construction action map
+# gt: HJ avoid value on true states (no extra predictor compute)
+# learned: margin head on imagined latents (grid-expanded predictor, ~K x compute)
+safe_mode: gt
+margin_ckpt: null
+safe_alpha: 0.3
+safe_grid: 21
+h_offset: 0.0   # increment offset (leave 0; turns infeasible when h is small)
+h_shift: 0.0    # safe-set shrinkage: invariant set becomes {h >= h_shift}
+recovery: instant  # instant | geometric (30%/step improvement when outside the set)
+hj_path: /home/seongbin/latent/latent_cbf/results/hj_truth.npz
+env_speed: 1.0
+env_dt: 0.05
+act_low: -2.0
+act_high: 2.0
+receding_horizon: null   # set == plan_config.receding_horizon so warm-start tail stays u-space

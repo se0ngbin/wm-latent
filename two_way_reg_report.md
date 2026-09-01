@@ -5,6 +5,42 @@ clearly-marked "Under the hood" boxes you can skip.*
 
 ---
 
+## TL;DR
+
+We regularize a world-model planner's **encoder** and **predictor** separately —
+the encoder to *ignore nuisance*, the predictor to *keep actions distinct* — and
+trace what each does, all the way to an explicit safety filter.
+
+- **Encoder — the Jacobian regularizer is a big win on Dubins** (+19 pts success,
+  collisions halved, n=3 seeds). *Why:* in a near-empty scene the encoder "cheats"
+  to satisfy the variance objective by amplifying a few meaningless pixel directions
+  (one direction holds 50% of its sensitivity); the fix caps that. The gain is
+  **nuisance rejection + a sharp cost gradient near the goal**, not global smoothness.
+- **It's a targeted medicine, not a vitamin.** A three-environment rule: the fix
+  helps in proportion to how *hypersensitive* the baseline encoder is (‖J‖), and is
+  neutral where the scene is already rich (PushT). Aggressive/color-destroying
+  augmentations and a naive high weight *hurt*.
+- **Predictor — the "pull" regularizer rescues a specific failure** (frameskip
+  action-collapse: 30% → 66% on fs=5 Dubins), and is neutral where there's no
+  collapse to fix.
+- **Safety is emergent, not learned.** The planner has no obstacle term and the
+  world model is obstacle-blind (soft obstacles → obstacle-independent dynamics), so
+  the collision reductions are a *side effect of navigating precisely*, robust to
+  goal placement but not a guarantee.
+- **The explicit safety layer works with the true value function** (0% collision),
+  and the encoder's benefit for the *learned* filter lives in the **predictor's
+  rollouts, not the static latent** — jacobian's cleaner rollouts make in-loop
+  filtering ~2.6× safer than baseline. The learned CBF isn't yet net-positive; we
+  traced that to predictor rollout fidelity, not the encoder or the safety head.
+- **Honest negatives, all measured:** PushT (nothing helps), a predictor-anchored
+  encoder reg (two variants, both fail), and two cheap fixes for the learned CBF
+  (both fail). These sharpen the story rather than pad it.
+
+*Sections 1–4 cover the encoder; §5 the predictor; §5b–§7 the safety connection;
+the appendix documents every computation.*
+
+---
+
 ## 1. The setup, in one picture
 
 We have an AI that drives a little car to a goal while avoiding two obstacles.
@@ -541,6 +577,34 @@ this: adding conservatism (raising the required margin) *increases* collisions r
 than reducing them, so the margin is unreliable, not merely optimistic. The lever to a
 net-positive learned CBF is therefore the *predictor's* rollout fidelity (or a shorter
 safety-rollout horizon that limits drift), not the safety head.
+
+We tried the two cheap fixes and both failed: adding conservatism (above) made it
+worse, and shortening the replanning horizon *also* made it worse — but that test was
+confounded by a solver bug (the safe planner assumed you always execute the whole
+plan, so a short horizon corrupted its warm-start). We've since fixed that bug (only
+the executed actions are safety-mapped now; the warm-start tail stays in the planner's
+own coordinates), and a clean short-horizon test is running. So the current honest
+state is: **gt safety works (0 collisions); the learned CBF is drift-bound; and
+whether short-horizon replanning can rescue it — the one remaining cheap lever — is
+being measured now.**
+
+---
+
+## Conclusion
+
+The through-line: **regularize the two halves of a world model for their two
+different jobs, and the effects are legible all the way down to safety.** On the
+encoder, a Jacobian norm cap is a targeted cure for a specific, measurable pathology
+(fake-variance amplification in sparse scenes) — it wins where that disease is present
+and is neutral or harmful where it isn't, and its benefit turns out to be nuisance
+rejection and dynamics fidelity rather than the "smoothness" we first assumed. On the
+predictor, an action-separation term rescues frameskip collapse and is otherwise
+inert. And when we wire the encoder into an explicit control-barrier safety filter,
+the payoff is specific and honest: the *true* value function gives perfect safety,
+the encoder's contribution flows through the *rollouts* not the static latent, and the
+learned filter's remaining gap is the predictor's multi-step accuracy — the hardest,
+most general problem in world-model learning. Every claim here is measured, including
+the ones that didn't work.
 
 ---
 
