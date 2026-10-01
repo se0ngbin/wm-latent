@@ -114,6 +114,11 @@ class JEPA(nn.Module):
         pred_emb = info_dict["predicted_emb"]  # (B,S, T-1, dim)
         goal_emb = info_dict["goal_emb"]  # (B, S, T, dim)
 
+        if goal_emb.dim() == pred_emb.dim() - 1:
+            # goal encoded per-env (B, T, dim): insert the sample dim so the
+            # broadcast is correct for batch_size > 1 (B=1 relied on right-
+            # aligned broadcasting and is unchanged by this).
+            goal_emb = goal_emb.unsqueeze(1)
         goal_emb = goal_emb[..., -1:, :].expand_as(pred_emb)
 
         # return last-step cost per action candidate

@@ -14,6 +14,7 @@ from omegaconf import OmegaConf, open_dict
 from module import (
     SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg,
     InvarianceReg, AugInvarianceReg, ActionSeparationReg, PredAnchorReg,
+    AdvColorInvarianceReg,
 )
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
 
@@ -25,6 +26,7 @@ REGULARIZERS = {
     "pixel_lipschitz": PixelLipschitzReg,
     "invariance": InvarianceReg,
     "aug_invariance": AugInvarianceReg,
+    "adv_color_invariance": AdvColorInvarianceReg,
     "action_separation": ActionSeparationReg,
     "pred_anchor": PredAnchorReg,
 }
@@ -36,7 +38,7 @@ def _call_regularizer(name, module, output, batch, model):
         return module(emb.transpose(0, 1))
     if name == "state_lipschitz":
         return module(emb, batch["state"])
-    if name in ("jacobian", "pixel_lipschitz", "invariance", "aug_invariance"):
+    if name in ("jacobian", "pixel_lipschitz", "invariance", "aug_invariance", "adv_color_invariance"):
         encoder = model.encoder
         projector = model.projector
         def encode_fn(p):
@@ -108,7 +110,19 @@ def run(cfg):
     dataset = swm.data.load_dataset(
         dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
     )
-    transforms = [get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size)]
+    transforms = []
+    # Obstacle color augmentation (data-level color decorrelation): recolor the red
+    # obstacle to a random non-purple training color per window BEFORE ImageNet norm,
+    # so "obstacle" is not bound to red. Purple stays OOD (held out of the palette).
+    if bool(cfg.get("color_aug", False)):
+        from utils import ObstacleRecolor
+        _rot = bool(cfg.get("color_aug_rot", False))
+        _src = str(cfg.get("color_aug_source", "red"))   # "red" (dubins) or "blue" (sg hazards)
+        transforms.append(spt.data.transforms.WrapTorchTransform(
+            ObstacleRecolor(p_apply=float(cfg.get("color_aug_p", 1.0)), rotate=_rot, source=_src),
+            source='pixels', target='pixels'))
+        print(f"[train] obstacle color_aug ON (p_apply={float(cfg.get('color_aug_p', 1.0))}, rotate={_rot}, source={_src})")
+    transforms.append(get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size))
     
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:
