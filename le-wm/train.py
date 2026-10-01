@@ -14,7 +14,7 @@ from omegaconf import OmegaConf, open_dict
 from module import (
     SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg,
     InvarianceReg, AugInvarianceReg, ActionSeparationReg, PredAnchorReg,
-    AdvColorInvarianceReg,
+    AdvColorInvarianceReg, SafetyAdvInvarianceReg,
 )
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
 
@@ -29,6 +29,7 @@ REGULARIZERS = {
     "adv_color_invariance": AdvColorInvarianceReg,
     "action_separation": ActionSeparationReg,
     "pred_anchor": PredAnchorReg,
+    "safety_adv": SafetyAdvInvarianceReg,
 }
 
 
@@ -58,6 +59,14 @@ def _call_regularizer(name, module, output, batch, model):
         last_frame = batch["pixels"][:, ctx_emb.size(1) - 1]
         loss = module(model, encode_fn, ctx_emb, output["ctx_act"], last_frame)
         output["pred_anchor_ratio"] = torch.as_tensor(module.last_ratio, device=loss.device)
+        return loss
+    if name == "safety_adv":
+        def encode_fn(p):
+            out = model.encoder(p, interpolate_pos_encoding=True)
+            return model.projector(out.last_hidden_state[:, 0])
+        loss = module(model, encode_fn, output["emb"], output["ctx_act"], batch["pixels"], batch["failures"])
+        for k, v in module.stats.items():   # logged only if key contains "ratio"
+            output[f"safety_adv_{k}_ratio"] = torch.as_tensor(v, device=loss.device)
         return loss
     raise ValueError(f"Unknown regularizer: {name}")
 
@@ -126,7 +135,7 @@ def run(cfg):
     
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:
-            if col.startswith("pixels"):
+            if col.startswith("pixels") or col == "failures":   # binary labels: no z-score
                 continue
             normalizer = get_column_normalizer(dataset, col, col)
             transforms.append(normalizer)

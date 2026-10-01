@@ -312,6 +312,190 @@ class AdvColorInvarianceReg(nn.Module):
         return (zw - z0.detach()).pow(2).sum(-1).mean()
 
 
+class SafetyAdvInvarianceReg(nn.Module):
+    """Safety-projected adversarial appearance invariance, label-only, no OOD data.
+
+    A margin head h (margin_gp: zs + hinge@0 + WGAN-GP) is trained ON THE FLY on
+    detached embeddings + the dataset's binary `failures` labels, with its OWN
+    optimizer (the main optimizer only owns `model`). The encoder/predictor are then
+    penalized for letting a generated appearance perturbation move the SAFETY READOUT:
+
+        L = mean_ctx ((h(f(g x)) - h(f(x))) / gap)^2  +  ((h(pred(f(g x))) - h(pred(f(x)))) / gap)^2
+
+    i.e. invariance only along the direction h reads (nonlinear version of projecting
+    onto w = grad_z h), normalized by the EMA safe-unsafe head gap so the encoder can't
+    win by shrinking the safety axis. h's params are frozen inside the penalty (it
+    cannot cheat by rotating its readout away); clean targets are detached.
+
+    Perturbation g = spatially varying HUE ROTATION + SATURATION scale about the gray
+    axis (coarse GxG param grid, bilinear-upsampled, one field per sequence shared
+    across context frames). Preserves luminance-mean, leaves white/gray background
+    untouched and cannot erase an obstacle (chroma only scaled within [1/s, s]); found
+    per-batch by PGD maximizing the penalty itself (random start). Generated, not data:
+    it's the prior "colors can change", no recolor masks or palettes. NOTE red->purple
+    is reachable in this family (hue -60deg, sat x0.5), so held-out purple tests the
+    prior; rotation/shape remain outside it.
+
+    Schedule: the head always trains; the penalty is OFF until step >= min_steps AND
+    the head's EMA in-batch AUC >= auc_gate, then ramps linearly 0->1 over ramp_steps
+    (latched). While off, PGD is skipped (no cost). The config `weight` is lambda_max.
+    """
+
+    def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, pgd_steps=2,
+                 pgd_step_frac=0.5, pred_weight=1.0, head_units=512, head_lr=3e-4,
+                 zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
+                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192):
+        super().__init__()
+        self.n_sub, self.grid = n_sub, grid
+        self.eps = (float(eps_hue), float(eps_logsat))
+        self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
+        self.pred_weight = pred_weight
+        self.zs_weight, self.relu_weight = zs_weight, relu_weight
+        self.gp_weight, self.gp_thresh = gp_weight, gp_thresh
+        self.min_steps, self.auc_gate, self.ramp_steps, self.ema = min_steps, auc_gate, ramp_steps, ema
+        layers, d = [], embed_dim
+        for _ in range(2):
+            layers += [nn.Linear(d, head_units, bias=False), nn.LayerNorm(head_units, eps=1e-3), nn.SiLU()]
+            d = head_units
+        self.head = nn.Sequential(*layers, nn.Linear(d, 1))   # same arch as latent_cbf MarginHead
+        self.head_opt = torch.optim.AdamW(self.head.parameters(), lr=head_lr)
+        self.register_buffer("step", torch.zeros((), dtype=torch.long))
+        self.register_buffer("open_step", torch.full((), -1, dtype=torch.long))
+        self.register_buffer("auc_ema", torch.zeros(()))
+        self.register_buffer("gap_ema", torch.zeros(()))
+        self.register_buffer("n_ema", torch.zeros((), dtype=torch.long))   # for EMA bias correction
+        self.register_buffer("im_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("im_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+        self.stats = {}
+
+    # ---------------- margin head (own optimizer, fp32, detached features) -------------
+    def _head_step(self, z, fail):
+        safe, unsafe = z[fail == 0], z[fail == 1]
+        if safe.shape[0] < 2 or unsafe.shape[0] < 2:
+            return
+        with torch.enable_grad():
+            pos, neg = self.head(safe), self.head(unsafe)
+            N = max(pos.shape[0], neg.shape[0])
+            rs = lambda x: x[torch.randint(0, x.shape[0], (N,), device=x.device)]
+            a = torch.rand(N, 1, device=z.device)
+            interp = (a * rs(safe) + (1 - a) * rs(unsafe)).requires_grad_(True)
+            g = torch.autograd.grad(self.head(interp).sum(), interp, create_graph=True)[0]
+            gp = ((g.pow(2).sum(1) + 1e-12).sqrt() - self.gp_thresh).pow(2).mean()
+            loss = (self.zs_weight * (neg.mean() - pos.mean())
+                    + self.relu_weight * (F.relu(neg).mean() + F.relu(-pos).mean())
+                    + self.gp_weight * gp)
+            grads = torch.autograd.grad(loss, list(self.head.parameters()))
+        for p, gr in zip(self.head.parameters(), grads):
+            p.grad = gr
+        self.head_opt.step()
+        self.head_opt.zero_grad(set_to_none=True)
+        with torch.no_grad():   # in-batch AUC (safe should score higher) + head gap, EMA'd
+            ps, ns = pos.detach().flatten(), neg.detach().flatten()
+            auc = (ps[:, None] > ns[None, :]).float().mean()
+            self.auc_ema.mul_(self.ema).add_((1 - self.ema) * auc)
+            self.gap_ema.mul_(self.ema).add_((1 - self.ema) * (ps.mean() - ns.mean()).clamp_min(1e-3))
+            self.n_ema += 1
+        self.stats["head_loss"] = loss.detach()
+
+    def _debias(self, v):
+        return v / max(1e-8, 1.0 - self.ema ** int(self.n_ema)) if int(self.n_ema) > 0 else v
+
+    @property
+    def auc(self): return self._debias(self.auc_ema)
+
+    @property
+    def gap(self): return self._debias(self.gap_ema).clamp_min(1e-3)
+
+    def _h(self, z):
+        """Head with FROZEN params: gradients reach z (encoder/predictor) only."""
+        params = {k: v.detach() for k, v in self.head.named_parameters()}
+        return torch.func.functional_call(self.head, params, (z.float(),)).squeeze(-1)
+
+    # ---------------- generated perturbation: spatial hue rotation + saturation --------
+    def _perturb(self, x01, P):
+        # x01: (n, T, 3, H, W) in [0,1]; P: (n, 2, G, G) = (hue angle, log-sat)
+        n, T, _, H, W = x01.shape
+        f = F.interpolate(P, size=(H, W), mode="bilinear", align_corners=False)   # (n,2,H,W)
+        th, s = f[:, 0:1].unsqueeze(1), f[:, 1:2].exp().unsqueeze(1)             # (n,1,1,H,W)
+        gray = x01.mean(2, keepdim=True)                                          # u(u.v) component
+        c = x01 - gray                                                            # chroma (sum 0)
+        r, g, b = c[:, :, 0:1], c[:, :, 1:2], c[:, :, 2:3]
+        uxc = torch.cat([b - g, r - b, g - r], 2) / 3 ** 0.5                     # u x c, u=(1,1,1)/sqrt3
+        out = gray + s * (c * th.cos() + uxc * th.sin())
+        return out.clamp(0, 1)
+
+    def _norm(self, x01):
+        return ((x01.flatten(0, 1) - self.im_mean) / self.im_std).view_as(x01)
+
+    def _objective(self, model, encode_fn, xc_n, xp_n, act, gap):
+        """Per-sample safety-readout deviation (ctx frames + 1-step pred) in units of `gap`.
+        Clean and perturbed go through ONE joint forward (shared BatchNorm stats)."""
+        n, T = xc_n.shape[:2]
+        z = encode_fn(torch.cat([xc_n, xp_n], 0).flatten(0, 1)).view(2 * n, T, -1)
+        pred = model.predict(z, torch.cat([act, act], 0))[:, -1]                  # (2n, D)
+        hz, hp = self._h(z.flatten(0, 1)).view(2 * n, T), self._h(pred)
+        d_enc = ((hz[n:] - hz[:n].detach()) / gap).pow(2).mean(1)
+        d_pred = ((hp[n:] - hp[:n].detach()) / gap).pow(2)
+        return d_enc + self.pred_weight * d_pred
+
+    def forward(self, model, encode_fn, emb, ctx_act, pixels, failures):
+        dev = emb.device
+        fail = failures.flatten().round().long()
+        if self.training:
+            self.step += 1
+            with torch.autocast(device_type=dev.type, enabled=False):
+                self._head_step(emb.detach().flatten(0, 1).float(), fail)
+            if self.open_step < 0 and self.step >= self.min_steps and self.auc >= self.auc_gate:
+                self.open_step.fill_(int(self.step))
+        ramp = 0.0 if self.open_step < 0 else min(1.0, float(self.step - self.open_step) / max(1, self.ramp_steps))
+        self.stats.update(auc=self.auc.clone(), gap=self.gap.clone(), ramp=torch.tensor(ramp, device=dev))
+        if ramp == 0.0 or not self.training:   # val may run under inference_mode (no PGD grads)
+            return torch.zeros((), device=dev)
+
+        # LIVE in-batch safe-unsafe head gap, WITH grad into the encoder: shrinking the
+        # safety separation raises the penalty immediately (a detached EMA gap only reacts
+        # with lag, so flattening h everywhere was the cheapest descent direction).
+        # Floored at 10% of the EMA gap for stability; PGD uses the detached value.
+        h_all = self._h(emb.flatten(0, 1))
+        if (fail == 0).any() and (fail == 1).any():
+            gap_live = (h_all[fail == 0].mean() - h_all[fail == 1].mean()).clamp_min(0.1 * float(self.gap))
+        else:
+            gap_live = self.gap.detach()
+        self.stats["gap_live"] = gap_live.detach()
+
+        T = ctx_act.size(1)
+        n = min(self.n_sub, pixels.size(0))
+        x = pixels[:n, :T].float()
+        act = ctx_act[:n].detach()
+        x01 = (x * self.im_std.unsqueeze(0) + self.im_mean.unsqueeze(0)).clamp(0, 1)
+        eps = torch.tensor(self.eps, device=dev).view(1, 2, 1, 1)
+        gap_pgd = gap_live.detach()
+        obj = lambda P: self._objective(model, encode_fn, x, self._norm(self._perturb(x01, P)), act, gap_pgd)
+        P = (torch.rand(n, 2, self.grid, self.grid, device=dev) * 2 - 1) * eps     # random start
+        best_P, best_d, d_start = P, None, None
+        for k in range(self.pgd_steps + 1):         # PGD (L_inf box), keep per-sample best iterate
+            if k < self.pgd_steps:
+                P = P.detach().requires_grad_(True)
+                with torch.enable_grad():
+                    dk = obj(P)
+                    gP = torch.autograd.grad(dk.sum(), P)[0]
+            else:
+                with torch.no_grad():
+                    dk = obj(P)
+            dk = dk.detach()
+            if best_d is None:
+                best_d, d_start = dk, dk
+            else:
+                better = dk > best_d
+                best_P = torch.where(better.view(-1, 1, 1, 1), P.detach(), best_P)
+                best_d = torch.maximum(dk, best_d)
+            if k < self.pgd_steps:
+                P = torch.max(torch.min(P.detach() + self.pgd_step_frac * eps * gP.sign(), eps), -eps)
+        d = self._objective(model, encode_fn, x, self._norm(self._perturb(x01, best_P.detach())), act, gap_live)
+        self.stats["adv_gain"] = best_d.mean() / (d_start.mean() + 1e-8)
+        return ramp * d.mean()
+
+
 class ActionSeparationReg(nn.Module):
     """Lower-bound predicted-latent separation by action separation (predictor leg).
 
