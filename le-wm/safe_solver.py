@@ -65,10 +65,16 @@ class _SafeJEPA:
 
     def __init__(self, jepa, alpha, grid_size, h_offset, hj_path, speed, dt,
                  act_low, act_high, device, safe_mode="gt", margin_ckpt=None,
-                 h_shift=0.0, recovery="instant"):
+                 h_shift=0.0, recovery="instant", map_candidates=True):
         self.jepa = jepa
         self.device = device
         self.safe_mode = safe_mode
+        # If False, CEM optimizes the goal cost over RAW (unmapped) candidates and
+        # safety is applied only to the executed prefix in solve(). This stops the
+        # CEM optimizer from selecting candidates that exploit the learned margin's
+        # false-negatives (the reason safe-by-construction CEM is net-harmful with a
+        # learned h, while the reactive DDPG-actor + one-shot filter is not).
+        self.map_candidates = map_candidates
         self._alpha = alpha
         self._grid_size = grid_size
         self._h_offset = h_offset
@@ -197,8 +203,11 @@ class _SafeJEPA:
         return out.view(B, S, T, A).to(u.dtype)
 
     def get_cost(self, info_dict, action_candidates):
-        safe = self.map_actions(info_dict, action_candidates)
-        return self.jepa.get_cost(info_dict, safe)
+        # map_candidates=False => optimize goal cost over raw candidates (safety is
+        # applied post-hoc to the executed prefix only, in SafeCEMSolver.solve).
+        acts = (self.map_actions(info_dict, action_candidates)
+                if self.map_candidates else action_candidates)
+        return self.jepa.get_cost(info_dict, acts)
 
 
 class SafeCEMSolver(CEMSolver):
@@ -212,12 +221,14 @@ class SafeCEMSolver(CEMSolver):
                  safe_mode: str = "gt", margin_ckpt: str | None = None,
                  h_shift: float = 0.0, recovery: str = "instant",
                  receding_horizon: int | None = None,
+                 map_candidates: bool = True,
                  **kwargs):
         device = kwargs.get("device", "cuda")
         proxy = _SafeJEPA(model, safe_alpha, safe_grid, h_offset, hj_path,
                           env_speed, env_dt, act_low, act_high, device,
                           safe_mode=safe_mode, margin_ckpt=margin_ckpt,
-                          h_shift=h_shift, recovery=recovery)
+                          h_shift=h_shift, recovery=recovery,
+                          map_candidates=map_candidates)
         # Only the first `receding_horizon` actions are executed; the tail is a
         # warm-start seed. Keep the tail in u-space so the base CEM re-optimizes it
         # in the right space next round (None => safe-map the whole plan, the old

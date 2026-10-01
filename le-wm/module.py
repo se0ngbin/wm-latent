@@ -265,6 +265,53 @@ class AugInvarianceReg(nn.Module):
         return (z1 - z0).pow(2).sum(-1).mean()
 
 
+class AdvColorInvarianceReg(nn.Module):
+    """Adversarial (worst-case) hazard-color invariance = the Ilyas min-max robust-feature
+    objective specialized to the appearance threat model. Each step, recolor the (blue) sg
+    hazard to each palette color, pick per-sample the WORST color (max encoder-feature
+    deviation), and penalize ||enc(worst) - enc(orig).detach()||^2 — so min over encoder of
+    max over color. Purple held out of the palette (stays OOD). Blue-hazard isolation mask
+    a = relu(min(B-R, B-G))/255; remap out = x + a*(C - BLUE) (mirrors utils.ObstacleRecolor).
+    Pixels arrive ImageNet-normalized; denorm->recolor(0..255)->renorm. Cost: (K+1) single-frame
+    encoder forwards/step (K probe colors no_grad + 1 grad). SIGReg guards collapse."""
+    BLUE = (0.0, 0.0, 255.0)
+    PALETTE = [(255, 153, 0), (0, 153, 153), (255, 255, 0), (140, 69, 18), (0, 178, 0)]  # non-blue, non-purple
+
+    def __init__(self, palette=None):
+        super().__init__()
+        self.palette = palette or self.PALETTE
+        self.register_buffer("im_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("im_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    def _recolor(self, x255, C):
+        R, G, B = x255[:, 0], x255[:, 1], x255[:, 2]
+        a = torch.clamp(torch.minimum(B - R, B - G), min=0.0) / 255.0  # (B,H,W) blue-hazard mask
+        out = x255.clone()
+        for ci in range(3):
+            out[:, ci] = torch.clamp(x255[:, ci] + a * (C[ci] - self.BLUE[ci]), 0.0, 255.0)
+        return out
+
+    def _norm(self, x255): return ((x255 / 255.0) - self.im_mean) / self.im_std
+
+    def forward(self, encode_fn, pixels):
+        if pixels.dim() == 5:
+            pixels = pixels[:, 0]
+        x = pixels.float()
+        with torch.no_grad():
+            x255 = ((x * self.im_std + self.im_mean).clamp(0, 1) * 255.0)
+            z0 = encode_fn(x)                                  # target (orig), detached below
+            recolored, devs = [], []
+            for C in self.palette:
+                xr = self._norm(self._recolor(x255, C))
+                zc = encode_fn(xr)
+                recolored.append(xr); devs.append((zc - z0).pow(2).sum(-1))   # (B,)
+            devs = torch.stack(devs, 0)                        # (K,B)
+            worst = devs.argmax(0)                             # (B,) per-sample worst color
+            xw = torch.stack(recolored, 0)[worst, torch.arange(x.shape[0])]   # (B,3,H,W)
+        zw = encode_fn(xw)                                     # WITH grad
+        return (zw - z0.detach()).pow(2).sum(-1).mean()
+
+
 class ActionSeparationReg(nn.Module):
     """Lower-bound predicted-latent separation by action separation (predictor leg).
 
@@ -348,11 +395,17 @@ class PredAnchorReg(nn.Module):
     like a mild jacobian early then specializes.
     """
 
-    def __init__(self, sigma=0.1, lam=1.0, n_probes=1):
+    def __init__(self, sigma=0.1, lam=1.0, n_probes=1, detach_pred=True):
         super().__init__()
         self.sigma = sigma
         self.lam = lam
         self.n_probes = n_probes
+        # detach_pred=True (v2): the predictable budget lam*||dpred||^2 is a DETACHED
+        # per-sample threshold, so the reg penalizes the unpredictable excess of
+        # ||dz|| ABSOLUTELY and can only push ||dz|| down — it cannot be gamed by
+        # amplifying predictor-visible directions (the v1 failure, which raised ||J||
+        # and worsened conditioning). detach_pred=False reproduces the v1 form.
+        self.detach_pred = detach_pred
         self.last_ratio = 0.0
 
     def forward(self, model, encode_fn, ctx_emb, ctx_act, last_frame):
@@ -370,7 +423,8 @@ class PredAnchorReg(nn.Module):
             ctxp = torch.cat([ref[:, :-1], zp.unsqueeze(1)], dim=1)
             predp = model.predict(ctxp, ctx_act)[:, -1]
             dpred2 = (predp - pred0).pow(2).sum(-1)
-            loss = loss + F.relu(dz2 - self.lam * dpred2).mean()
+            budget = self.lam * (dpred2.detach() if self.detach_pred else dpred2)
+            loss = loss + F.relu(dz2 - budget).mean()
             with torch.no_grad():
                 ratios.append((dpred2 / (dz2 + 1e-8)).sqrt().median())
         with torch.no_grad():
@@ -673,3 +727,53 @@ class ARPredictor(nn.Module):
         x = self.dropout(x)
         x = self.transformer(x, c)
         return x
+
+
+class GRUPredictor(nn.Module):
+    """Dreamer-style recurrent predictor for LE-WM (the JEPA+GRU ablation).
+
+    Carries a GRU hidden state (the "deter" memory) across the sequence and
+    predicts the next embedding from it. Same forward(x, c) -> (B, T, D) contract
+    as ARPredictor (position i predicts x[i+1] from x[:i+1] + actions), so the
+    training loop and JEPA.predict wrapper are unchanged. Additionally exposes
+    `step` and `unroll_h` so the adapter can carry the hidden state across imagined
+    steps and expose it in get_feat (= concat(embed, deter_h)) — the predictive
+    analog of Dreamer's [stoch, deter], with NO reconstruction. `deter_dim` is the
+    recurrent memory width. `pos_embedding` is kept (frozen) only so the adapter's
+    shape-inference (`_infer_history_size`) keeps working.
+    """
+
+    def __init__(self, *, num_frames, input_dim, hidden_dim, action_dim,
+                 deter_dim=512, output_dim=None, dropout=0.0, **_ignored):
+        super().__init__()
+        output_dim = output_dim or input_dim
+        self.input_dim = input_dim
+        self.deter_dim = deter_dim
+        self.cell = nn.GRUCell(input_dim + action_dim, deter_dim)
+        self.out = nn.Sequential(
+            nn.Linear(deter_dim, hidden_dim), nn.SiLU(), nn.Dropout(dropout),
+            nn.Linear(hidden_dim, output_dim),
+        )
+        self.pos_embedding = nn.Parameter(
+            torch.zeros(1, num_frames, input_dim), requires_grad=False)
+
+    def step(self, z, a_emb, h):
+        """One recurrent step: (z_t, a_emb_t, h_t) -> (pred z_{t+1}, h_{t+1})."""
+        h = self.cell(torch.cat([z, a_emb], dim=-1), h)
+        return self.out(h), h
+
+    def unroll_h(self, x, c, h0=None):
+        """x: (B,T,D), c: (B,T,A_emb). Returns preds (B,T,D) [pos i predicts
+        x[i+1]] and hidden states hs (B,T,deter_dim) [h after consuming x[:i+1]]."""
+        B, T = x.shape[0], x.shape[1]
+        h = x.new_zeros(B, self.deter_dim) if h0 is None else h0
+        preds, hs = [], []
+        for t in range(T):
+            pred, h = self.step(x[:, t], c[:, t], h)
+            preds.append(pred)
+            hs.append(h)
+        return torch.stack(preds, 1), torch.stack(hs, 1)
+
+    def forward(self, x, c):
+        preds, _ = self.unroll_h(x, c)
+        return preds
