@@ -1,2 +1,11 @@
 .claude/
-run_logs/
+run_logs/__pycache__/
+*.pyc
+# nested upstream repos (own .git; not vendored here)
+action-contrastive-jepa/
+rjepa/
+safety-gymnasium/
+# per-session coordination / runtime state
+active_sessions.txt
+wandb_resume.json
+le-wm/.fs5_cwd/
