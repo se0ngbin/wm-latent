@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance (label-only, no OOD data)
 
-Status (2026-10-02 18:40 UTC): **v1 (run A) finished and FAILED on color and shape through a BatchNorm cheat (§5). Fixed in v2; v2 run A is training, v2 run B is waiting for GPU memory.**
+Status (2026-10-02 18:30 UTC): **v1 (run A) finished and FAILED on color and shape through a BatchNorm cheat (§5). Fixed in v2; v2 run A is training, v2 run B is waiting for GPU memory.**
 Branch `safety-adv-reg`, code in `le-wm/module.py` (`SafetyAdvInvarianceReg`, config key `safety_adv`). v1 = `ca9ec21`, v2 fix = `c6e93c6`.
 
 ## 1. Motivation
@@ -66,7 +66,7 @@ After the fixes (200 steps, gate forced open at step 30):
 
 All runs: dubins, 50 epochs, seed 3072, same recipe as the matched baseline, `data=dubins_safety`.
 
-| Run | Regularizers | Matched baseline | Status (2026-10-02 18:40 UTC) |
+| Run | Regularizers | Matched baseline | Status (2026-10-02 18:30 UTC) |
 |---|---|---|---|
 | v1 A `lewm_dubins_safeadv50` | sigreg + safety_adv (v1) | `sigreg_only_dubins` | **done** (50 epochs); OOD results in §5 |
 | v1 B `lewm_dubins_jacpull_safeadv50` | jac+pull + safety_adv (v1) | `dubins_jacpull50` | stopped at about 1h: same bug as v1 A (first attempt OOM'd at launch) |
