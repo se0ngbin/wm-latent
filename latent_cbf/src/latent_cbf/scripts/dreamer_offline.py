@@ -474,6 +474,36 @@ def make_dataset(episodes, config):
     return dataset
 
 
+# Non-purple obstacle palette (matches le-wm/utils.ObstacleRecolor); red index 0.
+COLOR_AUG_PALETTE = np.array([
+    [255, 0, 0], [255, 140, 0], [255, 200, 0], [150, 75, 0],
+    [128, 128, 0], [250, 128, 114], [140, 0, 0], [0, 150, 150],
+], dtype=np.float32)
+
+
+def color_aug_stream(dataset, palette=COLOR_AUG_PALETTE):
+    """Wrap a batch generator: recolor the red obstacle to a random non-purple
+    training color per (B) sequence, so the RSSM sees obstacles in many colors while
+    purple stays OOD. Obstacle isolated by redness a=relu(min(R-G,R-B))/255; remap
+    out = x + a*(C-RED) (exact for red-on-white edges). image: (B,T,H,W,3) uint8."""
+    RED = np.array([255., 0., 0.], np.float32)
+    while True:
+        batch = next(dataset)
+        img = batch["image"]
+        is_torch = isinstance(img, torch.Tensor)
+        arr = (img.detach().cpu().numpy() if is_torch else np.asarray(img)).astype(np.float32)
+        for b in range(arr.shape[0]):
+            C = palette[np.random.randint(len(palette))]
+            x = arr[b]                                   # (T,H,W,3)
+            a = np.clip(np.minimum(x[..., 0] - x[..., 1], x[..., 0] - x[..., 2]), 0, None) / 255.0
+            for ci in range(3):
+                x[..., ci] = np.clip(x[..., ci] + a * (C[ci] - RED[ci]), 0, 255)
+            arr[b] = x
+        arr = arr.astype(np.uint8)
+        batch["image"] = torch.from_numpy(arr).to(img.device) if is_torch else arr
+        yield batch
+
+
 def main(config):
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
@@ -495,7 +525,8 @@ def main(config):
     print("Create envs.")
     
     action_space = gym.spaces.Box(
-        low=-config.turnRate, high=config.turnRate, shape=(1,), dtype=np.float32
+        low=-config.turnRate, high=config.turnRate,
+        shape=(getattr(config, "action_dim", 1),), dtype=np.float32
     )
     bounds = np.array([[config.x_min, config.x_max], [config.y_min, config.y_max], [0, 2 * np.pi]])
     low = bounds[:, 0]
@@ -532,7 +563,10 @@ def main(config):
     print(expert_eps)
     tools.fill_offline_dataset(config, expert_eps, expert_val_eps)
     expert_dataset = make_dataset(expert_eps, config)
-    eval_dataset = make_dataset(expert_val_eps, config)
+    if getattr(config, "color_aug", False):
+        expert_dataset = color_aug_stream(expert_dataset)
+        print("[dreamer_offline] obstacle color_aug ON (purple held out)")
+    eval_dataset = make_dataset(expert_val_eps, config)  # eval stays red (in-dist)
 
     print("Length of training data:", len(expert_eps))
     print("Length of validation data:", len(expert_val_eps))
@@ -637,10 +671,22 @@ if __name__ == "__main__":
     parser.add_argument("--logdir", type=str, default=None)
     parser.add_argument("--steps", type=int, default=None,
                         help="override DreamerConfig.steps (WM pretrain steps)")
+    parser.add_argument("--color_aug", action="store_true", default=False,
+                        help="recolor the red obstacle to random non-purple colors "
+                             "per sequence (purple held out as OOD)")
+    parser.add_argument("--dataset_path", type=str, default=None,
+                        help="override the offline dataset h5 (trajectory-grouped)")
+    parser.add_argument("--batch_length", type=int, default=None,
+                        help="override RSSM training sequence length (<= traj length)")
+    parser.add_argument("--action_dim", type=int, default=None,
+                        help="action dimensionality (1 for dubins, 2 for safety-gym Car)")
 
     args = parser.parse_args()
 
     config = DreamerConfig()
+    if args.dataset_path is not None: config.dataset_path = args.dataset_path
+    if args.batch_length is not None: config.batch_length = args.batch_length
+    config.action_dim = args.action_dim if args.action_dim is not None else 1
     if args.steps is not None:
         config.steps = args.steps
     config.relu_weight = args.relu_weight
@@ -654,6 +700,7 @@ if __name__ == "__main__":
     config.enc_lip_fd_eps = args.enc_lip_fd_eps
     config.enc_lip_sigma = args.enc_lip_sigma
     config.logdir = args.logdir if args.logdir else f"{DREAMER_DIR}"
+    config.color_aug = args.color_aug
     env_conf = Config()
 
     config.turnRate = env_conf.max_angular_velocity

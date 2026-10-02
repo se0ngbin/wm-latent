@@ -343,7 +343,7 @@ def fill_offline_dataset(config, cache, eval_cache):
                 if t == 0:
                     transition["failure"] = np.array(False, dtype=np.float32)
                     transition["is_first"] = np.array(True, dtype=np.bool_)
-                    transition["action"] = np.array([actions[0]*0], dtype=np.float32)
+                    transition["action"] = np.atleast_1d(np.asarray(actions[0], np.float32) * 0)
                 else:
                     # check if state is in obstacle
                     transition["failure"] = np.array(failures[t-1], dtype=np.float32)
@@ -351,7 +351,7 @@ def fill_offline_dataset(config, cache, eval_cache):
                     transition["is_last"] = np.array(done, dtype=np.bool_)
                     transition["is_terminal"] = np.array(done, dtype=np.bool_)
                     transition["discount"] = np.array(1, dtype=np.float32)
-                    transition["action"] = np.array([actions[t-1]], dtype=np.float32)
+                    transition["action"] = np.atleast_1d(np.asarray(actions[t-1], np.float32))
                     
 
                 if i in eval_idx:
