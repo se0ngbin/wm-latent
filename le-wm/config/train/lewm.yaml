@@ -45,3 +45,10 @@ loss:
     # jacobian:
     #   weight: 0.1
     #   kwargs: {target_L: 1.0, n_probes: 1}
+    # two-way training: invariant encoder + separating predictor
+    # aug_invariance:
+    #   weight: 0.1
+    #   kwargs: {}   # photometric jitter, grayscale, blur, randconv, small cutout
+    # action_separation:
+    #   weight: 0.1
+    #   kwargs: {target_L: 1.0}   # optional upper hinge: target_U
