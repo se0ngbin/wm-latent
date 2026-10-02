@@ -113,7 +113,10 @@ def main(config, buffer_path, out_path, steps):
         data = wm.preprocess(batch)
         with torch.no_grad():
             embed = wm.encoder(data)  # (B, T, D)
-            feat = embed  # for LE-WM, feat == embed
+            # get_feat == embed for the transformer WM (unchanged), but for the
+            # GRU WM it is concat(embed, deter_h) (carried memory), so observe.
+            post, _ = wm.dynamics.observe(embed, data["action"], data["is_first"])
+            feat = wm.dynamics.get_feat(post)
 
         failure = data["failure"]
         feat_flat = feat.reshape(-1, feat.shape[-1])
