@@ -12,7 +12,7 @@ from typing import Literal, Optional
 
 from .paths import DIFFUSION_CHECKPOINT, DIFFUSION_DIR
 
-ControllerName = Literal["mppi", "diffusion", "diffusion_wm"]
+ControllerName = Literal["mppi", "diffusion", "diffusion_wm", "lewm_planner"]
 
 
 @dataclass
@@ -43,5 +43,28 @@ class ControllerConfig:
     action_chunk_size: int = 8
     total_chunk_size: int = 16
     eval_diffusion_steps: int = 16
+
+    # --- LE-WM planner (used when controller_type == "lewm_planner") ---
+    # Checkpoint relative to $STABLEWM_HOME/checkpoints (e.g. "sigreg_only_dubins/weights_epoch_50.pt").
+    lewm_ckpt: str = "sigreg_only_dubins/weights_epoch_50.pt"
+    lewm_cache_dir: Optional[str] = None  # None => $STABLEWM_HOME
+    lewm_horizon: int = 12
+    lewm_num_samples: int = 200
+    lewm_n_iters: int = 4
+    lewm_topk: int = 20
+    lewm_var_scale: float = 1.0
+    lewm_replan_every: int = 1
+    # Safe-by-construction action map (see controllers/safe_action_map.py).
+    lewm_safe_mode: str = "off"  # "off" | "learned" | "gt"
+    lewm_safe_backend: str = "grid"  # "grid" | "hardnet"
+    lewm_hardnet_iters: int = 3
+    lewm_hardnet_damping: float = 1.0
+    lewm_margin_ckpt: Optional[str] = None
+    lewm_margin_head: str = "margin_gp"
+    lewm_cbf_alpha: float = 0.3
+    lewm_safe_grid: int = 21
+    lewm_gt_h: str = "hj"  # "hj" | "dist" (gt mode only)
+    lewm_h_offset: float = 0.0
+    lewm_penalty_weight: float = 0.0
 
     seed: Optional[int] = None

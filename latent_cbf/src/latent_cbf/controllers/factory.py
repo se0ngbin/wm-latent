@@ -62,6 +62,33 @@ def create_controller_from_config(
             return FilteredDiffusionController(base, wm_config)
         return base
 
+    if ctype == "lewm_planner":
+        from .lewm_planner_controller import LeWMPlannerController
+
+        return LeWMPlannerController(
+            lewm_ckpt=ctrl_config.lewm_ckpt,
+            cache_dir=ctrl_config.lewm_cache_dir,
+            device=ctrl_config.device,
+            horizon=ctrl_config.lewm_horizon,
+            num_samples=ctrl_config.lewm_num_samples,
+            n_iters=ctrl_config.lewm_n_iters,
+            topk=ctrl_config.lewm_topk,
+            var_scale=ctrl_config.lewm_var_scale,
+            seed=ctrl_config.seed or 0,
+            safe_mode=getattr(ctrl_config, "lewm_safe_mode", "off"),
+            safe_backend=getattr(ctrl_config, "lewm_safe_backend", "grid"),
+            hardnet_iters=getattr(ctrl_config, "lewm_hardnet_iters", 3),
+            hardnet_damping=getattr(ctrl_config, "lewm_hardnet_damping", 1.0),
+            margin_ckpt=getattr(ctrl_config, "lewm_margin_ckpt", None),
+            margin_head=getattr(ctrl_config, "lewm_margin_head", "margin_gp"),
+            cbf_alpha=getattr(ctrl_config, "lewm_cbf_alpha", 0.3),
+            safe_grid=getattr(ctrl_config, "lewm_safe_grid", 21),
+            gt_h=getattr(ctrl_config, "lewm_gt_h", "hj"),
+            h_offset=getattr(ctrl_config, "lewm_h_offset", 0.0),
+            penalty_weight=getattr(ctrl_config, "lewm_penalty_weight", 0.0),
+        )
+
     raise ValueError(
-        f"Unknown controller_type {ctype!r}; expected 'mppi', 'diffusion', or 'diffusion_wm'."
+        f"Unknown controller_type {ctype!r}; expected 'mppi', 'diffusion', "
+        "'diffusion_wm', or 'lewm_planner'."
     )
