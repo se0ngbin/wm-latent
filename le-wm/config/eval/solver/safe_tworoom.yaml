@@ -1,0 +1,21 @@
+_target_: tworoom_safe_solver.SafeTwoRoomCEMSolver
+model: ???
+batch_size: 1
+num_samples: 300
+var_scale: 1.0
+n_steps: 30
+topk: 30
+device: "cuda"
+seed: ${seed}
+# safe-by-construction wall-clearance map (gt, holonomic; no HJ / predictor compute)
+safe_alpha: 0.3
+safe_grid: 11          # per-dim; total 11*11=121 grid actions
+env_speed: 5.0
+agent_radius: 7.0
+door_y0: 35.0
+door_y1: 63.0
+block: 5               # frameskip == plan_config.action_block
+receding_horizon: null
+safe_mode: gt          # gt (true clearance) | learned (grid on imagined) | learned_qp (min-intervention CBF, 1-step re-grounded)
+margin_ckpt: null
+qp_iters: 8            # learned_qp: HardNet++ damped-projection correction steps
