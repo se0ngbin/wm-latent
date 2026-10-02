@@ -25,7 +25,13 @@ CFG = {
                            "jac_s3072": "jacobian_w1_dubins",
                            "jac_s100": "lewm_dubins_jacw1_s100",
                            "jac_s200": "lewm_dubins_jacw1_s200"}),
+    "acmtm_dubins": dict(ds="dubins_expert.h5", ep=50,
+                   models={"baseline": "sigreg_only_dubins", "jacobian": "jacobian_w1_dubins",
+                           "jac+pull": "lewm_dubins_jacpull50", "acmtm": "dubins_acmtm",
+                           "acmtm+jac": "dubins_acmtm_jac"}),
 }
+if len(sys.argv) > 1:   # restrict to the named CFG entries, e.g. `jac_singular.py acmtm_dubins`
+    CFG = {k: CFG[k] for k in sys.argv[1:]}
 
 def encode(m, x):
     return m.projector(m.encoder(x, interpolate_pos_encoding=True).last_hidden_state[:, 0])
@@ -59,5 +65,5 @@ for env, c in CFG.items():
         top1 = E[0]; top5 = E[:5].sum()
         n_signif = int((s > 0.1 * s[0]).sum())
         print(f"{env+'/'+label:22s} {s[0]:7.3f} {s[1]:7.3f} {s[4]:7.3f} {s[9]:7.3f} {fro:7.3f} "
-              f"{s[0]/fro:9.3f} {top1:7.3f} {top5:7.3f} {n_signif:9d}")
+              f"{s[0]/fro:9.3f} {top1:7.3f} {top5:7.3f} {n_signif:9d}  effrank={s.sum()**2/(s**2).sum():6.1f}")
         del m; torch.cuda.empty_cache()

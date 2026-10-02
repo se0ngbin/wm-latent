@@ -29,6 +29,8 @@ from utils import get_img_preprocessor
 DEV, IMG, N, NTR = "cuda:0", 224, 8000, 6000
 ENCODERS = {"baseline": "sigreg_only_dubins", "jacobian": "jacobian_w1_dubins",
             "jacobian+pull": "lewm_dubins_jacpull50"}
+if os.environ.get("ENCODERS"):   # "name:ckpt,name:ckpt" to override (e.g. AC-MTM encoders)
+    ENCODERS = dict(kv.split(":") for kv in os.environ["ENCODERS"].split(","))
 # margin loss config — configs/dreamer_conf.py (exact)
 GRAD_THR, ZS_W, RELU_W, GP_W, GAMMA_LX, LR, STEPS = 0.1, 0.1, 1.0, 10.0, 0.75, 3e-4, 5000
 # axis -> (og_cond, new_cond, og_tag, new_tag); cond carries render + label shape

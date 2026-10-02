@@ -312,6 +312,38 @@ class AdvColorInvarianceReg(nn.Module):
         return (zw - z0.detach()).pow(2).sum(-1).mean()
 
 
+class ActionNCEReg(nn.Module):
+    """AC-MTM anti-collapse (port of action-contrastive-jepa, arXiv 2608.17542).
+
+    Training-only inverse-dynamics head (z_t, z_{t+1}) -> a_t (the whole
+    frameskip*action_dim block). Its prediction is a query classified among the
+    N = B(T-1) in-batch true action blocks by -||pred - tgt||^2 / (tau * d_a);
+    a collapsed encoder gives identical queries, so the loss floors at log N.
+    Meant to REPLACE sigreg. The head lives here, so the optimizer regex must
+    include `regularizers.action_nce` (train.py handles it).
+    """
+
+    def __init__(self, latent_dim, action_dim, hidden_dim=512, depth=2, temperature=0.1):
+        super().__init__()
+        layers = [nn.Linear(2 * latent_dim, hidden_dim), nn.LayerNorm(hidden_dim), nn.GELU()]
+        for _ in range(depth - 1):
+            layers += [nn.Linear(hidden_dim, hidden_dim), nn.GELU()]
+        layers.append(nn.Linear(hidden_dim, action_dim))
+        self.net = nn.Sequential(*layers)
+        self.temperature = temperature
+        self.last_acc = 0.0
+
+    def forward(self, emb, action):
+        """emb (B,T,D); action (B,T,A) normalized; action[:, t] carries t -> t+1."""
+        pred = self.net(torch.cat([emb[:, :-1], emb[:, 1:]], -1)).flatten(0, 1).float()
+        tgt = action[:, : emb.size(1) - 1].flatten(0, 1).float()
+        logits = -(pred[:, None] - tgt[None]).pow(2).mean(-1) / max(self.temperature, 1e-8)
+        labels = torch.arange(pred.size(0), device=pred.device)
+        with torch.no_grad():
+            self.last_acc = (logits.argmax(1) == labels).float().mean().item()
+        return F.cross_entropy(logits, labels)
+
+
 class ActionSeparationReg(nn.Module):
     """Lower-bound predicted-latent separation by action separation (predictor leg).
 

@@ -10,6 +10,8 @@ import stable_worldmodel as swm
 from utils import get_img_preprocessor
 DEV, IMG, NF = "cuda:0", 224, 6
 ENC = {"baseline": "sg_baseline", "jacobian": "sg_jacobian", "jac+pull": "sg_jacpull"}
+if os.environ.get("ENCODERS"):   # "name:ckpt,name:ckpt" to override (e.g. AC-MTM encoders)
+    ENC = dict(kv.split(":") for kv in os.environ["ENCODERS"].split(","))
 
 def raw_encode(m, x): return m.projector(m.encoder(x, interpolate_pos_encoding=True).last_hidden_state[:, 0])
 

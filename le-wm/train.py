@@ -14,7 +14,7 @@ from omegaconf import OmegaConf, open_dict
 from module import (
     SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg,
     InvarianceReg, AugInvarianceReg, ActionSeparationReg, PredAnchorReg,
-    AdvColorInvarianceReg,
+    AdvColorInvarianceReg, ActionNCEReg,
 )
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
 
@@ -29,6 +29,7 @@ REGULARIZERS = {
     "adv_color_invariance": AdvColorInvarianceReg,
     "action_separation": ActionSeparationReg,
     "pred_anchor": PredAnchorReg,
+    "action_nce": ActionNCEReg,
 }
 
 
@@ -49,6 +50,10 @@ def _call_regularizer(name, module, output, batch, model):
         ctx_emb = output["ctx_emb"]
         loss = module(model, ctx_emb, batch["action"][:, : ctx_emb.size(1)])
         output["action_sep_ratio"] = torch.as_tensor(module.last_ratio, device=loss.device)
+        return loss
+    if name == "action_nce":
+        loss = module(emb, batch["action"])
+        output["action_nce_acc_ratio"] = torch.as_tensor(module.last_acc, device=loss.device)
         return loss
     if name == "pred_anchor":
         ctx_emb = output["ctx_emb"]
@@ -152,7 +157,8 @@ def run(cfg):
 
     optimizers = {
         'model_opt': {
-            "modules": 'model',
+            # action_nce owns a trainable inverse head under regularizers.*
+            "modules": 'model|regularizers\\.action_nce' if "action_nce" in cfg.loss.regularizers else 'model',
             "optimizer": dict(cfg.optimizer),
             "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
             "interval": "epoch",
@@ -160,8 +166,14 @@ def run(cfg):
     }
 
     data_module = spt.data.DataModule(train=train, val=val)
+    def _reg_kwargs(name, spec):
+        kw = dict(spec.get("kwargs", {}) or {})
+        if name == "action_nce":
+            kw.setdefault("latent_dim", cfg.embed_dim)
+            kw.setdefault("action_dim", cfg.model.action_encoder.input_dim)
+        return kw
     regularizers = nn.ModuleDict({
-        name: REGULARIZERS[name](**(spec.get("kwargs", {}) or {}))
+        name: REGULARIZERS[name](**_reg_kwargs(name, spec))
         for name, spec in cfg.loss.regularizers.items()
     })
     world_model = spt.Module(
