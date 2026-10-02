@@ -179,4 +179,4 @@ v2 GPU smoke (200 steps, gate forced open early):
 - n = 1 seed per run so far.
 - Validation loss excludes the penalty (PGD is skipped under inference mode). Head stats are still logged.
 - LeWM's projector BatchNorm has a train/eval gap even without this regularizer (baseline \|z_eval − z_train\|/\|z\| = .99). Any regularizer that adds train-mode forwards needs the same clean-stat treatment.
-- v1 OOD numbers are seed 0 only. Seeds 1–2 were still running at the time of writing; v1 is superseded anyway.
+- v1 OOD numbers are seed 0 only. The seed 1–2 sweep was stopped at a time limit partway through color seed 1 and not rerun, since v1 is superseded.
