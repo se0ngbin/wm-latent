@@ -123,8 +123,22 @@ acmtm+jac 45.1, 0.89, .75, .90 (baseline 2.9, 7.59, .70, .90; jacobian 16.4, 1.1
    **AC-MTM + jacobian is the strongest sg encoder measured** (purple .89, rotate .89) while matching
    jacobian on dubins shape/rotate. Its one weak cell is dubins color (.556, high seed variance ±.128).
 
+### WM seed 1 (2026-10-02) — two headlines soften
+| | dubins color zs | dubins shape zs | dubins rotate zs | sg purple | sg rotate |
+|---|---|---|---|---|---|
+| acmtm s3072 | .456 | .650 | .478 | .904 | .503 |
+| acmtm s1 | .533±.098 | .836±.016 | **.766±.011** | .886 | .578 |
+| acmtm+jac s3072 | .556 | .965 | .959 | .886 | .893 |
+| acmtm+jac s1 | .492±.076 | .969±.001 | .951±.006 | .917 | **.736** |
+
+- AC-MTM's dubins rotation break (.48) is **seed-dependent**: seed 1 gets .77 (still below SIGReg's .97).
+- acmtm+jac sg rotation drops .89 → .74 — still above jacobian (.64) / jac+pull (.69) at the plain readout,
+  but no longer a step change; ≈ the prior best (D_R proj, .77). sg purple (~.89–.92) and dubins
+  shape/rotate for acmtm+jac are stable across WM seeds.
+- Mechanism s1: acmtm ‖J‖ 26 (still > SIGReg 11); acmtm+jac 1.53 (dubins), 0.87 (sg).
+
 ### Open
-- WM seeds 1/2 (evals running: `run_logs/acmtm/eval_driver_s12.log`) — needed before trusting the sg
+- WM seed 2 (evals running: `run_logs/acmtm/eval_driver_s12.log`) — needed before trusting the sg
   rotation gain, which is a single WM.
 - Why does AC-MTM break dubins rotation but not sg rotation? (dubins `np.rot90` rotates the whole world
   incl. agent heading; sg rotates the camera only.)
