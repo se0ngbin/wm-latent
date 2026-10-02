@@ -23,3 +23,4 @@ env_dt: 0.05
 act_low: -2.0
 act_high: 2.0
 receding_horizon: null   # set == plan_config.receding_horizon so warm-start tail stays u-space
+map_candidates: true      # false => CEM optimizes raw goal cost; safety filters executed prefix only
