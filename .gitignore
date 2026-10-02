@@ -1,5 +1,6 @@
 .claude/
-run_logs/__pycache__/
+run_logs/
+__pycache__/
 *.pyc
 # nested upstream repos (own .git; not vendored here)
 action-contrastive-jepa/
