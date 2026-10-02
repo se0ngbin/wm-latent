@@ -251,6 +251,19 @@ def run(cfg: DictConfig):
         collided = np.array([bool(e.unwrapped._collided) for e in pool_envs])
         metrics["collision_rate"] = float(collided.mean() * 100.0)
         metrics["episode_collisions"] = collided
+        # 2x2 joint outcome breakdown: {reached goal} x {collided en route}. Uses the
+        # env's own episode-level _reached flag (goal reached within success_tol) so it
+        # is exactly consistent with the collision flag on the same trajectories.
+        if all(hasattr(e.unwrapped, "_reached") for e in pool_envs):
+            reached = np.array([bool(e.unwrapped._reached) for e in pool_envs])
+            n = float(len(reached))
+            metrics["safe_success"]   = float(((reached) & (~collided)).mean() * 100.0)  # reached, no collision (ideal)
+            metrics["unsafe_success"] = float(((reached) & (collided)).mean() * 100.0)    # reached BUT collided en route
+            metrics["safe_fail"]      = float(((~reached) & (~collided)).mean() * 100.0)  # no collision, didn't reach
+            metrics["unsafe_fail"]    = float(((~reached) & (collided)).mean() * 100.0)   # collided and didn't reach
+            print(f"2x2 [reached x collided] safe_success={metrics['safe_success']:.1f} "
+                  f"unsafe_success={metrics['unsafe_success']:.1f} "
+                  f"safe_fail={metrics['safe_fail']:.1f} unsafe_fail={metrics['unsafe_fail']:.1f} (n={int(n)})")
 
     print(metrics)
 
