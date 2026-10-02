@@ -1,4 +1,5 @@
 import os
+import contextlib
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -427,16 +428,15 @@ class SafetyAdvInvarianceReg(nn.Module):
     def _norm(self, x01):
         return ((x01.flatten(0, 1) - self.im_mean) / self.im_std).view_as(x01)
 
-    def _objective(self, model, encode_fn, xc_n, xp_n, act, gap):
+    def _objective(self, model, encode_fn, xp_n, act, hz_c, hp_c, gap):
         """Per-sample safety-readout deviation (ctx frames + 1-step pred) in units of `gap`.
-        Clean and perturbed go through ONE joint forward (shared BatchNorm stats)."""
-        n, T = xc_n.shape[:2]
-        z = encode_fn(torch.cat([xc_n, xp_n], 0).flatten(0, 1)).view(2 * n, T, -1)
-        pred = model.predict(z, torch.cat([act, act], 0))[:, -1]                  # (2n, D)
-        hz, hp = self._h(z.flatten(0, 1)).view(2 * n, T), self._h(pred)
-        d_enc = ((hz[n:] - hz[:n].detach()) / gap).pow(2).mean(1)
-        d_pred = ((hp[n:] - hp[:n].detach()) / gap).pow(2)
-        return d_enc + self.pred_weight * d_pred
+        Must run inside `_CleanStatBN(...).apply()`: perturbed frames are normalized with the
+        CLEAN batch's BN statistics, so they cannot shape normalization (see _CleanStatBN)."""
+        n, T = xp_n.shape[:2]
+        z = encode_fn(xp_n.flatten(0, 1)).view(n, T, -1)
+        pred = model.predict(z, act)[:, -1]
+        hz, hp = self._h(z.flatten(0, 1)).view(n, T), self._h(pred)
+        return ((hz - hz_c) / gap).pow(2).mean(1) + self.pred_weight * ((hp - hp_c) / gap).pow(2)
 
     def forward(self, model, encode_fn, emb, ctx_act, pixels, failures):
         dev = emb.device
@@ -469,31 +469,77 @@ class SafetyAdvInvarianceReg(nn.Module):
         act = ctx_act[:n].detach()
         x01 = (x * self.im_std.unsqueeze(0) + self.im_mean.unsqueeze(0)).clamp(0, 1)
         eps = torch.tensor(self.eps, device=dev).view(1, 2, 1, 1)
+        bn = _CleanStatBN(model)
+        with bn.capture(), torch.no_grad():          # clean targets + clean BN stats (detached)
+            zc = encode_fn(x.flatten(0, 1)).view(n, T, -1)
+            hz_c = self._h(zc.flatten(0, 1)).view(n, T)
+            hp_c = self._h(model.predict(zc, act)[:, -1])
         gap_pgd = gap_live.detach()
-        obj = lambda P: self._objective(model, encode_fn, x, self._norm(self._perturb(x01, P)), act, gap_pgd)
-        P = (torch.rand(n, 2, self.grid, self.grid, device=dev) * 2 - 1) * eps     # random start
-        best_P, best_d, d_start = P, None, None
-        for k in range(self.pgd_steps + 1):         # PGD (L_inf box), keep per-sample best iterate
-            if k < self.pgd_steps:
-                P = P.detach().requires_grad_(True)
-                with torch.enable_grad():
-                    dk = obj(P)
-                    gP = torch.autograd.grad(dk.sum(), P)[0]
-            else:
-                with torch.no_grad():
-                    dk = obj(P)
-            dk = dk.detach()
-            if best_d is None:
-                best_d, d_start = dk, dk
-            else:
-                better = dk > best_d
-                best_P = torch.where(better.view(-1, 1, 1, 1), P.detach(), best_P)
-                best_d = torch.maximum(dk, best_d)
-            if k < self.pgd_steps:
-                P = torch.max(torch.min(P.detach() + self.pgd_step_frac * eps * gP.sign(), eps), -eps)
-        d = self._objective(model, encode_fn, x, self._norm(self._perturb(x01, best_P.detach())), act, gap_live)
+        with bn.apply():
+            obj = lambda P, g: self._objective(model, encode_fn, self._norm(self._perturb(x01, P)), act, hz_c, hp_c, g)
+            P = (torch.rand(n, 2, self.grid, self.grid, device=dev) * 2 - 1) * eps     # random start
+            best_P, best_d, d_start = P, None, None
+            for k in range(self.pgd_steps + 1):     # PGD (L_inf box), keep per-sample best iterate
+                if k < self.pgd_steps:
+                    P = P.detach().requires_grad_(True)
+                    with torch.enable_grad():
+                        dk = obj(P, gap_pgd)
+                        gP = torch.autograd.grad(dk.sum(), P)[0]
+                else:
+                    with torch.no_grad():
+                        dk = obj(P, gap_pgd)
+                dk = dk.detach()
+                if best_d is None:
+                    best_d, d_start = dk, dk
+                else:
+                    better = dk > best_d
+                    best_P = torch.where(better.view(-1, 1, 1, 1), P.detach(), best_P)
+                    best_d = torch.maximum(dk, best_d)
+                if k < self.pgd_steps:
+                    P = torch.max(torch.min(P.detach() + self.pgd_step_frac * eps * gP.sign(), eps), -eps)
+            d = obj(best_P.detach(), gap_live)
         self.stats["adv_gain"] = best_d.mean() / (d_start.mean() + 1e-8)
         return ramp * d.mean()
+
+
+class _CleanStatBN:
+    """Normalize the regularizer's forwards with CLEAN-batch BatchNorm statistics.
+
+    Why (measured on run A, 2026-10-02): with clean+perturbed in one train-mode batch, the
+    encoder learned to make perturbed frames "loud" so the shared BN variance blew up and
+    squashed BOTH halves' head readouts together (clean gap .97 -> .07) — the penalty looked
+    tiny with no real invariance — and the loud stats leaked into running_var (x6.7), breaking
+    every eval-mode use. capture(): normalize with this batch's own stats (= train-mode BN
+    output) and record them, detached. apply(): normalize with the recorded clean stats.
+    Running stats are never updated in either mode."""
+
+    def __init__(self, model):
+        self.bns = [m for m in model.modules() if isinstance(m, nn.modules.batchnorm._BatchNorm)]
+        self.stats, self.mode = {}, None
+
+    def _fwd(self, bn):
+        def fwd(x):
+            if self.mode == "capture":
+                dims = [0] + list(range(2, x.dim()))
+                self.stats[id(bn)] = (x.mean(dims).detach(), x.var(dims, unbiased=False).detach())
+            mean, var = self.stats[id(bn)]
+            return F.batch_norm(x, mean, var, bn.weight, bn.bias, False, 0.0, bn.eps)
+        return fwd
+
+    @contextlib.contextmanager
+    def _patched(self, mode):
+        self.mode = mode
+        for bn in self.bns:
+            bn.forward = self._fwd(bn)
+        try:
+            yield self
+        finally:
+            for bn in self.bns:
+                del bn.forward          # restore the class method
+            self.mode = None
+
+    def capture(self): return self._patched("capture")
+    def apply(self): return self._patched("apply")
 
 
 class ActionSeparationReg(nn.Module):
