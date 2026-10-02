@@ -24,8 +24,8 @@ TRAJS_DIR = DATA_ROOT / "trajs"
 DIFFUSION_CHECKPOINT = DIFFUSION_DIR / "dubins_diffusion_latest.ckpt"
 DREAMER_BUFFER = BUFFERS_DIR / "dreamer_buffer.h5"
 RSSM_CHECKPOINT = DREAMER_DIR / "rssm_ckpt.pt"
-FILTER_GP = DREAMER_DIR / "PyHJ/gp/epoch_id_14/policy.pth"
-FILTER_NOGP = DREAMER_DIR / "PyHJ/nogp/epoch_id_14/policy.pth"
+FILTER_GP = DREAMER_DIR / "PyHJ/gp/epoch_id_9/policy.pth"
+FILTER_NOGP = DREAMER_DIR / "PyHJ/nogp/epoch_id_9/policy.pth"
 
 # Repo-relative file paths (not under DATA_ROOT).
 DIFFUSION4ROBOTICS_DEFAULTS = REPO_ROOT / "diffusion4robotics" / "defaults.yaml"

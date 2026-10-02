@@ -5,6 +5,7 @@ This outline provides a comprehensive structure for a Dubins car environment
 that returns image observations, suitable for vision-based reinforcement learning.
 """
 
+import os
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -106,6 +107,14 @@ class DubinsEnv(gym.Env):
         }
         self.agent_size = 0.3  # Visual size of the agent
         self.trajectory = []  # Store agent trajectory for visualization
+        # OOD appearance hooks (env-var driven). Defaults reproduce the in-dist
+        # red-circle scene byte-for-byte; only when set do they recolor / reshape
+        # (genuine L1-diamond geometry) / rotate the obstacle. Mirrors
+        # le-wm/dubins_swm_env.py so the diffusion+CBF loop can be evaluated
+        # under appearance shift with no change to any call site.
+        self.colors['obstacle'] = os.environ.get('DUBINS_OBST_COLOR', 'red')
+        self._obst_shape = os.environ.get('DUBINS_OBST_SHAPE', 'circle')
+        self._rot_deg = int(os.environ.get('DUBINS_ROT_DEG', '0')) // 90 % 4
     
     def reset(self, 
               seed: Optional[int] = None, 
@@ -355,12 +364,16 @@ class DubinsEnv(gym.Env):
         agent_pos = state[:2]
         
         for obs_x, obs_y, obs_radius in self.obstacles:
-            obs_pos = np.array([obs_x, obs_y])
-            distance = np.linalg.norm(agent_pos - obs_pos)
-            
+            if getattr(self, '_obst_shape', 'circle') == 'diamond':
+                # genuine L1-ball geometry, matching the diamond render
+                distance = abs(agent_pos[0] - obs_x) + abs(agent_pos[1] - obs_y)
+            else:
+                obs_pos = np.array([obs_x, obs_y])
+                distance = np.linalg.norm(agent_pos - obs_pos)
+
             if distance <= (self.collision_radius + obs_radius):
                 return True
-        
+
         return False
     
     def _get_observation(self) -> np.ndarray:
@@ -416,13 +429,20 @@ class DubinsEnv(gym.Env):
         for obs_x, obs_y, obs_radius in self.obstacles:
             center_px = world_to_pixel((obs_x, obs_y))
             radius_px = obs_radius / (self.x_max - self.x_min) * h_size[0]
-            
-            draw.ellipse(
-                [(center_px[0] - radius_px, center_px[1] - radius_px),
-                 (center_px[0] + radius_px, center_px[1] + radius_px)],
-                fill=self.colors['obstacle'],
-                width=2 * scale
-            )
+
+            if self._obst_shape == 'diamond':
+                cx, cy = center_px
+                draw.polygon(
+                    [(cx, cy - radius_px), (cx + radius_px, cy),
+                     (cx, cy + radius_px), (cx - radius_px, cy)],
+                    fill=self.colors['obstacle'])
+            else:
+                draw.ellipse(
+                    [(center_px[0] - radius_px, center_px[1] - radius_px),
+                     (center_px[0] + radius_px, center_px[1] + radius_px)],
+                    fill=self.colors['obstacle'],
+                    width=2 * scale
+                )
         
         # Draw goal
         goal_px = world_to_pixel(self.goal_position)
@@ -445,8 +465,11 @@ class DubinsEnv(gym.Env):
         
         # Resize to target size with high-quality resampling
         img = img.resize(self.image_size, Image.Resampling.LANCZOS)
-        
-        return np.array(img)
+
+        arr = np.array(img)
+        if self._rot_deg:
+            arr = np.ascontiguousarray(np.rot90(arr, k=self._rot_deg))
+        return arr
     
     def _draw_agent(self, draw, center_px, angle_rad, scale):
         """
