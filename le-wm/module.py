@@ -342,12 +342,17 @@ class SafetyAdvInvarianceReg(nn.Module):
     (latched). While off, PGD is skipped (no cost). The config `weight` is lambda_max.
     """
 
-    def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, pgd_steps=2,
+    def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, pgd_steps=2,
                  pgd_step_frac=0.5, pred_weight=1.0, head_units=512, head_lr=3e-4,
                  zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
                  min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192):
         super().__init__()
         self.n_sub, self.grid = n_sub, grid
+        # attack="hue": spatial hue/saturation field (the color prior). attack="linf": per-pixel
+        # L_inf noise |delta|<=eps_pix in [0,1] RGB, one delta per sequence shared across ctx frames
+        # (threat-agnostic ablation: same safety-projected penalty, no color assumption).
+        assert attack in ("hue", "linf"), attack
+        self.attack, self.eps_pix = attack, float(eps_pix)
         self.eps = (float(eps_hue), float(eps_logsat))
         self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
         self.pred_weight = pred_weight
@@ -468,7 +473,12 @@ class SafetyAdvInvarianceReg(nn.Module):
         x = pixels[:n, :T].float()
         act = ctx_act[:n].detach()
         x01 = (x * self.im_std.unsqueeze(0) + self.im_mean.unsqueeze(0)).clamp(0, 1)
-        eps = torch.tensor(self.eps, device=dev).view(1, 2, 1, 1)
+        if self.attack == "hue":
+            eps = torch.tensor(self.eps, device=dev).view(1, 2, 1, 1)
+            pshape, perturb = (n, 2, self.grid, self.grid), self._perturb
+        else:
+            eps = torch.tensor(self.eps_pix, device=dev)
+            pshape, perturb = (n, 1) + tuple(x01.shape[2:]), (lambda x, P: (x + P).clamp(0, 1))
         bn = _CleanStatBN(model)
         with bn.capture(), torch.no_grad():          # clean targets + clean BN stats (detached)
             zc = encode_fn(x.flatten(0, 1)).view(n, T, -1)
@@ -476,8 +486,8 @@ class SafetyAdvInvarianceReg(nn.Module):
             hp_c = self._h(model.predict(zc, act)[:, -1])
         gap_pgd = gap_live.detach()
         with bn.apply():
-            obj = lambda P, g: self._objective(model, encode_fn, self._norm(self._perturb(x01, P)), act, hz_c, hp_c, g)
-            P = (torch.rand(n, 2, self.grid, self.grid, device=dev) * 2 - 1) * eps     # random start
+            obj = lambda P, g: self._objective(model, encode_fn, self._norm(perturb(x01, P)), act, hz_c, hp_c, g)
+            P = (torch.rand(pshape, device=dev) * 2 - 1) * eps                        # random start
             best_P, best_d, d_start = P, None, None
             for k in range(self.pgd_steps + 1):     # PGD (L_inf box), keep per-sample best iterate
                 if k < self.pgd_steps:
@@ -493,7 +503,7 @@ class SafetyAdvInvarianceReg(nn.Module):
                     best_d, d_start = dk, dk
                 else:
                     better = dk > best_d
-                    best_P = torch.where(better.view(-1, 1, 1, 1), P.detach(), best_P)
+                    best_P = torch.where(better.view((-1,) + (1,) * (P.dim() - 1)), P.detach(), best_P)
                     best_d = torch.maximum(dk, best_d)
                 if k < self.pgd_steps:
                     P = torch.max(torch.min(P.detach() + self.pgd_step_frac * eps * gP.sign(), eps), -eps)
