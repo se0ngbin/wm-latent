@@ -88,7 +88,7 @@ Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbe
 ## Appendix C: where things are
 
 - Code: `le-wm/module.py` (`SafetyAdvInvarianceReg`, `_CleanStatBN`), config key `safety_adv`, data config `data=dubins_safety`.
-- Checkpoints: `/data/seongbin/lewm/checkpoints/lewm_dubins_safeadv2_50/`, `lewm_dubins_jacpull_safeadv2_50/` (v2); `lewm_dubins_safeadv50/` (v1).
-- Training logs and code snapshots: `/data/seongbin/lewm/code_safeadv_c6e93c6/` (v2), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
-- Eval logs: `/data/seongbin/lewm/safeadv_results/{v2_ood_eval, v1_ood_eval, predsafe_check}/`. Diagnostic scripts: `.../diagnostics/`.
+- Checkpoints: `/data/seongbin/lewm/checkpoints/lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_safeadv2_50/`, `lewm_dubins_jacpull_safeadv2_50/` (hue v2); `lewm_dubins_safeadv50/` (v1).
+- Training logs and code snapshots: `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞), `code_safeadv_c6e93c6/` (hue v2), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm` (runs `dubins_safeadv_linf50`, `dubins_safeadv2_50`, `dubins_jacpull_safeadv2_50`).
+- Eval logs: `/data/seongbin/lewm/safeadv_results/{linf_ood_eval, v2_ood_eval, v1_ood_eval, predsafe_check}/`. Diagnostic scripts: `.../diagnostics/`.
 - Baseline numbers: `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `ood_margin_gp_jepa.py`).
