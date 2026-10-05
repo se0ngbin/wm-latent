@@ -166,7 +166,24 @@ The projector and `pred_proj` contain BatchNorm. Before the adversary runs, one 
 - **The adversary stays effective:** it finds perturbations 13–87× stronger than a random one throughout, so the low penalty isn't a weak attack.
 - **BatchNorm stays healthy** (checked on the final model): running-stat offset 0.83 std and variance ratio ×1.66, vs baseline 0.91 / ×2.26.
 
-### A.8 Cost
+### A.8 What it does to the latent space
+
+Same 4000 uniform Dubins states rendered red vs purple, one eval seed (`diagnostics/diag_latent_linf.py`):
+
+| | baseline | jac+pull | L∞ safety reg |
+|---|---|---|---|
+| Mean latent shift under purple ÷ safe/unsafe centroid distance | 2.377 | 1.272 | **0.771** |
+| Per-state shift ÷ centroid distance | 2.723 | 3.324 | **1.308** |
+| cos(mean shift, safety-readout gradient) | −0.685 | −0.201 | −0.641 |
+| Share of the mean shift along the readout direction | 0.469 | 0.041 | 0.411 |
+| Effective latent dimensions (participation ratio, of 192) | 10.5 | 45.3 | 10.8 |
+| Safe/unsafe separation d′ (fresh head) | 3.41 | 4.60 | **7.44** |
+
+- **Mechanism: magnitude, not direction.** L∞ makes the color shift small relative to the safety separation. The safe/unsafe separation roughly doubles (d′ 3.41 → 7.44), and purple moves each latent about half as far as in baseline, so in class-separation units the push is about a third of baseline's. The shift still points along the readout about as much as baseline's. Jac+pull is the opposite: it rotates the color shift off the readout (4% along it) and spreads the latent over ~45 dimensions.
+- **No collapse:** effective dimensionality is unchanged from baseline (10.8 vs 10.5).
+- **Why the color threshold collapses to "all unsafe":** the residual shift points down the readout, lowering every state's margin. The run's own in-training head moves by −0.705 class gaps under purple (predicted safe 0.004), while its ranking survives (AUC 0.962 red-trained head on purple). A uniform offset like this is a calibration problem.
+
+### A.9 Cost
 
 - **Memory:** 15.8 GB peak at batch 128, vs 13.5 GB without the regularizer.
 - **Time:** 4 h 44 min for 50 epochs (08:41–13:25 UTC on 2026-10-05) on one RTX PRO 6000, which was shared with other jobs.
