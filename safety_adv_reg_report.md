@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-06 01:00 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-05 22:25 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -103,7 +103,7 @@ What it shows:
 
 ## Next steps (proposed)
 
-1. **Running: L∞ on top of jac+pull** (`lewm_dubins_jacpull_safeadv_linf50`, started 2026-10-05 ~22:45 UTC, ~8–10 h; uniform and 50/50 evals start automatically when it finishes).
+1. **Running: L∞ on top of jac+pull** (`lewm_dubins_jacpull_safeadv_linf50`, started 2026-10-05 21:58 UTC, ~8–10 h; uniform and 50/50 evals start automatically when it finishes).
 2. **Second training seed** of the L∞ model, to confirm the color result.
 3. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost.
 4. **Critic zero-shot** for the L∞ model, the real target.
