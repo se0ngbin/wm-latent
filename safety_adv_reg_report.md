@@ -75,7 +75,7 @@ So **no model keeps a usable threshold under the color shift**. Baseline, jacobi
 1. **Second training seed** of the L∞ model, to confirm the color result.
 2. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost.
 3. **Critic zero-shot** for the L∞ model, the real target.
-4. **L∞ on top of jac+pull**, and an ε sweep (4/255, 16/255).
+4. **Running: L∞ on top of jac+pull** (`lewm_dubins_jacpull_safeadv_linf50`, started 2026-10-05 ~22:45 UTC, ~8–10 h; uniform and 50/50 evals start automatically when it finishes). Later: an ε sweep (4/255, 16/255).
 5. **Calibration fix** for the threshold collapse, e.g. unsupervised re-centering of the readout per appearance.
 
 ---
