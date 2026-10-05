@@ -177,3 +177,25 @@ Mechanism, 3-WM range: acmtm dubins ‖J‖_F 25.8–30.8 (dubins_mechanism; SIG
 - Why does AC-MTM break dubins rotation but not sg rotation? (dubins `np.rot90` rotates the whole world
   incl. agent heading; sg rotates the camera only.)
 - Downstream (deferred T1c/T2): does acmtm+jac's sg robustness carry to closed-loop CEM / the CBF filter?
+
+## Cross-check: the original sg protocol (`sg_margin_ood.py`), 2026-10-05
+The sg transfer table in post-sept-3.md (jacobian rotate .746, jac+pull .761) used the original
+`sg_margin_ood.py` protocol, which the worklog later retired for the layout confound. Re-ran it on all
+encoders (probe seeds 0/1; acmtm arms pooled over 3 WMs × 2 probe seeds; scratch copy with an ENCODERS
+env list, logs `run_logs/acmtm/sg_margin_ood_oldproto_s{0,1}.log`):
+
+| encoder | in-dist | color zs | rotate zs | diamond zs |
+|---|---|---|---|---|
+| baseline | .990 | .569 | .530 | .827 |
+| jacobian | 1.00 | .988 | .746 | .999 |
+| jac+pull | 1.00 | .991 | .760 | .999 |
+| acmtm | .998 | .880 ± .032 | **.901 ± .018** | .999 |
+| acmtm+jac | .999 | .874 ± .034 | **.956 ± .012** | .998 |
+
+- References reproduce the old table to ≤.002 (rotate .746/.760, color .569, baseline rotate .530).
+- Same ordering on color as layout-controlled (acmtm ≈ .88 < jacobian .99).
+- **Rotation disagrees sharply between protocols for AC-MTM alone:** .90 here vs .55 layout-controlled
+  (the references move only .746→.64 / .760→.69). acmtm+jac is the best rotation encoder under both
+  (.96 / .83), so that ranking is protocol-robust; AC-MTM-alone's rotation is not — its old-protocol
+  number is likely riding the layout confound (train/test frames share episodes). Trust the
+  layout-controlled .55.
