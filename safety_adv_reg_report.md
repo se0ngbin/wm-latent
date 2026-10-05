@@ -82,6 +82,28 @@ So **no model keeps a usable threshold under the color shift**. Baseline, jacobi
 
 Run `lewm_dubins_safeadv_linf50`, code `77856fd` (snapshot `/data/seongbin/lewm/code_safeadv_77856fd/`, launcher `run.sh`), W&B `seongbin/lewm/dubins_safeadv_linf50`.
 
+### A.0 Baseline training vs. adding the safety regularizer, at a glance
+
+The two runs share everything that defines the world model: architecture, data, base losses, optimizer, schedule, 50 epochs, seed 3072. The safety regularizer only *adds* things:
+
+| | baseline (`sigreg_only_dubins`) | + safety regularizer, L∞ (`lewm_dubins_safeadv_linf50`) |
+|---|---|---|
+| Data loaded | pixels, actions, proprio, state | same, plus the per-frame `failures` label (`data=dubins_safety`) |
+| Trained modules | encoder, projector, predictor, action embedder | same, plus a separate margin head h with its own optimizer (never part of the world model) |
+| Loss on the world model | prediction MSE + 0.09 · SIGReg | same, plus 1.0 · ramp · (safety-readout change under worst-case 8/255 noise) |
+| Extra work per step | none | head update; 1 clean + 3 perturbed + 1 graded forward over 32 windows × 3 frames |
+| When the extra term is active | — | off for the first 2,000 steps, then ramped to full strength by step 12,000 |
+| BatchNorm | standard | regularizer passes use clean-batch statistics and never touch running stats |
+| Peak GPU memory | 13.5 GB | 15.8 GB |
+| Saved world-model weights | `weights_epoch_N.pt` | same format and size (drop-in replacement); the head lives only in the Lightning checkpoint |
+
+What changes in the result:
+- **Prediction loss** ends somewhat higher (0.0114; the baseline's isn't logged to W&B, and the hue-variant run ends at 0.0067). The extra term competes a little with dynamics accuracy.
+- **In-distribution safety separation** improves: margin-head AUC 0.998 ± 0.001 vs 0.979 ± 0.002, sign accuracy 0.981 vs 0.943.
+- **Zero-shot robustness** improves on every shift: AUC color 0.144 → 0.910, shape 0.913 → 0.997, rotation 0.956 → 0.996. The color threshold still collapses (calls everything unsafe), as the baseline's does.
+
+Nothing about how the world model is *used* changes. The planner and the margin/critic training consume the same weights in the same way; the regularizer only changes what those weights learned.
+
 ### A.1 World model and data (unchanged from the baseline)
 
 - **Data:** `dubins_expert.h5`: 169,189 frames in 4,100 expert episodes, 128×128 RGB, resized to 224×224 and ImageNet-normalized. Windows of 4 frames (3 context + 1 target), frameskip 1, 90/10 train/val split, seed 3072. Loaded with `data=dubins_safety`, which adds the per-frame `failures` column (1 = agent center inside an obstacle; 16.7% of frames) and keeps it out of z-scoring.
