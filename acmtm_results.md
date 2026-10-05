@@ -135,11 +135,45 @@ acmtm+jac 45.1, 0.89, .75, .90 (baseline 2.9, 7.59, .70, .90; jacobian 16.4, 1.1
 - acmtm+jac sg rotation drops .89 → .74 — still above jacobian (.64) / jac+pull (.69) at the plain readout,
   but no longer a step change; ≈ the prior best (D_R proj, .77). sg purple (~.89–.92) and dubins
   shape/rotate for acmtm+jac are stable across WM seeds.
-- Mechanism s1: acmtm ‖J‖ 26 (still > SIGReg 11); acmtm+jac 1.53 (dubins), 0.87 (sg).
+- Mechanism s1: acmtm ‖J‖ 26 (dubins_mechanism; SIGReg 17.1 on the same probe); acmtm+jac 1.53 (dubins), 0.87 (sg).
+
+## Final — 3 WM seeds (3072, 1, 2), 2026-10-05
+
+Each cell = mean ± sd over the 3 WMs of the per-WM AUC (per WM: dubins = mean over probe seeds 0–2,
+sg = mean over probe seeds 0–1). References are single-WM (seed 3072), as in the earlier tables.
+
+| encoder | dubins color zs | dubins shape zs | dubins rotate zs | sg in-dist | sg purple zs | sg rotate zs |
+|---|---|---|---|---|---|---|
+| baseline (sigreg) | .136 | .885 | .973 | .994 | .604 | .564 |
+| jacobian | .757 | .993 | .991 | .996 | **.991** | .641 |
+| jac+pull | .707 | .977 | .980 | .999 | **.995** | .692 |
+| **acmtm** | .498 ± .032 | .760 ± .080 | .638 ± .120 | .996 | .895 ± .007 | .549 ± .033 |
+| **acmtm+jac** | .562 ± .059 | .965 ± .003 | .929 ± .036 | .997 | .865 ± .054 | **.827 ± .067** |
+
+Per WM seed (3072 / 1 / 2): acmtm dubins rotate .478 / .766 / .670; acmtm+jac sg rotate .893 / .736 / .852;
+acmtm+jac sg purple .886 / .917 / .791.
+
+Mechanism, 3-WM range: acmtm dubins ‖J‖_F 25.8–30.8 (dubins_mechanism; SIGReg 17.1), sg ‖J‖ 8.1–8.7
+(SIGReg 7.6); acmtm+jac dubins 0.97–1.53, sg 0.84–0.89.
+
+### Final verdicts (supersede the seed-3072 ones above where they differ)
+1. **AC-MTM is not a substitute for the jacobian penalty** — holds on all 3 WMs. It is more
+   input-sensitive than SIGReg on dubins every seed, worse than SIGReg on dubins shape (.76 vs .89) and
+   rotation (.64 vs .97), and well below jacobian on dubins color (.50 vs .76). The seed-3072 rotation
+   collapse to chance (.48) was the worst seed, not the norm; the gap to SIGReg is real on every seed.
+2. **On sg, AC-MTM alone fixes most of color** (purple .60 → .90, tight across seeds) without any jacobian
+   — but it does **not** beat jacobian / jac+pull (.99), which were already near ceiling.
+3. **acmtm+jac's sg rotation gain is real but smaller than the first seed suggested:** .83 ± .07 vs
+   jacobian .64 / jac+pull .69 (+.14 over the best plain-readout reference; above the prior best D_R
+   projection .77). Caveat: the references are single-WM.
+4. **Correction to the seed-3072 headline:** acmtm+jac is **not** the best sg encoder overall. It trades
+   color for rotation — purple .87 ± .05 is *below* jacobian's .99 — so it is the best sg encoder on
+   **camera rotation only**.
+5. Static obstacles are kept (in-dist ≥ .94 dubins / ≥ .99 sg on every WM). The zero-shot sign-acc
+   base-rate artifact stands (use AUC; re-check the worklog's jac+pull "sign" claim).
 
 ### Open
-- WM seed 2 (evals running: `run_logs/acmtm/eval_driver_s12.log`) — needed before trusting the sg
-  rotation gain, which is a single WM.
+- Reference encoders are single-WM; seed them (≥3) before claiming the sg rotation delta.
 - Why does AC-MTM break dubins rotation but not sg rotation? (dubins `np.rot90` rotates the whole world
   incl. agent heading; sg rotates the camera only.)
 - Downstream (deferred T1c/T2): does acmtm+jac's sg robustness carry to closed-loop CEM / the CBF filter?
