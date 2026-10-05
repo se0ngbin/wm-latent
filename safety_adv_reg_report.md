@@ -121,7 +121,7 @@ Nothing about how the world model is *used* changes. The planner and the margin/
 
 ### A.3 The perturbation and the adversary
 
-- **Subset:** each step uses the first 32 windows of the batch, and their 3 context frames.
+- **Which images get perturbed:** a training *window* is 4 consecutive frames from an expert trajectory; frames 1–3 are the *context* the model sees, and it learns to predict frame 4's embedding. A batch has 128 windows. To keep the cost down, the regularizer uses only 32 of them (the first 32 in the batch, effectively random since the loader shuffles) and perturbs only their 3 context frames: 96 images per step. Frame 4 is not perturbed; the penalty instead compares the *predicted* frame-4 embedding from perturbed vs. clean context (A.4). The head's own training still uses all 128 × 4 = 512 clean frames.
 - **Perturbation:** δ added to the image in [0, 1] RGB space at 224×224, then clamped to [0, 1] and renormalized. One δ of shape 3×224×224 per window, **shared across its 3 context frames**, so a window sees a consistent "appearance" over time. Budget |δ| ≤ ε = 8/255 per pixel and channel (L∞).
 - **Search (PGD):** random start δ ~ Uniform[−ε, ε]. Two sign-gradient ascent steps of size 0.5·ε on the penalty below, each projected back into the ε-box. The penalty is evaluated at the start and after each step, and **each window keeps its best of the three iterates**, so the adversary can never end up worse than its random start.
 - **What it maximizes:** the same normalized readout change that the encoder minimizes (A.4), using the detached gap.
