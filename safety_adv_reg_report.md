@@ -1,13 +1,13 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-05. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-05 10:45 UTC. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
 - **What we tried:** a training-time regularizer that makes the world model's *safety readout* (a margin head learned from the binary failure labels) insensitive to generated color perturbations. No OOD data is used.
 - **Result:** on a plain (sigreg-only) world model it clearly helps with color: zero-shot color AUC goes from .14 (inverted) to .63. That's about what the existing jacobian penalty already gets (.67).
 - **But:** it hurts shape robustness (.91 → .61), and on top of jac+pull it adds nothing (color .75 → .68, within seed noise).
-- **Neither model fixes the decision threshold.** Under purple, every state is still called safe, so a deployed safety filter would still fail without recalibration.
+- **No model, old or new, keeps a working threshold under purple.** Jac+pull and both new models call ~100% of states safe; baseline and jacobian call ~100% unsafe. Jac+pull's earlier "color survival" was this artifact (§Results). A deployed safety filter would fail either way without recalibration; the jac+pull-style failure (everything "safe") is the dangerous one.
 - **Bottom line:** so far this is not better than jac+pull. It reproduces jacobian-level color robustness by a different route, at a cost on shape.
 
 ## Results
@@ -20,7 +20,8 @@ Zero-shot margin_gp AUC: a head trained on the normal (red, circle, upright) app
 | jacobian | .992 | .67 [.76 .61 .66] | .99 | .99 |
 | jac+pull | .983 | .75 [.71 .75 .80] | .98 | .98 |
 | **baseline + safety reg (v2 A)** | **.996** | **.63** [.73 .45 .72] | **.61** [.63 .53 .68] | **.97** [.97 .96 .97] |
-| **jac+pull + safety reg (v2 B)** | **.985** | **.68** [.75 .79 .51] | **.98** [.98 .97 .98] | *pending* |
+| **jac+pull + safety reg (v2 B)** | **.985** | **.68** [.75 .79 .51] | **.98** [.98 .97 .98] | **.98** [.99 .99 .98] |
+| **baseline + safety reg, L∞ noise attack** | *training* | *pending* | *pending* | *pending* |
 
 Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). Retraining a head on the shifted appearance recovers every model to ≥ .95 AUC. As in all earlier OOD results, the shift relocates the latent rather than destroying information.
 
@@ -28,7 +29,17 @@ Each new run is compared against the matched model without the regularizer (same
 
 Zero-shot accuracy is misleading here. With 17% unsafe states, a head that calls *everything safe* scores ≈ .83 on color, and ≈ .89 on shape (the diamond is smaller). Both new models score exactly that: color .837/.825/.828 against an all-safe rate of .826/.825/.833. Baseline's .164 is the opposite collapse (everything called unsafe). So accuracy only tells you *which way* the threshold broke.
 
-This also raises a doubt about an earlier finding. Jac+pull's color accuracy (.837/.824), previously read as "jac+pull survives color", sits on the same all-safe rate. A check that logs the fraction of states predicted safe is running (`/data/seongbin/lewm/safeadv_results/predsafe_check/`). Until it lands, treat jac+pull's color result as ranking-only (AUC .75), not as a working threshold.
+**This overturns an earlier finding.** Jac+pull's color accuracy (.837/.824/.828) was previously read as "jac+pull survives color". Logging the fraction of states each zero-shot head predicts safe (`/data/seongbin/lewm/safeadv_results/predsafe_check/`):
+
+| model | predicted safe under purple (3 seeds) | true safe fraction |
+|---|---|---|
+| baseline | 0.000 / 0.000 / 0.000 | .84 / .83 / .83 |
+| jacobian | 0.000 / 0.002 / 0.000 | |
+| jac+pull | **1.000 / 0.929 / 1.000** | |
+| baseline + safety reg | 1.000 / 1.000 / 1.000 | |
+| jac+pull + safety reg | 0.999 / 1.000 / 0.947 | |
+
+So **no model keeps a usable threshold under the color shift**. Baseline and jacobian call everything unsafe. Jac+pull and the new models call everything safe, which for a safety filter is the worse failure. What separates the models is only AUC (whether the ranking survives). Jac+pull's real color advantage is ranking (AUC .75), and every earlier claim that jac+pull "survives color" on accuracy should be read this way.
 
 ## Interpretation
 
@@ -45,8 +56,8 @@ This also raises a doubt about an earlier finding. Jac+pull's color accuracy (.8
 
 ## Next steps (proposed)
 
-1. Finish the pending cells: v2 B rotation, and the predicted-safe check for jac+pull's color threshold.
-2. Ablation: same safety-projected penalty with a small-ε L∞ noise attack instead of hue, to separate "safety projection" from "color prior".
+1. **Running:** L∞ ablation, the same safety-projected penalty with per-pixel L∞ noise (ε = 8/255) instead of hue, to separate "safety projection" from "color prior" (`lewm_dubins_safeadv_linf50`; its eval starts automatically when training ends).
+2. Since no model keeps its threshold under recolor, consider a calibration fix (e.g. per-appearance offset or unsupervised re-centering of the readout) rather than more invariance.
 3. Critic zero-shot for v2 A/B, the real target.
 4. If continuing, look at why shape degrades: whether the readout shifts toward edge/shape features, and whether the BatchNorm offset is involved.
 
