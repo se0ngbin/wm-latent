@@ -1,182 +1,83 @@
-# Safety-projected adversarial invariance (label-only, no OOD data)
+# Safety-projected adversarial invariance: report
 
-Status (2026-10-02 18:30 UTC): **v1 (run A) finished and FAILED on color and shape through a BatchNorm cheat (§5). Fixed in v2; v2 run A is training, v2 run B is waiting for GPU memory.**
-Branch `safety-adv-reg`, code in `le-wm/module.py` (`SafetyAdvInvarianceReg`, config key `safety_adv`). v1 = `ca9ec21`, v2 fix = `c6e93c6`.
+*Updated 2026-10-05. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
-## 1. Motivation
+## TL;DR
 
-Earlier OOD results suggest which direction an appearance shift moves the latent matters more than how far:
+- **What we tried:** a training-time regularizer that makes the world model's *safety readout* (a margin head learned from the binary failure labels) insensitive to generated color perturbations. No OOD data is used.
+- **Result:** on a plain (sigreg-only) world model it clearly helps with color: zero-shot color AUC goes from .14 (inverted) to .63. That's about what the existing jacobian penalty already gets (.67).
+- **But:** it hurts shape robustness (.91 → .61), and on top of jac+pull it adds nothing (color .75 → .68, within seed noise).
+- **Neither model fixes the decision threshold.** Under purple, every state is still called safe, so a deployed safety filter would still fail without recalibration.
+- **Bottom line:** so far this is not better than jac+pull. It reproduces jacobian-level color robustness by a different route, at a cost on shape.
 
-- Color shift relocates the latent instead of destroying safe-set information. Retraining on the new appearance recovers the margin to .90–.99 on every encoder. Zero-shot failure is a calibration problem.
-- Removing just 1–2 nuisance directions recovers color OOD AUC (baseline .43 → .67) at about 0 in-dist cost.
-- The color shift is smaller than the safe/unsafe gap (robust_ratio < 1), yet 3 of 4 encoders invert, because the shift is aligned with the margin axis.
-- Global invariance (color+rotation aug) bought robustness by collapsing σ_red 18.7 → 0.27, which caused the color↔rotation see-saw.
+## Results
 
-So the target is minimal invariance: the safety readout should not move under appearance change, and every other latent direction is left free.
+Zero-shot margin_gp AUC: a head trained on the normal (red, circle, upright) appearance, scored on the shifted appearance. AUC .5 is chance and below .5 is inverted. Mean of 3 seeds; per-seed values in brackets.
 
-Two constraints from the design discussion:
-
-1. **No OOD data.** You can't learn invariance to a factor that never varies in training. The information has to come from a prior: perturbations we generate, not renders we collect.
-2. **Only binary failure labels.** The safety direction has to be learned from them.
-
-## 2. Method
-
-**Safety readout.** A margin head h (margin_gp: zs 0.1, hinge@0 1.0, WGAN-GP 10 @ ‖∇‖=0.1; same 512×2 architecture as latent_cbf `MarginHead`) trains during WM training on detached embeddings plus the dataset's `failures` labels. It has its own AdamW (lr 3e-4), because the main optimizer only owns `model`. With the higher LR it tracks the moving latent faster than the encoder changes.
-
-**Perturbation family g (generated, not data).** A spatially varying hue rotation about the gray axis plus a saturation scale:
-- Parameterized on a 4×4 grid, bilinear-upsampled, one field per sequence and shared across context frames.
-- Box: |hue| ≤ 90°, saturation ∈ [0.5, 2].
-- Leaves the white background exactly unchanged and preserves mean luminance.
-- Cannot erase an obstacle (chroma is only scaled).
-- Verified: red → (0.5, 0, 0.5) purple at hue −60°, saturation ×0.5.
-
-**Adversary.** 2-step sign-PGD from a random start, maximizing the penalty itself, keeping each sample's best iterate.
-
-**Penalty**, with h's parameters frozen (`functional_call`) and clean targets detached:
-
-```
-L = mean_ctx ((h(f(g x)) − h(f(x))) / gap)²  +  ((h(pred(f(g x))) − h(pred(f(x)))) / gap)²
-```
-
-`gap` is the live in-batch safe-minus-unsafe head gap, with gradient (see §3, bug 2). The predictor term covers the 1-step rollout, because the reachability critic bootstraps through the dynamics. BatchNorm: v1 put clean and perturbed inputs in one joint train-mode batch, which the encoder exploited (§5). v2 normalizes every perturbed pass with the clean batch's statistics and never updates running stats.
-
-**Schedule.** The head trains from step 0. The penalty is off until step ≥ 2000 and the head's bias-corrected EMA AUC ≥ .95. It then ramps linearly 0 → 1 over 10k steps and stays on (latched). PGD is skipped entirely while the gate is closed. The config `weight` is λ_max = 1.0.
-
-**Why the circularity is not a deadlock.** The head only sees in-distribution frames and labels, and the training data never varies the nuisance, so nothing pulls w toward it. The penalty only moves the encoder's response to g. Stop-grads block both shortcuts: the head can't rotate its readout away from the perturbation, and the encoder can't shrink the gap without the live-gap normalization noticing.
-
-## 3. Smoke-test findings (GPU probe, 200 steps, sigreg base)
-
-The probe caught three bugs, all fixed before launch:
-
-| # | Symptom | Cause | Fix |
-|---|---|---|---|
-| 1 | Gate would open hundreds of steps late | AUC/gap EMAs started at 0/1 with no bias correction | Adam-style debiasing |
-| 2 | Once on, the penalty **eroded** the safety separation: AUC .96 → .88, gap .31 → .16 | Normalizing by a detached, lagging EMA gap made flattening h everywhere the cheapest descent direction | Normalize by the live in-batch gap with gradient, so shrinking separation raises the penalty immediately |
-| 3 | `adv_gain` < 1 (0.30–0.56): PGD ended worse than its random start | 2 sign steps of 0.5·ε overshoot | Keep each sample's best iterate |
-
-After the fixes (200 steps, gate forced open at step 30):
-- Head AUC .95 → .995.
-- Gap grows .35 → 1.06.
-- `adv_gain` ≥ 1.03 throughout (1.03–3.45).
-- Penalty .29 → .02.
-
-**Cost:** peak memory 13.5 → 18.4 GB at `n_sub=32` (+5 GB), step time about 2×. The jac+pull base alone already peaks at 24.8 GB.
-
-## 4. Runs
-
-All runs: dubins, 50 epochs, seed 3072, same recipe as the matched baseline, `data=dubins_safety`.
-
-| Run | Regularizers | Matched baseline | Status (2026-10-02 18:30 UTC) |
-|---|---|---|---|
-| v1 A `lewm_dubins_safeadv50` | sigreg + safety_adv (v1) | `sigreg_only_dubins` | **done** (50 epochs); OOD results in §5 |
-| v1 B `lewm_dubins_jacpull_safeadv50` | jac+pull + safety_adv (v1) | `dubins_jacpull50` | stopped at about 1h: same bug as v1 A (first attempt OOM'd at launch) |
-| v2 A `lewm_dubins_safeadv2_50` | sigreg + safety_adv (v2, BN fix) | `sigreg_only_dubins` | training on GPU0, started 18:27, about 6–7h |
-| v2 B `lewm_dubins_jacpull_safeadv2_50` | jac+pull + safety_adv (v2) | `dubins_jacpull50` | waiting for ≥ 34 GB free on a GPU (`/data/seongbin/lewm/code_safeadv_c6e93c6/wait_launch_B.sh`, retries on OOM) |
-
-Code snapshots: v1 `/data/seongbin/lewm/code_safeadv_ca9ec21/`, v2 `/data/seongbin/lewm/code_safeadv_c6e93c6/` (`run.sh A|B`, logs in `.run_A/`, `.run_B/`).
-
-### v1 run A training curve (W&B, mean over ±1000 steps)
-
-| step | ramp | head AUC | gap | penalty | adv_gain | pred_loss |
-|---|---|---|---|---|---|---|
-| 2000 | .05 | .990 | 1.10 | .0021 | 1.77 | .035 |
-| 6000 | .40 | .999 | 1.42 | .0038 | 1.89 | .021 |
-| 12000 | .98 | .999 | 1.65 | .0030 | 1.59 | .015 |
-| 30000 | 1 | .999 | 1.80 | .0021 | 1.52 | .010 |
-| 55000 | 1 | .9995 | 1.96 | .0029 | 1.42 | .0067 |
-
-At the time this looked healthy: separation kept improving, the gap leveled off after 20k steps, and the penalty stayed near .003. §5 shows that the small penalty was the cheat, not invariance.
-
-## 5. v1 results: negative, caused by a BatchNorm cheat
-
-### Zero-shot margin_gp OOD (seed 0, `ood_margin_gp_jepa.py`, acc / AUC)
-
-| encoder | in-dist | color (red → purple) | shape (circle → diamond) | rotate (90°) |
+| model | in-dist AUC | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
-| baseline (sigreg) | .945 / .980 | .164 / .136 | .316 / .885 | .837 / .973 |
-| jacobian | .971 / .992 | .164 / .757 | .971 / .993 | .966 / .991 |
-| jac+pull | .960 / .984 | .837 / .707 | .963 / .977 | .941 / .980 |
-| **v1 A: sigreg + safety_adv** | **.975 / .997** | **.164 / .401** | **.108 / .085** | **.981 / .996** |
+| baseline (sigreg only) | .979 | .14 [.14 .12 .18] | .91 [.89 .93 .92] | .96 [.97 .93 .97] |
+| jacobian | .992 | .67 [.76 .61 .66] | .99 | .99 |
+| jac+pull | .983 | .75 [.71 .75 .80] | .98 | .98 |
+| **baseline + safety reg (v2 A)** | **.996** | **.63** [.73 .45 .72] | **.61** [.63 .53 .68] | **.97** [.97 .96 .97] |
+| **jac+pull + safety reg (v2 B)** | **.985** | **.68** [.75 .79 .51] | **.98** [.98 .97 .98] | *pending* |
 
-(Acc .164 is the base rate: everything called safe. Retraining a head on the new appearance recovers v1 A fully: color .940/.982, shape .950/.994, rotate .979/.997.)
+Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). Retraining a head on the shifted appearance recovers every model to ≥ .95 AUC. As in all earlier OOD results, the shift relocates the latent rather than destroying information.
 
-- **In-dist:** v1 A is the sharpest of the four.
-- **Color:** v1 A collapses like baseline (only the ranking is less inverted, AUC .40 vs .14) and is far from jac+pull.
-- **Shape:** v1 A is *worse* than baseline; even the ranking inverts (AUC .085).
-- **Rotation:** v1 A is the best of all four (.981 / .996), even though rotation was outside the perturbation family.
+### Why the table uses AUC, not accuracy
 
-### Diagnosis
+Zero-shot accuracy is misleading here. With 17% unsafe states, a head that calls *everything safe* scores ≈ .83 on color, and ≈ .89 on shape (the diamond is smaller). Both new models score exactly that: color .837/.825/.828 against an all-safe rate of .826/.825/.833. Baseline's .164 is the opposite collapse (everything called unsafe). So accuracy only tells you *which way* the threshold broke.
 
-**1. Purple was inside the training family.** The eval's purple render is exactly the global in-family transform (hue −60°, sat ×0.5) of the red render, and antialiased edges map the same way. In latent space the in-family transform lands within 1.7% of the real purple latents. So the color failure isn't out-of-family generalization.
+This also raises a doubt about an earlier finding. Jac+pull's color accuracy (.837/.824), previously read as "jac+pull survives color", sits on the same all-safe rate. A check that logs the fraction of states predicted safe is running (`/data/seongbin/lewm/safeadv_results/predsafe_check/`). Until it lands, treat jac+pull's color result as ranking-only (AUC .75), not as a working threshold.
 
-**2. Even the training-time head fails.** Scoring the regularizer's own head (from the Lightning checkpoint) on purple: readout shift +2.8 class gaps, AUC .092. The encoder became *more* color-sensitive than baseline: the mean purple latent shift is 4.8× the safe/unsafe centroid distance, vs 2.4× for baseline and 1.3× for jac+pull.
+## Interpretation
 
-**3. It isn't a weak adversary.** In BN train mode (batch stats), 2-step PGD finds perturbations moving the readout by .70 class gaps, and 20-step PGD finds .99. Training had logged about .05.
+1. **The regularizer does what it targets.** On a model with no other invariance pressure, color goes from badly inverted to clearly informative. Purple lies inside the perturbation family, so this shows the prior works; it is not out-of-family generalization.
+2. **It trades away shape.** Shape is outside the family. Pushing color variation off the safety readout appears to make the readout lean on features that a shape change disturbs. Rotation is unaffected.
+3. **It is redundant with jac+pull.** Jac+pull already reaches ~.75 on color, and adding the regularizer doesn't move it. The two seem to buy the same thing.
+4. **The threshold problem remains.** No model keeps its safe/unsafe cutoff under purple. For a deployable filter, the recolor still shifts the readout coherently in one direction.
 
-**4. The cause: BatchNorm batch coupling.** The projector and predictor heads use BatchNorm. v1 passed clean and perturbed frames through one joint train-mode batch. Measured on v1 A:
+## Caveats
 
-| batch composition | clean head gap | \|Δh\|/gap, purple-equivalent | \|Δh\|/gap, random |
-|---|---|---|---|
-| separate batches | .973 | .458 | .529 |
-| joint clean+perturbed (as trained) | **.076** | 1.371 (≈ .11 in clean-gap units) | 1.559 (≈ .12) |
-| identity control | .973 | 0.000 | — |
+- **One seed per trained model.** The 3 seeds are eval seeds (different sampled states and head initializations), not independent training runs.
+- **This only tests the margin head.** The more important target, the reachability critic's zero-shot behavior, hasn't been evaluated. Every earlier model collapsed there on color.
+- **BatchNorm offset in v2 A.** v2 A's first BatchNorm layer has a large running-stat offset (mean 2.2 std, variance ×9.6, vs baseline 0.9 / ×2.3). The regularizer can no longer write running stats, so this comes from the ordinary training pass. Its final-latent train/eval gap (1.05) is close to baseline's (0.99). It could still contribute to the shape drop, which is unverified. v2 B is clean (0.9 / ×2.6).
 
-The encoder learned to make perturbed frames "loud" in some features. That inflates the shared BN variance and squashes *both* halves' readouts together, so the penalty looks tiny without any invariance. The loud statistics also leaked into the running stats, through the 3–4 extra train-mode forwards per step:
+## Next steps (proposed)
 
-| model | BN0 \|running mean − clean mean\| / std | running var ratio | training-head AUC, eval-BN vs train-BN |
-|---|---|---|---|
-| v1 A | 2.44 | ×6.7 | .853 vs .980 |
-| baseline | 0.91 | ×2.3 | — |
-| jac+pull | 0.47 | ×1.5 | — |
+1. Finish the pending cells: v2 B rotation, and the predicted-safe check for jac+pull's color threshold.
+2. Ablation: same safety-projected penalty with a small-ε L∞ noise attack instead of hue, to separate "safety projection" from "color prior".
+3. Critic zero-shot for v2 A/B, the real target.
+4. If continuing, look at why shape degrades: whether the readout shifts toward edge/shape features, and whether the BatchNorm offset is involved.
 
-Every downstream use (the OOD eval, the planner) runs in eval mode with running stats, so the deployed representation was not the one trained. The rotation win may be a side effect of the same distortion, so treat it as unexplained until v2 reproduces it.
+---
 
-### Fix (v2, `c6e93c6`)
+## Appendix A: method
 
-`_CleanStatBN`:
-- One clean no-grad pass captures each BN layer's batch statistics (detached).
-- All perturbed passes (PGD and the graded pass) normalize with those clean stats.
-- Running stats are never updated by the regularizer.
+- **Safety readout.** A margin head (margin_gp loss: zs 0.1, hinge 1.0, gradient penalty 10 @ 0.1; 512×2 MLP) trains during world-model training on detached embeddings and the dataset's `failures` labels (16.7% positives), with its own optimizer.
+- **Perturbation.** A spatially varying hue rotation (±90°) and saturation scale (×0.5–2) on a 4×4 grid. White stays white, and obstacles can't be erased. Found per batch by 2-step sign-PGD, keeping each sample's best iterate.
+- **Penalty.** The change in the frozen head's output under the perturbation, on context frames and the 1-step prediction, divided by the in-batch safe/unsafe gap (with gradient).
+- **Schedule.** The head trains from step 0. The penalty switches on at step 2000 once head AUC ≥ .95, then ramps linearly to weight 1.0 over 10k steps.
+- **BatchNorm.** All perturbed passes are normalized with the clean batch's statistics and never update running stats (see Appendix B).
 
-Unit-tested:
-- Capture output equals train-mode BN output.
-- In apply mode, a sample's embedding is independent of the rest of the batch (the loud-sample cheat is impossible).
-- Running stats are untouched.
-- Encoder gets gradient; head params don't.
+**Why hue rather than ordinary noise:**
+- A recolor is a large, coherent pixel change, far outside a small noise ball.
+- Noise-style regularizers (Gaussian pixel invariance, encoder-Lipschitz, plain jacobian) had already failed to fix color.
+- A noise budget large enough to reach purple could also erase obstacles. Penalizing readout changes then teaches the encoder to ignore them.
+- The cost: the prior only covers color.
 
-v2 GPU smoke (200 steps, gate forced open early):
-- The penalty now stays around 1.0 (≈ one class gap of readout shift) instead of dropping to .02, so it is exerting real pressure.
-- Head AUC .95 → .993.
-- Cheaper than v1: 15.9 GB peak (v1 18.4) and about 0.3 s/step (v1 0.48), because the doubled joint batch is gone.
+## Appendix B: v1 failure (BatchNorm cheat), now fixed
 
-## 6. Evaluation plan (v2)
+v1 sent clean and perturbed frames through one shared train-mode batch. The encoder learned to make perturbed frames produce extreme values in some features. That inflated the shared BatchNorm variance and squashed both halves' readouts together: the clean safe/unsafe gap fell from .97 to .07 inside that batch. The penalty looked tiny (~.003) with no real invariance.
 
-**Zero-shot margin OOD.** Add both runs to `ENCODERS` in `le-wm/scripts/ood_margin_jepa_static.py:30`. Run `{color, shape, rotate} × seeds {0,1,2}`, then aggregate with `ood_seed_aggregate.py`.
+The skewed statistics also leaked into the running stats (variance ×6.7), so the deployed encoder differed from the trained one. v1 zero-shot AUC (seed 0): color .40, shape .085, rotation .996.
 
-| encoder | in-dist acc/AUC | color zs acc/AUC | shape zs acc/AUC | rotate zs acc/AUC |
-|---|---|---|---|---|
-| baseline (sigreg) | ~.94–.99 | .17/.14 (collapses) | .31/.91 (threshold breaks, ranking holds) | robust (.83–.96 acc) |
-| jacobian | ~.94–.99 | .17/.67 (ranking only) | robust | robust (.83–.96 acc) |
-| jac+pull | ~.94–.99 | .83/.75 (survives) | robust | robust (.83–.96 acc) |
-| **v2 A: sigreg + safety_adv** | pending | pending | pending | pending |
-| **v2 B: jac+pull + safety_adv** | pending | pending | pending | pending |
+Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbed pass, and never update running stats. Unit-tested: batch-composition independence, running stats untouched, gradients only to the encoder. **This applies to any le-wm regularizer that runs extra forward passes**, since the projector and predictor heads use BatchNorm.
 
-(Baseline rows: the corrected margin_gp study of 2026-09-09, n=3 seeds, which supersedes the earlier V*-regression numbers. Read AUC as well as sign-acc, since acc is pinned at the 17% base rate when the threshold breaks.)
+## Appendix C: where things are
 
-**What to look at:**
-1. **Color zero-shot:** does A survive where the plain baseline inverts? Caveat: purple lies inside the perturbation family, so this tests whether the prior works, not true out-of-family generalization.
-2. **Rotation and shape:** these are outside the family. Any gain there would come from the latent being better structured, not from coverage.
-3. **Critic zero-shot (the real target):** retrain the reachability critic on each new encoder (`wm_ddpg.py`, then `critic_ood_eval.py`). Every encoder so far, jac+pull included, collapses here on color (.225 sign). The predictor term exists to address exactly this.
-4. **No collapse:** σ_red (spread along the obstacle-color direction) stays near the baseline's, unlike the global-aug run (18.7 → 0.27); in-dist AUC is preserved.
-5. **Planner:** in-dist CEM success and collision under the sg25clean protocol (`raw-cem-ood-protocol`), to confirm control isn't hurt.
-
-**What would falsify it:** A no better than baseline on color zero-shot AUC, or a critic still at the .225 base rate. Either would mean projecting onto the instantaneous margin isn't enough, and the reachability direction needs its own signal (time-to-failure labels or a longer rollout term).
-
-## 7. Known limitations
-
-- Only a 1-step predictor term: dataset windows are `history_size + num_preds = 4` frames, so a longer rollout term needs longer windows.
-- The perturbation family covers color only, not geometry.
-- n = 1 seed per run so far.
-- Validation loss excludes the penalty (PGD is skipped under inference mode). Head stats are still logged.
-- LeWM's projector BatchNorm has a train/eval gap even without this regularizer (baseline \|z_eval − z_train\|/\|z\| = .99). Any regularizer that adds train-mode forwards needs the same clean-stat treatment.
-- v1 OOD numbers are seed 0 only. The seed 1–2 sweep was stopped at a time limit partway through color seed 1 and not rerun, since v1 is superseded.
+- Code: `le-wm/module.py` (`SafetyAdvInvarianceReg`, `_CleanStatBN`), config key `safety_adv`, data config `data=dubins_safety`.
+- Checkpoints: `/data/seongbin/lewm/checkpoints/lewm_dubins_safeadv2_50/`, `lewm_dubins_jacpull_safeadv2_50/` (v2); `lewm_dubins_safeadv50/` (v1).
+- Training logs and code snapshots: `/data/seongbin/lewm/code_safeadv_c6e93c6/` (v2), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
+- Eval logs: `/data/seongbin/lewm/safeadv_results/{v2_ood_eval, v1_ood_eval, predsafe_check}/`. Diagnostic scripts: `.../diagnostics/`.
+- Baseline numbers: `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `ood_margin_gp_jepa.py`).
