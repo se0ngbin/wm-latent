@@ -1,15 +1,15 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-05 23:30 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-06 01:00 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
 - **What we tried:** a training-time regularizer that makes the world model's *safety readout* insensitive to adversarial perturbations. The readout is a margin head learned from the binary failure labels; no OOD data is used. The main variant uses plain per-pixel **L∞ noise** (ε = 8/255). Full training details are in Appendix A.
 - **It's the best model we have on every shift.** Zero-shot AUC: color **0.910 ± 0.098** (jac+pull 0.753 ± 0.049, baseline 0.144 ± 0.032), shape **0.997 ± 0.001**, rotation **0.996 ± 0.002**, in-dist 0.998 ± 0.001.
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
-- **Still unsolved: the threshold under recolor.** Under purple, no model keeps its safe/unsafe cutoff. L∞ calls everything *unsafe* (conservative); jac+pull calls everything *safe* (the dangerous direction). Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, L∞ keeps a working threshold.
+- **Still unsolved: the threshold under recolor.** Under purple, no model keeps its safe/unsafe cutoff: on a 50/50 safe/unsafe test set every model scores 0.500–0.503 sign accuracy (L∞ included). Which way it breaks (everything safe vs everything unsafe) depends on how the head was trained, not on the encoder. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, L∞ keeps a working threshold (0.974 / 0.959 on 50/50).
 - **A structured color (hue) perturbation, tried first, did worse** and is covered in Appendix B.
-- **Costs and open questions:** prediction loss is higher (0.0114 vs 0.0067 for a comparable run), and planning and the reachability critic haven't been tested. One training seed per model. Running now: L∞ on top of jac+pull, and a 50/50 safe/unsafe eval.
+- **Costs and open questions:** prediction loss is higher (0.0114 vs 0.0067 for a comparable run), and planning and the reachability critic haven't been tested. One training seed per model. Running now: L∞ on top of jac+pull.
 
 ## Results
 
@@ -50,9 +50,43 @@ Under purple, sign accuracy is misleading on its own. With ~17% unsafe states, a
 | jac+pull | 0.976 ± 0.041 | 0.830 ± 0.006 |
 | **baseline + safety reg, L∞ noise** | not logged; sign accuracy 0.174 ± 0.006 equals the unsafe rate, so ≈ 0.000 (measured directly in the 50/50 eval) | 0.830 ± 0.006 |
 
-So **no model keeps a usable threshold under the color shift**. Baseline, jacobian and L∞ call everything unsafe; jac+pull calls everything safe, which for a safety filter is the dangerous direction. What separates the models on color is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its 0.830 sign accuracy came from calling everything safe. Under shape and rotation the L∞ threshold does survive (sign accuracy 0.980 / 0.975).
+So **no model keeps a usable threshold under the color shift**. On this eval set baseline, jacobian and L∞ call everything unsafe and jac+pull calls everything safe; but the 50/50 eval below shows the *direction* flips with the head's training set (jac+pull calls everything unsafe there), so only the collapse itself is a stable finding. What separates the models on color is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its 0.830 sign accuracy came from calling everything safe. Under shape and rotation the L∞ threshold does survive (sign accuracy 0.980 / 0.975).
 
-**50/50 eval (running).** To make sign accuracy readable directly, the same eval is being rerun on exactly balanced sets (50% safe, 50% unsafe): there, both "all safe" and "all unsafe" score 0.500. Results will be added here.
+### 50/50 safe/unsafe eval
+
+The same eval with every set exactly balanced: heads trained on 3000 safe + 3000 unsafe states, tested on 1000 + 1000, each balanced on the label it's scored against (circle for in-dist, diamond for shape zero-shot). States are rejection-sampled from the same uniform distribution, rendered once per axis and seed, and shared by all models. Here, both "all safe" and "all unsafe" score 0.500 sign accuracy, so sign accuracy reads directly. Mean ± std over 3 eval seeds (`balanced_eval/`).
+
+**Sign accuracy (50/50: .500 = threshold gone)**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
+| jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
+| jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
+| **baseline + safety reg, L∞ noise** | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
+
+**AUC**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
+| jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
+| jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
+| **baseline + safety reg, L∞ noise** | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
+
+**Predicted-safe fraction (true = .500)**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
+| jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
+| jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
+| **baseline + safety reg, L∞ noise** | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
+
+What it shows:
+- **Confirms:** every model's color threshold collapses (sign accuracy 0.500–0.503). L∞ has the best ranking on every shift: color AUC 0.927 ± 0.021 (less seed-variable than in the uniform eval), shape 0.998, rotation 0.996. L∞ keeps working thresholds on shape (0.974) and rotation (0.959).
+- **Corrects (direction of collapse):** jac+pull now calls almost everything *unsafe* under purple (predicted safe 0.003 ± 0.005), whereas in the uniform eval it called everything *safe* (0.976). Same encoder, different head training set. The collapse is a property of the encoder; its direction is not.
+- **Corrects (baseline rotation):** baseline's rotation threshold also collapses (sign accuracy 0.500, everything called safe). In the uniform eval its 0.830 rotation sign accuracy equalled the all-safe rate, which hid this.
 
 ## Interpretation
 
@@ -100,7 +134,7 @@ The two runs share everything that defines the world model: architecture, data, 
 What changes in the result:
 - **Prediction loss** ends somewhat higher (0.0114; the baseline's isn't logged to W&B, and the hue-variant run ends at 0.0067). The extra term competes a little with dynamics accuracy.
 - **In-distribution safety separation** improves: margin-head AUC 0.998 ± 0.001 vs 0.979 ± 0.002, sign accuracy 0.981 vs 0.943.
-- **Zero-shot robustness** improves on every shift: AUC color 0.144 → 0.910, shape 0.913 → 0.997, rotation 0.956 → 0.996. The color threshold still collapses (calls everything unsafe), as the baseline's does.
+- **Zero-shot robustness** improves on every shift: AUC color 0.144 → 0.910, shape 0.913 → 0.997, rotation 0.956 → 0.996. The color threshold still collapses (50/50 sign accuracy 0.501), as the baseline's does.
 
 Nothing about how the world model is *used* changes. The planner and the margin/critic training consume the same weights in the same way; the regularizer only changes what those weights learned.
 
@@ -217,6 +251,38 @@ Same 4000 uniform Dubins states rendered red vs purple, one eval seed (`diagnost
 | **baseline + safety reg, hue** | 0.996 ± 0.003 | 0.634 ± 0.158 | 0.612 ± 0.080 | 0.966 ± 0.009 |
 | **jac+pull + safety reg, hue** | 0.985 ± 0.004 | 0.681 ± 0.150 | 0.977 ± 0.007 | 0.983 ± 0.005 |
 
+50/50 eval (sign accuracy, AUC, predicted-safe fraction):
+
+**Sign accuracy (50/50: .500 = threshold gone)**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
+| jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
+| jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
+| **baseline + safety reg, hue** | 0.970 ± 0.005 | 0.500 ± 0.000 | 0.500 ± 0.000 | 0.629 ± 0.069 |
+| **jac+pull + safety reg, hue** | 0.964 ± 0.003 | 0.645 ± 0.101 | 0.942 ± 0.005 | 0.849 ± 0.046 |
+
+**AUC**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
+| jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
+| jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
+| **baseline + safety reg, hue** | 0.996 ± 0.002 | 0.623 ± 0.150 | 0.631 ± 0.084 | 0.967 ± 0.013 |
+| **jac+pull + safety reg, hue** | 0.993 ± 0.001 | 0.685 ± 0.086 | 0.987 ± 0.002 | 0.986 ± 0.004 |
+
+**Predicted-safe fraction (true = .500)**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
+| jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
+| jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
+| **baseline + safety reg, hue** | 0.507 ± 0.006 | 1.000 ± 0.000 | 1.000 ± 0.000 | 0.856 ± 0.071 |
+| **jac+pull + safety reg, hue** | 0.500 ± 0.013 | 0.388 ± 0.159 | 0.504 ± 0.025 | 0.360 ± 0.051 |
+
 Predicted-safe fraction under purple:
 
 | model | predicted safe under purple | true safe fraction |
@@ -228,7 +294,7 @@ Predicted-safe fraction under purple:
 | **jac+pull + safety reg, hue** | 0.982 ± 0.030 | 0.830 ± 0.006 |
 
 **Reading:**
-- **On the sigreg base,** hue lifts color AUC from 0.144 to 0.634 but drops shape from 0.913 to 0.612. It calls every purple state safe (the dangerous direction).
+- **On the sigreg base,** hue lifts color AUC from 0.144 to 0.634 but drops shape from 0.913 to 0.612. Its color *and* shape thresholds collapse (50/50 sign accuracy 0.500 on both, everything called safe).
 - **On jac+pull** it adds nothing (color 0.753 → 0.681, within seed noise).
 - **BatchNorm:** the sigreg-base hue model also has a large first-layer running-stat offset (2.2 std, variance ×9.6) from its ordinary training pass, which may relate to its shape drop (unverified).
 - **Conclusion:** L∞ beats it on every axis, including color, which hue was built for.
