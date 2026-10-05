@@ -1,57 +1,72 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-05 14:00 UTC. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-05 22:30 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
 - **What we tried:** a training-time regularizer that makes the world model's *safety readout* (a margin head learned from the binary failure labels) insensitive to adversarial perturbations. No OOD data is used. Two perturbation families: a structured **hue/saturation** shift (a color prior) and plain per-pixel **L∞ noise** (ε = 8/255, no prior).
-- **The L∞ version is the best model we have on every axis.** Zero-shot AUC: color **.91** (jac+pull .75, baseline .14), shape **1.00**, rotation **1.00**, in-dist .998.
+- **The L∞ version is the best model we have on every axis.** Zero-shot AUC: color **0.910 ± 0.098** (jac+pull 0.753 ± 0.049, baseline 0.144 ± 0.032), shape **0.997 ± 0.001**, rotation **0.996 ± 0.002**, in-dist 0.998 ± 0.001.
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation, so all three shifts are outside the training perturbation.
-- **The hue version, despite targeting color, was worse:** color .63, shape dropped to .61, and it added nothing on top of jac+pull.
+- **The hue version, despite targeting color, was worse:** color AUC 0.634 ± 0.158, shape dropped to 0.612 ± 0.080, and it added nothing on top of jac+pull.
 - **Still unsolved: the threshold.** Under purple, no model keeps its safe/unsafe cutoff. The L∞ model calls everything *unsafe* (conservative); jac+pull and the hue models call everything *safe* (the dangerous direction). Jac+pull's earlier "color survival" was this artifact.
-- **Costs and open questions:** prediction loss is higher (.0114 vs .0067 for the hue model), and planning and the reachability critic haven't been tested. Only one training seed per model.
+- **Costs and open questions:** prediction loss is higher (0.0114 vs 0.0067 for the hue model), and planning and the reachability critic haven't been tested. Only one training seed per model.
 
 ## Results
 
-Zero-shot margin_gp AUC: a head trained on the normal (red, circle, upright) appearance, scored on the shifted appearance. AUC .5 is chance and below .5 is inverted. Mean of 3 eval seeds; per-seed values in brackets.
+Zero-shot margin_gp head: trained on the normal (red, circle, upright) appearance, scored on the shifted appearance. **Sign accuracy** asks whether the head's sign (h ≥ 0 = safe) matches the label. **AUC** asks whether the safe/unsafe ranking survives, independent of the threshold (0.500 = chance, below = inverted). All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eval states are uniform over the world, about 17% unsafe (circle) or 11% (diamond).
 
-| model | in-dist AUC | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+**Sign accuracy**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
-| baseline (sigreg only) | .979 | .14 [.14 .12 .18] | .91 [.89 .93 .92] | .96 [.97 .93 .97] |
-| jacobian | .992 | .67 [.76 .61 .66] | .99 | .99 |
-| jac+pull | .983 | .75 [.71 .75 .80] | .98 | .98 |
-| baseline + safety reg, hue (v2 A) | .996 | .63 [.73 .45 .72] | .61 [.63 .53 .68] | .97 [.97 .96 .97] |
-| jac+pull + safety reg, hue (v2 B) | .985 | .68 [.75 .79 .51] | .98 [.98 .97 .98] | .98 [.99 .99 .98] |
-| **baseline + safety reg, L∞ noise** | **.998** | **.91** [.98 .96 .80] | **1.00** [.998 .996 .998] | **1.00** [.997 .994 .996] |
+| baseline (sigreg only) | 0.943 ± 0.005 | 0.170 ± 0.006 | 0.310 ± 0.025 | 0.830 ± 0.006 |
+| jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | 0.968 ± 0.007 | 0.962 ± 0.004 |
+| jac+pull | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
+| baseline + safety reg, hue | 0.970 ± 0.003 | 0.830 ± 0.006 | 0.891 ± 0.005 | 0.843 ± 0.024 |
+| jac+pull + safety reg, hue | 0.969 ± 0.004 | 0.816 ± 0.026 | 0.968 ± 0.003 | 0.892 ± 0.018 |
+| **baseline + safety reg, L∞ noise** | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
 
-Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color .974/.976/.765, shape ≥ .993, rotation ≥ .982. Retraining a head on the shifted appearance recovers every model to ≥ .93 AUC; the shift relocates the latent rather than destroying information.
+**AUC**
 
-### Why the table uses AUC, not accuracy
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| baseline (sigreg only) | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 |
+| jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.992 ± 0.003 | 0.989 ± 0.002 |
+| jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
+| baseline + safety reg, hue | 0.996 ± 0.003 | 0.634 ± 0.158 | 0.612 ± 0.080 | 0.966 ± 0.009 |
+| jac+pull + safety reg, hue | 0.985 ± 0.004 | 0.681 ± 0.150 | 0.977 ± 0.007 | 0.983 ± 0.005 |
+| **baseline + safety reg, L∞ noise** | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
 
-Zero-shot accuracy is misleading here. With 17% unsafe states, a head that calls *everything safe* scores ≈ .83 on color (≈ .89 on shape, since the diamond is smaller), and one that calls *everything unsafe* scores ≈ .17. Every model lands on one of those two numbers under purple. To confirm which, I logged the fraction of states each zero-shot head predicts safe (`/data/seongbin/lewm/safeadv_results/predsafe_check/`):
+Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color AUC 0.905 ± 0.121, shape ≥ 0.993, rotation ≥ 0.982. Retraining a head on the shifted appearance recovers every model to ≥ 0.930 AUC; the shift relocates the latent rather than destroying information.
 
-| model | predicted safe under purple (3 seeds) | failure direction |
+### Reading sign accuracy under the color shift
+
+Under purple, sign accuracy is misleading on its own. With ~17% unsafe states, a head that calls *everything safe* scores ≈ 0.830, and one that calls *everything unsafe* scores ≈ 0.170. Every model lands on one of those two values under purple. To confirm which, I logged the fraction of states each zero-shot head predicts safe (`/data/seongbin/lewm/safeadv_results/predsafe_check/`):
+
+| model | predicted safe under purple | true safe fraction |
 |---|---|---|
-| baseline | 0.000 / 0.000 / 0.000 | all unsafe |
-| jacobian | 0.000 / 0.002 / 0.000 | all unsafe |
-| jac+pull | **1.000 / 0.929 / 1.000** | all safe |
-| hue safety reg (v2 A) | 1.000 / 1.000 / 1.000 | all safe |
-| hue safety reg on jac+pull (v2 B) | 0.999 / 1.000 / 0.947 | all safe |
-| L∞ safety reg | ≈ 0 (accuracy .164 / .177 / .177 equals the unsafe rate; not logged directly) | all unsafe |
+| baseline (sigreg only) | 0.000 ± 0.000 | 0.830 ± 0.006 |
+| jacobian | 0.001 ± 0.001 | 0.830 ± 0.006 |
+| jac+pull | 0.976 ± 0.041 | 0.830 ± 0.006 |
+| baseline + safety reg, hue | 1.000 ± 0.000 | 0.830 ± 0.006 |
+| jac+pull + safety reg, hue | 0.982 ± 0.030 | 0.830 ± 0.006 |
+| baseline + safety reg, L∞ noise | not logged; sign accuracy 0.174 ± 0.006 equals the unsafe rate, so ≈ 0.000 (measured directly in the 50/50 eval) | 0.830 ± 0.006 |
 
-The true safe fraction is .83–.84. So **no model keeps a usable threshold under the color shift**. What separates them is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its accuracy came from calling everything safe.
+So **no model keeps a usable threshold under the color shift**. Baseline, jacobian and L∞ call everything unsafe; jac+pull and the hue models call everything safe, which for a safety filter is the dangerous direction. What separates the models on color is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its 0.830 sign accuracy came from calling everything safe. Under shape and rotation the threshold does survive for most models (e.g. L∞ sign accuracy 0.980 / 0.975).
+
+**50/50 eval (running).** To make sign accuracy readable directly, the same eval is being rerun on exactly balanced sets (50% safe, 50% unsafe): there, both "all safe" and "all unsafe" score 0.500. Results will be added here.
 
 ## Interpretation
 
 1. **The safety projection, not the color prior, is what helps.** Plain L∞ noise projected onto the safety readout beats the hand-designed hue family on every axis, including the color shift the hue family was built for. The hue family seems to have taught a narrow color invariance that cost shape robustness. Generic small-noise robustness *along the safety readout* transferred to all three large shifts.
-2. **It goes well beyond jacobian.** Jacobian also penalizes local sensitivity, but uniformly across all latent directions, and reaches color .67. Restricting the noise penalty to the safety readout (adversarially) reaches .91. That's consistent with the "keep nuisance off the readout axis" lever from the earlier nuisance-projection analysis.
+2. **It goes well beyond jacobian.** Jacobian also penalizes local sensitivity, but uniformly across all latent directions, and reaches color AUC 0.673. Restricting the noise penalty to the safety readout (adversarially) reaches 0.910. That's consistent with the "keep nuisance off the readout axis" lever from the earlier nuisance-projection analysis.
 3. **The remaining failure is calibration.** Even the best ranking comes with a coherent readout offset under purple that pushes every state across the threshold. For a deployable filter, this needs recalibration or an offset-correction mechanism, not more invariance.
 4. **The hue variant is not worth pursuing.** It underperforms L∞ everywhere and adds nothing on top of jac+pull.
 
 ## Caveats
 
-- **One training seed per model.** The 3 seeds are eval seeds (sampled states and head initializations). Color seed variation is large (.80–.98 for L∞), so a second training seed is needed before calling this robust.
-- **Prediction quality cost.** Final pred_loss is .0114 for L∞ vs .0067 for the hue model. Whether this hurts CEM planning hasn't been tested.
+- **One training seed per model.** The 3 seeds are eval seeds (sampled states and head initializations). Color seed variation is large (L∞ color AUC 0.910 ± 0.098), so a second training seed is needed before calling this robust.
+- **Prediction quality cost.** Final pred_loss is 0.0114 for L∞ vs 0.0067 for the hue model. Whether this hurts CEM planning hasn't been tested.
 - **Only the margin head is tested.** The reachability critic's zero-shot behavior (where every earlier model collapsed on color) hasn't been evaluated.
 - **BatchNorm health.** L∞ is clean: running-stat offset 0.83, variance ×1.66 (baseline 0.91 / ×2.26). The hue v2 A model had a large offset (2.2 / ×9.6) from its ordinary training pass, which may relate to its shape drop (unverified).
 
