@@ -164,12 +164,7 @@ Nothing about how the world model is *used* changes. The planner and the margin/
 
 For each window, with clean context frames x₁..₃, perturbed frames x₁..₃ + δ, actions a, encoder f, predictor P:
 
-    d   = (1/3) Σ_{t=1..3} [ (h(f(x_t + δ)) − h(f(x_t))) / gap ]²
-          + [ (h(P(f(x + δ), a)) − h(P(f(x), a))) / gap ]²
-
-    gap = (1/|S|) Σ_{i ∈ S} h(f(x_i))  −  (1/|U|) Σ_{j ∈ U} h(f(x_j))
-
-where S and U are the safe (`failures = 0`) and unsafe (`failures = 1`) frames among all 512 clean frames of the batch: gap is the average safe readout minus the average unsafe readout.
+    d = mean over t of ((h(f(x_t + δ)) − h(f(x_t))) / gap)²  +  ((h(P(f(x + δ), a)) − h(P(f(x), a))) / gap)²
 
 - **First term:** the safety readout of each perturbed context frame must match the clean one.
 - **Second term:** the same for the predictor's last prediction (frame 4, from all three context frames), so the robustness also has to hold through the dynamics.
