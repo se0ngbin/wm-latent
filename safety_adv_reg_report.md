@@ -106,9 +106,9 @@ Nothing about how the world model is *used* changes. The planner and the margin/
 
 ### A.1 World model and data (unchanged from the baseline)
 
-- **Data:** `dubins_expert.h5`: 169,189 frames in 4,100 expert episodes, 128×128 RGB, resized to 224×224 and ImageNet-normalized. Windows of 4 frames (3 context + 1 target), frameskip 1, 90/10 train/val split, seed 3072. Loaded with `data=dubins_safety`, which adds the per-frame `failures` column (1 = agent center inside an obstacle; 16.7% of frames) and keeps it out of z-scoring.
-- **Model:** LeWM JEPA. ViT-tiny encoder (patch 14, from scratch) → CLS token → projector MLP (192 → 2048 → 192, BatchNorm) = embedding z (192-d). Autoregressive transformer predictor (depth 6, 16 heads) with an action embedder, followed by `pred_proj` (MLP with BatchNorm).
-- **Base losses:** prediction MSE between predicted and target embeddings, plus SIGReg (weight 0.09, 17 knots, 1024 projections). This is exactly the `sigreg_only_dubins` baseline recipe.
+- **Data:** `dubins_expert.h5`: 169,189 frames in 4,100 expert episodes, 128×128 RGB, resized to 224×224 and ImageNet-normalized. Windows of 4 consecutive frames, frameskip 1, 90/10 train/val split, seed 3072. Loaded with `data=dubins_safety`, which adds the per-frame `failures` column (1 = agent center inside an obstacle; 16.7% of frames) and keeps it out of z-scoring.
+- **Model:** LeWM JEPA. ViT-tiny encoder (patch 14, from scratch) → CLS token → projector MLP (192 → 2048 → 192, BatchNorm) = embedding z (192-d). Autoregressive transformer predictor (depth 6, 16 heads, **causal** attention) with an action embedder, followed by `pred_proj` (MLP with BatchNorm). It always predicts the **next** frame's embedding, looking back at most 3 frames (`history_size: 3`). One 4-frame window gives three predictions trained together: frame 1 → frame 2, frames 1–2 → frame 3, frames 1–3 → frame 4.
+- **Base losses:** prediction MSE over those three next-frame predictions, plus SIGReg (weight 0.09, 17 knots, 1024 projections). This is exactly the `sigreg_only_dubins` baseline recipe.
 - **Optimization:** AdamW lr 5e-5, weight decay 1e-3, linear-warmup cosine schedule over 50 epochs (55,150 steps of batch 128), bf16 mixed precision, gradient clipping 1.0.
 
 ### A.2 The safety readout (trained alongside, not part of the world model)
@@ -121,7 +121,7 @@ Nothing about how the world model is *used* changes. The planner and the margin/
 
 ### A.3 The perturbation and the adversary
 
-- **Which images get perturbed:** a training *window* is 4 consecutive frames from an expert trajectory; frames 1–3 are the *context* the model sees, and it learns to predict frame 4's embedding. A batch has 128 windows. To keep the cost down, the regularizer uses only 32 of them (the first 32 in the batch, effectively random since the loader shuffles) and perturbs only their 3 context frames: 96 images per step. Frame 4 is not perturbed; the penalty instead compares the *predicted* frame-4 embedding from perturbed vs. clean context (A.4). The head's own training still uses all 128 × 4 = 512 clean frames.
+- **Which images get perturbed:** a training *window* is 4 consecutive frames from an expert trajectory; frames 1–3 are the *context* (the frames the predictor reads), and frames 2–4 are its next-frame targets (A.1). A batch has 128 windows. To keep the cost down, the regularizer uses only 32 of them (the first 32 in the batch, effectively random since the loader shuffles) and perturbs only their 3 context frames: 96 images per step. Frame 4 is not perturbed; the penalty instead compares the *predicted* frame-4 embedding (from all three context frames) under perturbed vs. clean context (A.4). The two shorter-history predictions (frame 2 from 1, frame 3 from 1–2) are not penalized. The head's own training still uses all 128 × 4 = 512 clean frames.
 - **Perturbation:** δ added to the image in [0, 1] RGB space at 224×224, then clamped to [0, 1] and renormalized. One δ of shape 3×224×224 per window, **shared across its 3 context frames**, so a window sees a consistent "appearance" over time. Budget |δ| ≤ ε = 8/255 per pixel and channel (L∞).
 - **Search (PGD):** random start δ ~ Uniform[−ε, ε]. Two sign-gradient ascent steps of size 0.5·ε on the penalty below, each projected back into the ε-box. The penalty is evaluated at the start and after each step, and **each window keeps its best of the three iterates**, so the adversary can never end up worse than its random start.
 - **What it maximizes:** the same normalized readout change that the encoder minimizes (A.4), using the detached gap.
@@ -133,7 +133,7 @@ For each window, with clean context frames x₁..₃, perturbed frames x₁..₃
     d = mean over t of ((h(f(x_t + δ)) − h(f(x_t))) / gap)²  +  ((h(P(f(x + δ), a)) − h(P(f(x), a))) / gap)²
 
 - **First term:** the safety readout of each perturbed context frame must match the clean one.
-- **Second term:** the same for the predictor's next-step prediction (frame 4), so the robustness also has to hold through the dynamics.
+- **Second term:** the same for the predictor's last prediction (frame 4, from all three context frames), so the robustness also has to hold through the dynamics.
 - **Clean targets** h(f(x_t)) and h(P(f(x), a)) are computed once without gradient.
 - **h's parameters are frozen inside the penalty** (called with detached parameters). Only the encoder, projector, predictor and action embedder receive gradients, so the head can't satisfy the penalty by flattening itself.
 - **gap** = the live in-batch gap: mean h(f(x)) over safe frames minus over unsafe frames, across all 512 frames of the main forward pass, **with gradient**, floored at 0.1 × the EMA gap. Shrinking the safe/unsafe separation therefore *raises* the penalty immediately, so the encoder can't win by squashing the readout.
