@@ -1,81 +1,81 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-05 10:45 UTC. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-05 14:00 UTC. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
-- **What we tried:** a training-time regularizer that makes the world model's *safety readout* (a margin head learned from the binary failure labels) insensitive to generated color perturbations. No OOD data is used.
-- **Result:** on a plain (sigreg-only) world model it clearly helps with color: zero-shot color AUC goes from .14 (inverted) to .63. That's about what the existing jacobian penalty already gets (.67).
-- **But:** it hurts shape robustness (.91 → .61), and on top of jac+pull it adds nothing (color .75 → .68, within seed noise).
-- **No model, old or new, keeps a working threshold under purple.** Jac+pull and both new models call ~100% of states safe; baseline and jacobian call ~100% unsafe. Jac+pull's earlier "color survival" was this artifact (§Results). A deployed safety filter would fail either way without recalibration; the jac+pull-style failure (everything "safe") is the dangerous one.
-- **Bottom line:** so far this is not better than jac+pull. It reproduces jacobian-level color robustness by a different route, at a cost on shape.
+- **What we tried:** a training-time regularizer that makes the world model's *safety readout* (a margin head learned from the binary failure labels) insensitive to adversarial perturbations. No OOD data is used. Two perturbation families: a structured **hue/saturation** shift (a color prior) and plain per-pixel **L∞ noise** (ε = 8/255, no prior).
+- **The L∞ version is the best model we have on every axis.** Zero-shot AUC: color **.91** (jac+pull .75, baseline .14), shape **1.00**, rotation **1.00**, in-dist .998.
+- **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation, so all three shifts are outside the training perturbation.
+- **The hue version, despite targeting color, was worse:** color .63, shape dropped to .61, and it added nothing on top of jac+pull.
+- **Still unsolved: the threshold.** Under purple, no model keeps its safe/unsafe cutoff. The L∞ model calls everything *unsafe* (conservative); jac+pull and the hue models call everything *safe* (the dangerous direction). Jac+pull's earlier "color survival" was this artifact.
+- **Costs and open questions:** prediction loss is higher (.0114 vs .0067 for the hue model), and planning and the reachability critic haven't been tested. Only one training seed per model.
 
 ## Results
 
-Zero-shot margin_gp AUC: a head trained on the normal (red, circle, upright) appearance, scored on the shifted appearance. AUC .5 is chance and below .5 is inverted. Mean of 3 seeds; per-seed values in brackets.
+Zero-shot margin_gp AUC: a head trained on the normal (red, circle, upright) appearance, scored on the shifted appearance. AUC .5 is chance and below .5 is inverted. Mean of 3 eval seeds; per-seed values in brackets.
 
 | model | in-dist AUC | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | .979 | .14 [.14 .12 .18] | .91 [.89 .93 .92] | .96 [.97 .93 .97] |
 | jacobian | .992 | .67 [.76 .61 .66] | .99 | .99 |
 | jac+pull | .983 | .75 [.71 .75 .80] | .98 | .98 |
-| **baseline + safety reg (v2 A)** | **.996** | **.63** [.73 .45 .72] | **.61** [.63 .53 .68] | **.97** [.97 .96 .97] |
-| **jac+pull + safety reg (v2 B)** | **.985** | **.68** [.75 .79 .51] | **.98** [.98 .97 .98] | **.98** [.99 .99 .98] |
-| **baseline + safety reg, L∞ noise attack** | *training* | *pending* | *pending* | *pending* |
+| baseline + safety reg, hue (v2 A) | .996 | .63 [.73 .45 .72] | .61 [.63 .53 .68] | .97 [.97 .96 .97] |
+| jac+pull + safety reg, hue (v2 B) | .985 | .68 [.75 .79 .51] | .98 [.98 .97 .98] | .98 [.99 .99 .98] |
+| **baseline + safety reg, L∞ noise** | **.998** | **.91** [.98 .96 .80] | **1.00** [.998 .996 .998] | **1.00** [.997 .994 .996] |
 
-Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). Retraining a head on the shifted appearance recovers every model to ≥ .95 AUC. As in all earlier OOD results, the shift relocates the latent rather than destroying information.
+Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color .974/.976/.765, shape ≥ .993, rotation ≥ .982. Retraining a head on the shifted appearance recovers every model to ≥ .93 AUC; the shift relocates the latent rather than destroying information.
 
 ### Why the table uses AUC, not accuracy
 
-Zero-shot accuracy is misleading here. With 17% unsafe states, a head that calls *everything safe* scores ≈ .83 on color, and ≈ .89 on shape (the diamond is smaller). Both new models score exactly that: color .837/.825/.828 against an all-safe rate of .826/.825/.833. Baseline's .164 is the opposite collapse (everything called unsafe). So accuracy only tells you *which way* the threshold broke.
+Zero-shot accuracy is misleading here. With 17% unsafe states, a head that calls *everything safe* scores ≈ .83 on color (≈ .89 on shape, since the diamond is smaller), and one that calls *everything unsafe* scores ≈ .17. Every model lands on one of those two numbers under purple. To confirm which, I logged the fraction of states each zero-shot head predicts safe (`/data/seongbin/lewm/safeadv_results/predsafe_check/`):
 
-**This overturns an earlier finding.** Jac+pull's color accuracy (.837/.824/.828) was previously read as "jac+pull survives color". Logging the fraction of states each zero-shot head predicts safe (`/data/seongbin/lewm/safeadv_results/predsafe_check/`):
-
-| model | predicted safe under purple (3 seeds) | true safe fraction |
+| model | predicted safe under purple (3 seeds) | failure direction |
 |---|---|---|
-| baseline | 0.000 / 0.000 / 0.000 | .84 / .83 / .83 |
-| jacobian | 0.000 / 0.002 / 0.000 | |
-| jac+pull | **1.000 / 0.929 / 1.000** | |
-| baseline + safety reg | 1.000 / 1.000 / 1.000 | |
-| jac+pull + safety reg | 0.999 / 1.000 / 0.947 | |
+| baseline | 0.000 / 0.000 / 0.000 | all unsafe |
+| jacobian | 0.000 / 0.002 / 0.000 | all unsafe |
+| jac+pull | **1.000 / 0.929 / 1.000** | all safe |
+| hue safety reg (v2 A) | 1.000 / 1.000 / 1.000 | all safe |
+| hue safety reg on jac+pull (v2 B) | 0.999 / 1.000 / 0.947 | all safe |
+| L∞ safety reg | ≈ 0 (accuracy .164 / .177 / .177 equals the unsafe rate; not logged directly) | all unsafe |
 
-So **no model keeps a usable threshold under the color shift**. Baseline and jacobian call everything unsafe. Jac+pull and the new models call everything safe, which for a safety filter is the worse failure. What separates the models is only AUC (whether the ranking survives). Jac+pull's real color advantage is ranking (AUC .75), and every earlier claim that jac+pull "survives color" on accuracy should be read this way.
+The true safe fraction is .83–.84. So **no model keeps a usable threshold under the color shift**. What separates them is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its accuracy came from calling everything safe.
 
 ## Interpretation
 
-1. **The regularizer does what it targets.** On a model with no other invariance pressure, color goes from badly inverted to clearly informative. Purple lies inside the perturbation family, so this shows the prior works; it is not out-of-family generalization.
-2. **It trades away shape.** Shape is outside the family. Pushing color variation off the safety readout appears to make the readout lean on features that a shape change disturbs. Rotation is unaffected.
-3. **It is redundant with jac+pull.** Jac+pull already reaches ~.75 on color, and adding the regularizer doesn't move it. The two seem to buy the same thing.
-4. **The threshold problem remains.** No model keeps its safe/unsafe cutoff under purple. For a deployable filter, the recolor still shifts the readout coherently in one direction.
+1. **The safety projection, not the color prior, is what helps.** Plain L∞ noise projected onto the safety readout beats the hand-designed hue family on every axis, including the color shift the hue family was built for. The hue family seems to have taught a narrow color invariance that cost shape robustness. Generic small-noise robustness *along the safety readout* transferred to all three large shifts.
+2. **It goes well beyond jacobian.** Jacobian also penalizes local sensitivity, but uniformly across all latent directions, and reaches color .67. Restricting the noise penalty to the safety readout (adversarially) reaches .91. That's consistent with the "keep nuisance off the readout axis" lever from the earlier nuisance-projection analysis.
+3. **The remaining failure is calibration.** Even the best ranking comes with a coherent readout offset under purple that pushes every state across the threshold. For a deployable filter, this needs recalibration or an offset-correction mechanism, not more invariance.
+4. **The hue variant is not worth pursuing.** It underperforms L∞ everywhere and adds nothing on top of jac+pull.
 
 ## Caveats
 
-- **One seed per trained model.** The 3 seeds are eval seeds (different sampled states and head initializations), not independent training runs.
-- **This only tests the margin head.** The more important target, the reachability critic's zero-shot behavior, hasn't been evaluated. Every earlier model collapsed there on color.
-- **BatchNorm offset in v2 A.** v2 A's first BatchNorm layer has a large running-stat offset (mean 2.2 std, variance ×9.6, vs baseline 0.9 / ×2.3). The regularizer can no longer write running stats, so this comes from the ordinary training pass. Its final-latent train/eval gap (1.05) is close to baseline's (0.99). It could still contribute to the shape drop, which is unverified. v2 B is clean (0.9 / ×2.6).
+- **One training seed per model.** The 3 seeds are eval seeds (sampled states and head initializations). Color seed variation is large (.80–.98 for L∞), so a second training seed is needed before calling this robust.
+- **Prediction quality cost.** Final pred_loss is .0114 for L∞ vs .0067 for the hue model. Whether this hurts CEM planning hasn't been tested.
+- **Only the margin head is tested.** The reachability critic's zero-shot behavior (where every earlier model collapsed on color) hasn't been evaluated.
+- **BatchNorm health.** L∞ is clean: running-stat offset 0.83, variance ×1.66 (baseline 0.91 / ×2.26). The hue v2 A model had a large offset (2.2 / ×9.6) from its ordinary training pass, which may relate to its shape drop (unverified).
 
 ## Next steps (proposed)
 
-1. **Running:** L∞ ablation, the same safety-projected penalty with per-pixel L∞ noise (ε = 8/255) instead of hue, to separate "safety projection" from "color prior" (`lewm_dubins_safeadv_linf50`; its eval starts automatically when training ends).
-2. Since no model keeps its threshold under recolor, consider a calibration fix (e.g. per-appearance offset or unsupervised re-centering of the readout) rather than more invariance.
-3. Critic zero-shot for v2 A/B, the real target.
-4. If continuing, look at why shape degrades: whether the readout shifts toward edge/shape features, and whether the BatchNorm offset is involved.
+1. **Second training seed** of the L∞ model, to confirm the color result.
+2. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost.
+3. **Critic zero-shot** for the L∞ model, the real target.
+4. **L∞ on top of jac+pull**, and an ε sweep (4/255, 16/255).
+5. **Calibration fix** for the threshold collapse, e.g. unsupervised re-centering of the readout per appearance.
 
 ---
 
 ## Appendix A: method
 
 - **Safety readout.** A margin head (margin_gp loss: zs 0.1, hinge 1.0, gradient penalty 10 @ 0.1; 512×2 MLP) trains during world-model training on detached embeddings and the dataset's `failures` labels (16.7% positives), with its own optimizer.
-- **Perturbation.** A spatially varying hue rotation (±90°) and saturation scale (×0.5–2) on a 4×4 grid. White stays white, and obstacles can't be erased. Found per batch by 2-step sign-PGD, keeping each sample's best iterate.
+- **Perturbation**, found per batch by 2-step sign-PGD, keeping each sample's best iterate. Two families (config `attack`):
+  - `hue`: a spatially varying hue rotation (±90°) and saturation scale (×0.5–2) on a 4×4 grid. White stays white, and obstacles can't be erased.
+  - `linf`: per-pixel noise |δ| ≤ ε = 8/255 in RGB, one δ per sequence shared across context frames.
 - **Penalty.** The change in the frozen head's output under the perturbation, on context frames and the 1-step prediction, divided by the in-batch safe/unsafe gap (with gradient).
 - **Schedule.** The head trains from step 0. The penalty switches on at step 2000 once head AUC ≥ .95, then ramps linearly to weight 1.0 over 10k steps.
 - **BatchNorm.** All perturbed passes are normalized with the clean batch's statistics and never update running stats (see Appendix B).
 
-**Why hue rather than ordinary noise:**
-- A recolor is a large, coherent pixel change, far outside a small noise ball.
-- Noise-style regularizers (Gaussian pixel invariance, encoder-Lipschitz, plain jacobian) had already failed to fix color.
-- A noise budget large enough to reach purple could also erase obstacles. Penalizing readout changes then teaches the encoder to ignore them.
-- The cost: the prior only covers color.
+**Why hue was tried first, and why it lost:** a recolor is a large, coherent pixel change, far outside a small noise ball, and earlier noise-style regularizers (Gaussian pixel invariance, encoder-Lipschitz, plain jacobian) hadn't fixed color. So a structured color family seemed necessary. The L∞ ablation shows that reasoning was wrong. Those earlier regularizers applied noise invariance *globally*. Applied adversarially and only along the safety readout, small noise transfers to large shifts.
 
 ## Appendix B: v1 failure (BatchNorm cheat), now fixed
 
