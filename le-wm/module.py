@@ -342,7 +342,7 @@ class SafetyAdvInvarianceReg(nn.Module):
     (latched). While off, PGD is skipped (no cost). The config `weight` is lambda_max.
     """
 
-    def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, pgd_steps=2,
+    def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, target="head", pgd_steps=2,
                  pgd_step_frac=0.5, pred_weight=1.0, head_units=512, head_lr=3e-4,
                  zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
                  min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192):
@@ -353,6 +353,12 @@ class SafetyAdvInvarianceReg(nn.Module):
         # (threat-agnostic ablation: same safety-projected penalty, no color assumption).
         assert attack in ("hue", "linf"), attack
         self.attack, self.eps_pix = attack, float(eps_pix)
+        # target="head": penalize the change of the safety readout h (safety-projected, default).
+        # target="latent": ablation without h — penalize the whole latent change ||f(x+d)-f(x)||^2
+        # (and of the prediction), normalized by the live batch latent spread instead of the gap.
+        # The head still trains (gate + logging); only the penalty stops reading through it.
+        assert target in ("head", "latent"), target
+        self.target = target
         self.eps = (float(eps_hue), float(eps_logsat))
         self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
         self.pred_weight = pred_weight
@@ -433,6 +439,15 @@ class SafetyAdvInvarianceReg(nn.Module):
     def _norm(self, x01):
         return ((x01.flatten(0, 1) - self.im_mean) / self.im_std).view_as(x01)
 
+    def _readout(self, z):
+        return self._h(z) if self.target == "head" else z.float()
+
+    def _dev(self, r, r_c, scale):
+        """Squared deviation of a readout from its clean value, in units of `scale`."""
+        if self.target == "head":
+            return ((r - r_c) / scale).pow(2)
+        return (r - r_c).pow(2).sum(-1) / scale       # latent: squared distance / spread
+
     def _objective(self, model, encode_fn, xp_n, act, hz_c, hp_c, gap):
         """Per-sample safety-readout deviation (ctx frames + 1-step pred) in units of `gap`.
         Must run inside `_CleanStatBN(...).apply()`: perturbed frames are normalized with the
@@ -440,8 +455,9 @@ class SafetyAdvInvarianceReg(nn.Module):
         n, T = xp_n.shape[:2]
         z = encode_fn(xp_n.flatten(0, 1)).view(n, T, -1)
         pred = model.predict(z, act)[:, -1]
-        hz, hp = self._h(z.flatten(0, 1)).view(n, T), self._h(pred)
-        return ((hz - hz_c) / gap).pow(2).mean(1) + self.pred_weight * ((hp - hp_c) / gap).pow(2)
+        hz = self._readout(z.flatten(0, 1)).view((n, T) + hz_c.shape[2:])
+        hp = self._readout(pred)
+        return self._dev(hz, hz_c, gap).mean(1) + self.pred_weight * self._dev(hp, hp_c, gap)
 
     def forward(self, model, encode_fn, emb, ctx_act, pixels, failures):
         dev = emb.device
@@ -466,6 +482,15 @@ class SafetyAdvInvarianceReg(nn.Module):
             gap_live = (h_all[fail == 0].mean() - h_all[fail == 1].mean()).clamp_min(0.1 * float(self.gap))
         else:
             gap_live = self.gap.detach()
+        if self.target == "latent":
+            # the identity-readout analog of the gap: squared distance between the safe and
+            # unsafe latent centroids of the batch, with grad (squashing the classes together
+            # raises the penalty instead of lowering it)
+            e = emb.flatten(0, 1).float()
+            if (fail == 0).any() and (fail == 1).any():
+                gap_live = (e[fail == 0].mean(0) - e[fail == 1].mean(0)).pow(2).sum().clamp_min(1e-3)
+            else:
+                gap_live = (e - e.mean(0)).pow(2).sum(-1).mean().detach().clamp_min(1e-3)
         self.stats["gap_live"] = gap_live.detach()
 
         T = ctx_act.size(1)
@@ -482,8 +507,8 @@ class SafetyAdvInvarianceReg(nn.Module):
         bn = _CleanStatBN(model)
         with bn.capture(), torch.no_grad():          # clean targets + clean BN stats (detached)
             zc = encode_fn(x.flatten(0, 1)).view(n, T, -1)
-            hz_c = self._h(zc.flatten(0, 1)).view(n, T)
-            hp_c = self._h(model.predict(zc, act)[:, -1])
+            hz_c = self._readout(zc.flatten(0, 1)).view((n, T) + ((-1,) if self.target == "latent" else ()))
+            hp_c = self._readout(model.predict(zc, act)[:, -1])
         gap_pgd = gap_live.detach()
         with bn.apply():
             obj = lambda P, g: self._objective(model, encode_fn, self._norm(perturb(x01, P)), act, hz_c, hp_c, g)
