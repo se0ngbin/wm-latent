@@ -104,11 +104,12 @@ What it shows:
 ## Next steps (proposed)
 
 1. **Running: L∞ on top of jac+pull** (`lewm_dubins_jacpull_safeadv_linf50`, started 2026-10-05 21:58 UTC, ~8–10 h; uniform and 50/50 evals start automatically when it finishes).
-2. **Second training seed** of the L∞ model, to confirm the color result.
-3. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost.
-4. **Critic zero-shot** for the L∞ model, the real target.
-5. **ε sweep** (4/255, 16/255).
-6. **Calibration fix** for the threshold collapse, e.g. unsupervised re-centering of the readout per appearance.
+2. **Running: "remove h" ablation** (`lewm_dubins_linf_latent50`, started 2026-10-06 00:45 UTC): identical to the L∞ run except the penalty compares the whole latent, ‖f(x_t + δ) − f(x_t)‖² (and the same for the prediction), normalized by the squared distance between the safe and unsafe latent centroids instead of the head gap. Tests whether projecting onto the safety readout is what makes L∞ work. Evals start automatically when it finishes.
+3. **Second training seed** of the L∞ model, to confirm the color result.
+4. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost.
+5. **Critic zero-shot** for the L∞ model, the real target.
+6. **ε sweep** (4/255, 16/255).
+7. **Calibration fix** for the threshold collapse, e.g. unsupervised re-centering of the readout per appearance.
 
 ---
 
