@@ -343,7 +343,7 @@ class SafetyAdvInvarianceReg(nn.Module):
     """
 
     def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, target="head", pgd_steps=2,
-                 pgd_step_frac=0.5, pred_weight=1.0, head_units=512, head_lr=3e-4,
+                 pgd_step_frac=0.5, pred_weight=1.0, enc_weight=1.0, rand_init="uniform", scale_grad=True, head_units=512, head_lr=3e-4,
                  zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
                  min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192):
         super().__init__()
@@ -361,7 +361,16 @@ class SafetyAdvInvarianceReg(nn.Module):
         self.target = target
         self.eps = (float(eps_hue), float(eps_logsat))
         self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
-        self.pred_weight = pred_weight
+        self.pred_weight, self.enc_weight = pred_weight, enc_weight
+        # ablation switches (defaults = original behaviour):
+        #   rand_init="sign": random start at the box corners (+-eps per element) instead of
+        #     uniform; with pgd_steps=0 this is a NON-adversarial perturbation of the same size
+        #     as PGD's (sign-step) iterates.
+        #   scale_grad=False: detach the live normalizer (head gap / centroid distance^2), so
+        #     the penalty keeps its scale but gives no incentive to separate the classes.
+        #   enc_weight / pred_weight: weight of the encoder (ctx-frame) / predictor term.
+        assert rand_init in ("uniform", "sign"), rand_init
+        self.rand_init, self.scale_grad = rand_init, bool(scale_grad)
         self.zs_weight, self.relu_weight = zs_weight, relu_weight
         self.gp_weight, self.gp_thresh = gp_weight, gp_thresh
         self.min_steps, self.auc_gate, self.ramp_steps, self.ema = min_steps, auc_gate, ramp_steps, ema
@@ -457,7 +466,7 @@ class SafetyAdvInvarianceReg(nn.Module):
         pred = model.predict(z, act)[:, -1]
         hz = self._readout(z.flatten(0, 1)).view((n, T) + hz_c.shape[2:])
         hp = self._readout(pred)
-        return self._dev(hz, hz_c, gap).mean(1) + self.pred_weight * self._dev(hp, hp_c, gap)
+        return self.enc_weight * self._dev(hz, hz_c, gap).mean(1) + self.pred_weight * self._dev(hp, hp_c, gap)
 
     def forward(self, model, encode_fn, emb, ctx_act, pixels, failures):
         dev = emb.device
@@ -491,6 +500,8 @@ class SafetyAdvInvarianceReg(nn.Module):
                 gap_live = (e[fail == 0].mean(0) - e[fail == 1].mean(0)).pow(2).sum().clamp_min(1e-3)
             else:
                 gap_live = (e - e.mean(0)).pow(2).sum(-1).mean().detach().clamp_min(1e-3)
+        if not self.scale_grad:
+            gap_live = gap_live.detach()
         self.stats["gap_live"] = gap_live.detach()
 
         T = ctx_act.size(1)
@@ -512,7 +523,10 @@ class SafetyAdvInvarianceReg(nn.Module):
         gap_pgd = gap_live.detach()
         with bn.apply():
             obj = lambda P, g: self._objective(model, encode_fn, self._norm(perturb(x01, P)), act, hz_c, hp_c, g)
-            P = (torch.rand(pshape, device=dev) * 2 - 1) * eps                        # random start
+            if self.rand_init == "sign":
+                P = (torch.randint(0, 2, pshape, device=dev) * 2 - 1).float() * eps    # random corner
+            else:
+                P = (torch.rand(pshape, device=dev) * 2 - 1) * eps                    # random start
             best_P, best_d, d_start = P, None, None
             for k in range(self.pgd_steps + 1):     # PGD (L_inf box), keep per-sample best iterate
                 if k < self.pgd_steps:
