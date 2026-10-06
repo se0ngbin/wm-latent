@@ -146,7 +146,13 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 ## Next steps (proposed)
 
 1. **Second training seed** of L∞, jac+pull + L∞ and no-h, to rank them on color.
-2. **Isolate the ingredient:** no-h with random (non-adversarial) noise, and no-h with an unnormalized penalty, to see whether the adversary or the class-separation denominator does the work.
+2. **Running (launched 2026-10-06 19:37 UTC, code `9dfca47`): ingredient and loss-term ablations**, all on the no-h base, with everything else identical to `lewm_dubins_linf_latent50`:
+   - `lewm_dubins_lz_rand50`: random ±ε corner noise, no PGD (`pgd_steps: 0, rand_init: sign`). Tests whether the adversary matters.
+   - `lewm_dubins_lz_det50`: detached centroid denominator (`scale_grad: false`). Same scale, but no incentive to separate the classes.
+   - `lewm_dubins_lz_enc50`: encoder term only (`pred_weight: 0`).
+   - `lewm_dubins_lz_pred50`: predictor term only (`enc_weight: 0`).
+
+   Uniform and 50/50 evals start automatically when each run finishes (`safeadv_results/ablation_eval/`), followed by a Jacobian comparison. Expected done ~08:00 UTC on 2026-10-07.
 3. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost, especially no-h's.
 4. **Critic zero-shot** for the L∞ models, the real target.
 5. **ε sweep** (4/255, 16/255).
