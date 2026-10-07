@@ -1,0 +1,16 @@
+# safety-gym CarGoal + binary per-frame `failures` labels (needed by the safety_adv regularizer)
+dataset:
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  frameskip: 1
+  name: sg_cargoal_expert_u.h5
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+    - state
+    - failures
+  keys_to_cache:
+    - action
+    - proprio
+    - state
+    - failures
