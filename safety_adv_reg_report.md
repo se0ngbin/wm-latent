@@ -1,12 +1,12 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-06 18:10 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-07 22:30 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
 - **What we tried:** a training-time regularizer that makes the world model's *safety readout* insensitive to adversarial perturbations. The readout is a margin head learned from the binary failure labels; no OOD data is used. The main variant uses plain per-pixel **L∞ noise** (ε = 8/255). Full training details are in Appendix A.
 - **Adversarial L∞ noise invariance gives the best models we have on every shift.** Zero-shot color AUC (uniform eval): L∞ **0.910 ± 0.098**, jac+pull + L∞ **0.965 ± 0.013**, L∞ without the head **0.951 ± 0.004**. For comparison, jac+pull scores 0.753 ± 0.049 and baseline 0.144 ± 0.032. All three L∞ models are ≥ 0.994 on shape and rotation. The 50/50 eval agrees (color 0.927 / 0.958 / 0.955).
-- **The safety projection is not what makes it work (new).** The "remove h" ablation penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. It matches or beats the head-projected version on every axis, and its color result is far less seed-variable (± 0.004 vs ± 0.098). The ingredients that matter are the adversarial search and the class-separation denominator.
+- **The safety projection is not what makes it work, but every other ingredient is (new).** The "remove h" ablation penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. It matches or beats the head-projected version on every axis, and is far less seed-variable on color (± 0.004 vs ± 0.098). Removing any one of its other parts drops color AUC from 0.951 to 0.63–0.70, below jac+pull: the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). Shape and rotation stay ≥ 0.991 in every ablation.
 - **Adding L∞ on top of jac+pull** lifts jac+pull's color AUC 0.753 → 0.965 and gives the best color number overall. It costs more prediction loss (0.0165).
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
@@ -104,6 +104,50 @@ What it shows:
 - **New models:** jac+pull + L∞ (color AUC 0.958 ± 0.012) and no-h (0.955 ± 0.002) both beat L∞ (0.927 ± 0.021) on color and match it elsewhere. Both still lose the color threshold, in opposite directions: jac+pull + L∞ calls almost everything *safe* (0.995), no-h calls everything *unsafe* (0.000).
 - **Corrects (baseline rotation):** baseline's rotation threshold also collapses (sign accuracy 0.500, everything called safe). In the uniform eval its 0.830 rotation sign accuracy equalled the all-safe rate, which hid this.
 
+## Ablations: what makes the no-h regularizer work
+
+Four runs (code `9dfca47`), each identical to the no-h model (`lewm_dubins_linf_latent50`) except for one change. They are compared with the full no-h model:
+- **random noise:** random ±ε noise at every pixel, the same size as PGD's iterates but with no adversarial search (`pgd_steps: 0, rand_init: sign`);
+- **detached denominator:** the centroid-distance normalizer is detached, so it keeps its scale but gives no reward for separating the classes (`scale_grad: false`);
+- **encoder term only:** `pred_weight: 0`;
+- **predictor term only:** `enc_weight: 0`.
+
+Zero-shot AUC, mean ± std over 3 eval seeds; shape and rotation from the uniform eval:
+
+| model | color, uniform | color, 50/50 | shape | rotation | final train pred_loss |
+|---|---|---|---|---|---|
+| **no h, full** | **0.951 ± 0.004** | **0.955 ± 0.002** | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0253 |
+| random noise (no PGD) | 0.631 ± 0.030 | 0.622 ± 0.026 | 0.997 ± 0.002 | 0.996 ± 0.001 | **0.0140** |
+| detached denominator | 0.643 ± 0.022 | 0.627 ± 0.004 | 0.991 ± 0.002 | 0.991 ± 0.005 | 0.1070 |
+| encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | 0.997 ± 0.001 | 0.996 ± 0.001 | 0.0225 |
+| predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0265 |
+| *reference: jac+pull* | *0.753 ± 0.049* | *0.747 ± 0.063* | *0.977* | *0.978* | |
+
+Per eval seed (color AUC, uniform / 50/50):
+- encoder only: 0.949 / 0.920, 0.416 / 0.398, 0.745 / 0.432;
+- predictor only: 0.797 / 0.125, 0.366 / 0.801, 0.911 / 0.815;
+- full no-h: 0.948, 0.955, 0.949 (uniform).
+
+- **Every ingredient is needed for color; none is needed for shape and rotation.** All four ablations keep shape and rotation at ≥ 0.991 AUC, the same as the full model. On color, each one falls from 0.951 to between 0.63 and 0.70 AUC, which is below jac+pull.
+- **The adversary matters.** Random noise of the same per-pixel size gives 0.631 ± 0.030. It is also the cheapest variant on prediction (pred_loss 0.0140). It doesn't separate the classes much either (centroid distance² 55 at the end, vs ~350 for the full model).
+- **The separation reward matters, and without it the penalty fights prediction.** With the denominator detached, the only way to lower the penalty is real invariance. The penalty stays an order of magnitude higher (0.22 vs ~0.02), pred_loss is 4× the full model's (0.107), and color AUC is 0.643.
+- **Each term alone is unstable; together they're stable.** Encoder-only and predictor-only reach about 0.70 on average, but individual eval seeds (fresh state samples and head initializations) range from 0.12 to 0.95. Whether the color ranking survives then depends on the particular head. Only with both terms is every head 0.95.
+- **Caveat:** one training seed per variant. The *spread* across eval seeds is a property of the encoder; the gap between full no-h and the single-term variants could still partly be training-seed luck.
+
+Jacobians, same protocol as the section below:
+
+| model | σ1 | ‖J‖_F | cond | eff. rank | top-5 energy | ‖J‖/cdist | ‖∇h‖/gap | color AUC |
+|---|---|---|---|---|---|---|---|---|
+| no h, full | 1.202 | 1.869 | 96.6 | 16.5 | 0.809 | 0.100 | 0.0256 | 0.951 |
+| random noise | 1.373 | 2.982 | 50.7 | 22.6 | 0.670 | 0.347 | 0.0338 | 0.631 |
+| detached denominator | 1.342 | 2.026 | 451.4 | 8.1 | 0.913 | 0.105 | 0.0415 | 0.643 |
+| encoder term only | 0.694 | 1.601 | 23.4 | 34.0 | 0.578 | 0.184 | 0.0133 | 0.703 |
+| predictor term only | 1.276 | 1.993 | 100.8 | 15.0 | 0.851 | 0.151 | 0.0250 | 0.691 |
+
+- **The local Jacobian again doesn't predict color.** Encoder-only has the smallest and best-conditioned Jacobian of the five and the least sensitive readout (0.0133), yet unstable color.
+- **Detached denominator:** about as small relative to class separation as the full model (0.105), but extremely anisotropic (condition number 451, 8 effective dimensions) with the most sensitive readout. Without the separation route, the encoder squeezes sensitivity into a few directions.
+- **Random noise:** pixel sensitivity relative to class separation is 3.5× the full model's (0.347). That fits a weaker regularizer that doesn't push the classes apart.
+
 ## Encoder Jacobians across models
 
 Exact encoder Jacobian J = ∂z/∂x (192 × 150528, built from 192 VJPs) on the same 16 dataset frames as the earlier jacobian-mechanism analysis (`le-wm/scripts/jac_singular.py`, rng seed 0). Per-frame values are averaged. Latent scales differ across models, so the last two columns are scale-free:
@@ -131,7 +175,12 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 
 ## Interpretation
 
-1. **Adversarial noise invariance transfers to large shifts, and the safety projection isn't needed.** Small adversarial pixel noise gives robustness to three shifts it never saw, including the color shift that a hand-designed color perturbation handled worse (Appendix B). The no-h ablation penalizes the whole latent instead of the readout and is at least as good (color 0.951 ± 0.004 vs 0.910 ± 0.098). Earlier *global* invariance regularizers (Gaussian pixel invariance, encoder-Lipschitz) never fixed color. Compared with those, what these runs share is (a) a worst-case search instead of random noise and (b) normalizing by the safe/unsafe separation, so the cheapest fix is to separate the classes, not to collapse the latent. Which of the two matters hasn't been isolated.
+1. **Adversarial noise invariance transfers to large shifts, and the safety projection isn't needed, but the rest is.** Small adversarial pixel noise gives robustness to three shifts it never saw, including the color shift that a hand-designed color perturbation handled worse (Appendix B). The no-h ablation penalizes the whole latent instead of the readout and is at least as good (color 0.951 ± 0.004 vs 0.910 ± 0.098). The follow-up ablations show that color needs all of the following:
+   - a worst-case search: random noise of the same size gives 0.631, consistent with earlier *global* random-noise invariance regularizers never fixing color;
+   - the gradient through the class-separation denominator: detached gives 0.643, and prediction suffers;
+   - both the encoder and the predictor term: either alone is unstable across heads.
+
+   Shape and rotation, by contrast, are easy: any of these variants gets them.
 2. **It goes well beyond jacobian, by a different mechanism.** Jacobian whitens the local Jacobian and reaches color AUC 0.673. The L∞ variants keep or even sharpen the anisotropic Jacobian and reach 0.91–0.97. The two combine: jac+pull + L∞ is the best color model.
 3. **The remaining failure is calibration.** Even the best ranking comes with a coherent readout offset under purple that pushes every state across the threshold, and every L∞ variant has it. For a deployable filter, this needs recalibration or an offset-correction mechanism, not more invariance.
 
@@ -146,13 +195,7 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 ## Next steps (proposed)
 
 1. **Second training seed** of L∞, jac+pull + L∞ and no-h, to rank them on color.
-2. **Running (launched 2026-10-06 19:37 UTC, code `9dfca47`): ingredient and loss-term ablations**, all on the no-h base, with everything else identical to `lewm_dubins_linf_latent50`:
-   - `lewm_dubins_lz_rand50`: random ±ε corner noise, no PGD (`pgd_steps: 0, rand_init: sign`). Tests whether the adversary matters.
-   - `lewm_dubins_lz_det50`: detached centroid denominator (`scale_grad: false`). Same scale, but no incentive to separate the classes.
-   - `lewm_dubins_lz_enc50`: encoder term only (`pred_weight: 0`).
-   - `lewm_dubins_lz_pred50`: predictor term only (`enc_weight: 0`).
-
-   Uniform and 50/50 evals start automatically when each run finishes (`safeadv_results/ablation_eval/`), followed by a Jacobian comparison. Expected done ~08:00 UTC on 2026-10-07.
+2. **Second training seed for the single-term variants** (encoder only, predictor only), to check whether their eval-seed instability is a property of the variant.
 3. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost, especially no-h's.
 4. **Critic zero-shot** for the L∞ models, the real target.
 5. **ε sweep** (4/255, 16/255).
@@ -369,7 +412,7 @@ Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbe
 ## Appendix D: where things are
 
 - **Code:** `le-wm/module.py` (`SafetyAdvInvarianceReg`, `_CleanStatBN`), config key `safety_adv` (kwargs `attack: linf | hue`, `eps_pix`, `min_steps`, `auc_gate`, `ramp_steps`, `n_sub`, `pgd_steps`), data config `data=dubins_safety`.
-- **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
-- **Training logs and code snapshots:** `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞, `.run_L/`; jac+pull + L∞, `.run_JL/`), `code_safeadv_dab24f2/` (no h, `.run_LZ/`), `code_safeadv_c6e93c6/` (hue), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
-- **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
+- **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_lz_{rand,det,enc,pred}50/` (no-h ablations; code `9dfca47`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
+- **Training logs and code snapshots:** `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞, `.run_L/`; jac+pull + L∞, `.run_JL/`), `code_safeadv_dab24f2/` (no h, `.run_LZ/`), `code_safeadv_9dfca47/` (ablations, `run_<k>.sh`, `.run_<k>/`), `code_safeadv_c6e93c6/` (hue), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
+- **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
 - **Baseline numbers:** `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `le-wm/scripts/ood_margin_gp_jepa.py`).
