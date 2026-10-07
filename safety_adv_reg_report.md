@@ -6,7 +6,7 @@
 
 - **What we tried:** a training-time regularizer that makes the world model's *safety readout* insensitive to adversarial perturbations. The readout is a margin head learned from the binary failure labels; no OOD data is used. The main variant uses plain per-pixel **L∞ noise** (ε = 8/255). Full training details are in Appendix A.
 - **Adversarial L∞ noise invariance gives the best models we have on every shift.** Zero-shot color AUC (uniform eval): L∞ **0.910 ± 0.098**, jac+pull + L∞ **0.965 ± 0.013**, L∞ without the head **0.951 ± 0.004**. For comparison, jac+pull scores 0.753 ± 0.049 and baseline 0.144 ± 0.032. All three L∞ models are ≥ 0.994 on shape and rotation. The 50/50 eval agrees (color 0.927 / 0.958 / 0.955).
-- **The safety projection is not what makes it work, but every other ingredient is (new).** The "remove h" ablation penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. It matches or beats the head-projected version on every axis, and is far less seed-variable on color (± 0.004 vs ± 0.098). Removing any one of its other parts drops color AUC from 0.951 to 0.63–0.70, below jac+pull: the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). Shape and rotation stay ≥ 0.991 in every ablation.
+- **The safety projection is not what makes it work, but every other ingredient is (new).** The "remove h" ablation penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. It matches or beats the head-projected version on every axis, and is far less seed-variable on color (± 0.004 vs ± 0.098). Removing any one of its other parts drops color AUC from 0.951 to 0.63–0.70 (baseline: 0.144): the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). Shape and rotation stay ≥ 0.991 in every ablation.
 - **Adding L∞ on top of jac+pull** lifts jac+pull's color AUC 0.753 → 0.965 and gives the best color number overall. It costs more prediction loss (0.0165).
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
@@ -106,7 +106,7 @@ What it shows:
 
 ## Ablations: what makes the no-h regularizer work
 
-Four runs (code `9dfca47`), each identical to the no-h model (`lewm_dubins_linf_latent50`) except for one change. They are compared with the full no-h model:
+Four runs (code `9dfca47`). Each is **the baseline model (sigreg only, same recipe and seed) plus the no-h regularizer with one change**: no Jacobian/pull terms, and the head is not in the penalty. They are compared with the full no-h model and with the unregularized baseline:
 - **random noise:** random ±ε noise at every pixel, the same size as PGD's iterates but with no adversarial search (`pgd_steps: 0, rand_init: sign`);
 - **detached denominator:** the centroid-distance normalizer is detached, so it keeps its scale but gives no reward for separating the classes (`scale_grad: false`);
 - **encoder term only:** `pred_weight: 0`;
@@ -121,14 +121,14 @@ Zero-shot AUC, mean ± std over 3 eval seeds; shape and rotation from the unifor
 | detached denominator | 0.643 ± 0.022 | 0.627 ± 0.004 | 0.991 ± 0.002 | 0.991 ± 0.005 | 0.1070 |
 | encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | 0.997 ± 0.001 | 0.996 ± 0.001 | 0.0225 |
 | predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0265 |
-| *reference: jac+pull* | *0.753 ± 0.049* | *0.747 ± 0.063* | *0.977* | *0.978* | |
+| *reference: baseline (sigreg only, no regularizer)* | *0.144 ± 0.032* | *0.177 ± 0.032* | *0.913 ± 0.024* | *0.956 ± 0.023* | *not logged* |
 
 Per eval seed (color AUC, uniform / 50/50):
 - encoder only: 0.949 / 0.920, 0.416 / 0.398, 0.745 / 0.432;
 - predictor only: 0.797 / 0.125, 0.366 / 0.801, 0.911 / 0.815;
 - full no-h: 0.948, 0.955, 0.949 (uniform).
 
-- **Every ingredient is needed for color; none is needed for shape and rotation.** All four ablations keep shape and rotation at ≥ 0.991 AUC, the same as the full model. On color, each one falls from 0.951 to between 0.63 and 0.70 AUC, which is below jac+pull.
+- **Every ingredient is needed for color; none is needed for shape and rotation.** All four ablations keep shape and rotation at ≥ 0.991 AUC, the same as the full model. On color, each one falls from 0.951 to between 0.63 and 0.70 AUC: still far above baseline (0.144), but most of the gain is lost.
 - **The adversary matters.** Random noise of the same per-pixel size gives 0.631 ± 0.030. It is also the cheapest variant on prediction (pred_loss 0.0140). It doesn't separate the classes much either (centroid distance² 55 at the end, vs ~350 for the full model).
 - **The separation reward matters, and without it the penalty fights prediction.** With the denominator detached, the only way to lower the penalty is real invariance. The penalty stays an order of magnitude higher (0.22 vs ~0.02), pred_loss is 4× the full model's (0.107), and color AUC is 0.643.
 - **Each term alone is unstable; together they're stable.** Encoder-only and predictor-only reach about 0.70 on average, but individual eval seeds (fresh state samples and head initializations) range from 0.12 to 0.95. Whether the color ranking survives then depends on the particular head. Only with both terms is every head 0.95.
