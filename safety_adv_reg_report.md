@@ -121,7 +121,7 @@ Zero-shot AUC, mean ± std over 3 eval seeds; shape and rotation from the unifor
 | detached denominator | 0.643 ± 0.022 | 0.627 ± 0.004 | 0.991 ± 0.002 | 0.991 ± 0.005 | 0.1070 |
 | encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | 0.997 ± 0.001 | 0.996 ± 0.001 | 0.0225 |
 | predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0265 |
-| *reference: baseline (sigreg only, no regularizer)* | *0.144 ± 0.032* | *0.177 ± 0.032* | *0.913 ± 0.024* | *0.956 ± 0.023* | *not logged* |
+| *reference: sigreg only* | *0.144 ± 0.032* | *0.177 ± 0.032* | *0.913 ± 0.024* | *0.956 ± 0.023* | *not logged* |
 
 Per eval seed (color AUC, uniform / 50/50):
 - encoder only: 0.949 / 0.920, 0.416 / 0.398, 0.745 / 0.432;
