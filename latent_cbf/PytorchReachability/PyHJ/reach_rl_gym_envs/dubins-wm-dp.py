@@ -74,6 +74,49 @@ class Dubins_WM_DP_Env(gym.Env):
         # Reward shaping: multiply the (tanh'd) margin signal so the critic
         # gets a stronger Bellman target. Default 1.0 keeps original behavior.
         self.reward_scale = float(getattr(config, "reward_scale", 1.0))
+        # OOD appearance override for the RETRAINED value-function column: re-render
+        # the reset-seed images under a shifted obstacle appearance so the DDPG
+        # critic is trained on the shifted latent distribution (with a shifted
+        # margin). Env vars: CRITIC_OBST_COLOR (e.g. purple), CRITIC_OBST_SHAPE
+        # (diamond), CRITIC_ROT_DEG (0/90/...). Matches critic_ood_eval's render.
+        import os as _os
+        self._ood_color = (_os.environ.get("CRITIC_OBST_COLOR", "").strip() or None)
+        _shp = (_os.environ.get("CRITIC_OBST_SHAPE", "").strip() or None)
+        self._ood_diamond = (_shp in ("diamond", "square"))
+        self._ood_rot = int(_os.environ.get("CRITIC_ROT_DEG", "0") or 0)
+        self._ood_on = bool(self._ood_color or self._ood_diamond or self._ood_rot)
+        if self._ood_on:
+            self._ensure_render_env()
+            print(f"[dubins-wm] OOD reset appearance: color={self._ood_color} "
+                  f"diamond={self._ood_diamond} rot={self._ood_rot}")
+        # GT-margin ablation: instead of reading the LEARNED margin head off the
+        # imagined latent, track the TRUE (x,y,θ) alongside the latent rollout
+        # (frameskip=1, one imagine = one RK4 step at omega = action*turnRate) and
+        # use the ground-truth signed distance as the reward. Isolates the
+        # PREDICTOR's role: the critic still reads the learned latent feature and
+        # bootstraps over the learned dynamics, only the reward is oracle-clean.
+        self._gt_margin = bool(int(_os.environ.get("CRITIC_GT_MARGIN", "0") or 0))
+        if self._gt_margin:
+            self._ensure_render_env()
+            self._gt_state = None
+            print("[dubins-wm] GT-margin reward ON (predictor-isolation ablation)")
+
+    def _gt_reward(self):
+        """tanh(signed distance to the nearest obstacle boundary) at self._gt_state;
+        sign>=0 safe, matching the learned margin's tanh'd reward convention."""
+        x, y, _ = self._gt_state
+        g = min(float(np.hypot(x - cx, y - cy) - r) for (cx, cy, r) in self._obstacles)
+        return float(np.tanh(g))
+
+    def _gt_integrate(self, omega):
+        """One RK4 dubins step (dt, speed from the render env) with turn rate omega."""
+        env = self._render_env
+        dt, spd = env.dt, env.speed
+        s = self._gt_state
+        def f(st):
+            return np.array([spd * np.cos(st[2]), spd * np.sin(st[2]), omega], np.float32)
+        k1 = f(s); k2 = f(s + 0.5 * dt * k1); k3 = f(s + 0.5 * dt * k2); k4 = f(s + dt * k3)
+        self._gt_state = (s + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)).astype(np.float32)
     
     def step(self, action):
         ac = self.action_buffer.pop(0)
@@ -87,7 +130,10 @@ class Dubins_WM_DP_Env(gym.Env):
         ac_torch = torch.tensor([[action]], dtype=torch.float32).to(self.device)*self.turnRate
         self.latent = self.wm.dynamics.imagine_with_action(ac_torch, init)
         rew, cont = self.safety_margin(self.latent) # rew is negative if unsafe
-        
+        if self._gt_margin:
+            self._gt_integrate(float(action) * self.turnRate)
+            rew = self._gt_reward()
+
         self.feat = self.wm.dynamics.get_feat(self.latent).detach().cpu().numpy()
 
         if len(self.action_buffer) == 0:
@@ -130,6 +176,48 @@ class Dubins_WM_DP_Env(gym.Env):
         self._obstacles = ec.get_obstacles_list()
         self._world_bounds = tuple(ec.world_bounds)
         return self._render_env
+
+    def _render_diamond(self, env):
+        """Render the obstacle as an L1 diamond (matches critic_ood_eval + the
+        diamond failure label). Same geometry as env._render_image otherwise."""
+        scale = 4; h = (env.image_size[0] * scale, env.image_size[1] * scale)
+        img = Image.new("RGB", h, env.colors["background"]); from PIL import ImageDraw
+        draw = ImageDraw.Draw(img)
+        def w2p(c):
+            x, y = c
+            return (int((x - env.x_min) / (env.x_max - env.x_min) * h[0]),
+                    int((env.y_max - y) / (env.y_max - env.y_min) * h[1]))
+        for ox, oy, r in env.obstacles:
+            cx, cy = w2p((ox, oy)); rp = r / (env.x_max - env.x_min) * h[0]
+            draw.polygon([(cx, cy - rp), (cx + rp, cy), (cx, cy + rp), (cx - rp, cy)],
+                         fill=env.colors["obstacle"])
+        gc = w2p(env.goal_position); gr = env.goal_radius / (env.x_max - env.x_min) * h[0]
+        draw.ellipse([(gc[0] - gr, gc[1] - gr), (gc[0] + gr, gc[1] + gr)], fill=env.colors["goal"])
+        env._draw_agent(draw, w2p(env.state[:2]), float(env.state[2]), scale)
+        return np.array(img.resize(env.image_size, Image.Resampling.LANCZOS))
+
+    def _reappearance(self, init_traj):
+        """Re-render init_traj['image'] from init_traj['state'] under the OOD
+        obstacle appearance so the seeded latent lives in the shifted region."""
+        if not self._ood_on:
+            return init_traj
+        env = self._ensure_render_env()
+        env.colors = {"background": "white", "agent": "blue", "goal": "green",
+                      "obstacle": self._ood_color or "red"}
+        # Full (x, y, theta) lives under privileged_state; "state" is theta only.
+        imgs = init_traj["image"]; states = init_traj["privileged_state"]
+        T = imgs.shape[1]; H, W = imgs.shape[2], imgs.shape[3]
+        new = np.empty_like(imgs)
+        for t in range(T):
+            env.state = np.asarray(states[0, t], dtype=np.float32)
+            im = self._render_diamond(env) if self._ood_diamond else env.render()
+            if im.shape[0] != H or im.shape[1] != W:
+                im = np.array(Image.fromarray(im).resize((W, H)))
+            if self._ood_rot:
+                im = np.ascontiguousarray(np.rot90(im, k=self._ood_rot // 90))
+            new[0, t] = im
+        init_traj = dict(init_traj); init_traj["image"] = new
+        return init_traj
 
     def _sample_uniform_state(self, rng=None):
         """Draw (x, y, θ) uniformly within world bounds, rejecting points
@@ -193,6 +281,13 @@ class Dubins_WM_DP_Env(gym.Env):
             else:
                 self.action_buffer = [None] * 8
 
+        if getattr(self, "_gt_margin", False):
+            # Full (x,y,θ) lives under privileged_state in the buffer path; the
+            # uniform-reset path stores it under "state" (theta-only in the buffer).
+            _sk = "privileged_state" if "privileged_state" in init_traj else "state"
+            self._gt_state = np.asarray(init_traj[_sk][0, -1], np.float32).reshape(-1)[:3].copy()
+
+        init_traj = self._reappearance(init_traj)
         data = self.wm.preprocess(init_traj)
         embed = self.encoder(data)
         self.latent, _ = self.wm.dynamics.observe(

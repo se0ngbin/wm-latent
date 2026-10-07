@@ -91,7 +91,18 @@ def run_episode(env: DubinsEnv, controller, config: Config) -> Dict[str, Any]:
     # Reset controller if it exposes reset (e.g. MPPI warm-start state)
     if hasattr(controller, 'reset'):
         controller.reset()
-    
+
+    # LE-WM planner is goal-image conditioned: build the goal image (agent at
+    # the green goal) from this episode's goal position and hand it to the
+    # controller. Green marker + obstacles render identically to live frames.
+    if config.controller.controller_type == "lewm_planner":
+        gx, gy = np.array(env.goal_position, dtype=float)
+        _saved = env.state.copy()
+        env.state = np.array([gx, gy, 0.0], dtype=np.float32)
+        goal_img = env.render()
+        env.state = _saved
+        controller.set_goal(goal_img)
+
     # Run episode
     for step in range(exp_config.max_test_steps):
         # Compute action using controller
@@ -101,7 +112,7 @@ def run_episode(env: DubinsEnv, controller, config: Config) -> Dict[str, Any]:
                 env_config.get_obstacles_list(),
                 np.array(env_config.goal_position),
             )
-        elif config.controller.controller_type in ("diffusion", "diffusion_wm"):
+        elif config.controller.controller_type in ("diffusion", "diffusion_wm", "lewm_planner"):
             action = controller.compute_action(info, obs)
         else:
             raise ValueError(f"Unsupported controller {config.controller.controller_type!r}")

@@ -55,6 +55,7 @@ class Dreamer(nn.Module):
         ):  # compilation is not supported on windows
             self._wm = torch.compile(self._wm)
         self._make_pretrain_opt()
+        self._sa_state = {"auc": 0.0, "gap": 0.0, "n": 0, "open": -1, "ema": 0.99}
 
 
     def _make_pretrain_opt(self):
@@ -148,8 +149,11 @@ class Dreamer(nn.Module):
         
         post_detached = {k: v.detach() for k, v in post.items()}
         feat_detached = wm.dynamics.get_feat(post_detached).detach()
-        safe_data = torch.where(data["failure"] == 0.)
-        unsafe_data = torch.where(data["failure"] == 1.)
+        valid = torch.ones_like(data["failure"], dtype=torch.bool)
+        if getattr(self._config, "sa_weight", 0.0) > 0.0:
+            valid[:, 0] = False   # t=0 label is forced safe by the loader
+        safe_data = torch.where((data["failure"] == 0.) & valid)
+        unsafe_data = torch.where((data["failure"] == 1.) & valid)
         safe_dataset = feat_detached[safe_data]
         unsafe_dataset = feat_detached[unsafe_data]
 
@@ -198,6 +202,7 @@ class Dreamer(nn.Module):
 
                 losses = {}
                 feat = wm.dynamics.get_feat(post)
+                feat_post = feat
 
                 if (step is None or step <= self._config.steps):
                     preds = {}
@@ -232,6 +237,13 @@ class Dreamer(nn.Module):
                     model_loss = model_loss + enc_lip_weight * enc_lip_loss
                     metrics["enc_lip_loss"] = to_np(enc_lip_loss)
 
+                if training and getattr(self._config, "sa_weight", 0.0) > 0.0:
+                    sa_loss, sa_stats = self._safety_adv_reg(data, feat_post)
+                    metrics.update(sa_stats)
+                    if sa_loss is not None:
+                        model_loss = model_loss + self._config.sa_weight * sa_loss
+                        metrics["sa_loss"] = to_np(sa_loss)
+
                 # Only optimize if training
                 if training:
                     metrics.update(self.pretrain_opt(torch.mean(model_loss), self.pretrain_params))
@@ -252,6 +264,106 @@ class Dreamer(nn.Module):
                 metrics["post_ent"] = to_np(torch.mean(wm.dynamics.get_dist(post).entropy()))
         
         return metrics, post, prior
+
+    # ---------------- safety-aware adversarial invariance (port of le-wm SafetyAdvInvarianceReg) --------
+    def _safety_adv_reg(self, data, feat_main):
+        """Adversarial L_inf pixel invariance of the safety readout (target="head": the in-training
+        margin_gp head, frozen params) or of the whole RSSM feature (target="latent", "no h").
+
+        encoder term = posterior feat f(post_t), predictor term = prior feat f(prior_t) (the one-step
+        RSSM prediction from the perturbed history), both vs the clean pass, in units of the live
+        safe/unsafe separation (head gap, or squared centroid distance for "latent"), with gradient.
+        delta: one L_inf field per sequence shared across time, PGD (random start, sign steps,
+        per-sample best iterate). Clean and perturbed passes use the SAME RNG seed so the RSSM's
+        stochastic samples cancel. t=0 is excluded from label statistics (loader forces it safe).
+        Gate: step >= min_steps and EMA head AUC >= auc_gate, then linear ramp. No BatchNorm in the
+        dreamer WM, so no clean-stat handling is needed."""
+        c, wm, dev = self._config, self._wm, feat_main.device
+        st = self._sa_state
+        head = wm.heads["margin_gp"]
+        params = {k: v.detach() for k, v in head.named_parameters()}
+        h = lambda f: torch.func.functional_call(head, params, (f,)).squeeze(-1)
+        fail = data["failure"][:, 1:].reshape(-1)
+        fm = feat_main[:, 1:].reshape(-1, feat_main.shape[-1])
+        # gate statistics (detached)
+        with torch.no_grad():
+            hm = h(fm.detach())
+            if (fail == 0).any() and (fail == 1).any():
+                ps, ns = hm[fail == 0], hm[fail == 1]
+                auc = (ps[:, None] > ns[None, :]).float().mean()
+                st["auc"] = st["ema"] * st["auc"] + (1 - st["ema"]) * float(auc)
+                st["gap"] = st["ema"] * st["gap"] + (1 - st["ema"]) * max(float(ps.mean() - ns.mean()), 1e-3)
+                st["n"] += 1
+        deb = lambda v: v / max(1e-8, 1 - st["ema"] ** st["n"]) if st["n"] > 0 else v
+        auc_d, gap_d = deb(st["auc"]), max(deb(st["gap"]), 1e-3)
+        if st["open"] < 0 and self._step >= c.sa_min_steps and auc_d >= c.sa_auc_gate:
+            st["open"] = self._step
+        ramp = 0.0 if st["open"] < 0 else min(1.0, (self._step - st["open"]) / max(1, c.sa_ramp_steps))
+        stats = {"sa_auc": auc_d, "sa_gap": gap_d, "sa_ramp": ramp}
+        if ramp == 0.0 or not ((fail == 0).any() and (fail == 1).any()):
+            return None, stats
+        # live separation, with grad
+        if c.sa_target == "head":
+            hl = h(fm)
+            scale = (hl[fail == 0].mean() - hl[fail == 1].mean()).clamp_min(0.1 * gap_d)
+        else:
+            scale = (fm[fail == 0].mean(0) - fm[fail == 1].mean(0)).pow(2).sum().clamp_min(1e-3)
+        n = min(c.sa_n_sub, data["image"].shape[0])
+        sub = {k: v[:n] for k, v in data.items() if torch.is_tensor(v)}
+        x01 = sub["image"]                                   # (n,T,H,W,C) in [0,1]
+        readout = h if c.sa_target == "head" else (lambda f: f)
+        seed = int(torch.randint(0, 2 ** 31 - 1, (1,)))
+
+        def feats(img):
+            d2 = dict(sub); d2["image"] = img
+            with torch.random.fork_rng(devices=[dev]):
+                torch.manual_seed(seed)
+                post, prior = wm.dynamics.observe(wm.encoder(d2), sub["action"], sub["is_first"])
+            return wm.dynamics.get_feat(post), wm.dynamics.get_feat(prior)
+
+        def dev_(r, rc, s):
+            return ((r - rc) / s).pow(2) if c.sa_target == "head" else (r - rc).pow(2).sum(-1) / s
+
+        with torch.no_grad():
+            fp_c, fq_c = feats(x01)
+            rp_c, rq_c = readout(fp_c), readout(fq_c)
+
+        def obj(P, s):
+            fp, fq = feats((x01 + P).clamp(0, 1))
+            return (c.sa_enc_weight * dev_(readout(fp), rp_c, s).mean(1)
+                    + c.sa_pred_weight * dev_(readout(fq), rq_c, s).mean(1))
+
+        eps = c.sa_eps
+        s_pgd = scale.detach()
+        if os.environ.get("SA_DEBUG"):
+            with torch.no_grad():
+                print(f"[safety_adv] zero-delta deviation={float(obj(torch.zeros((n, 1) + tuple(x01.shape[2:]), device=dev), s_pgd).abs().max()):.3g}", flush=True)
+        P = (torch.rand((n, 1) + tuple(x01.shape[2:]), device=dev) * 2 - 1) * eps
+        best_P, best_d, d0 = P, None, None
+        for k in range(c.sa_pgd_steps + 1):
+            if k < c.sa_pgd_steps:
+                P = P.detach().requires_grad_(True)
+                with torch.enable_grad():
+                    dk = obj(P, s_pgd)
+                    gP = torch.autograd.grad(dk.sum(), P)[0]
+            else:
+                with torch.no_grad():
+                    dk = obj(P, s_pgd)
+            dk = dk.detach()
+            if best_d is None:
+                best_d, d0 = dk, dk
+            else:
+                better = (dk > best_d).view(-1, *([1] * (P.dim() - 1)))
+                best_P = torch.where(better, P.detach(), best_P)
+                best_d = torch.maximum(dk, best_d)
+            if k < c.sa_pgd_steps:
+                P = (P.detach() + c.sa_pgd_step_frac * eps * gP.sign()).clamp(-eps, eps)
+        d = obj(best_P.detach(), scale).mean()
+        stats.update(sa_adv_gain=float(best_d.mean() / (d0.mean() + 1e-8)), sa_scale=float(scale.detach()))
+        if self._step % (1 if os.environ.get("SA_DEBUG") else 500) == 0:
+            print(f"[safety_adv] step={self._step} " + " ".join(f"{k}={v:.4g}" for k, v in stats.items())
+                  + f" sa_loss={float(d):.4g}", flush=True)
+        return ramp * d, stats
 
     def _encoder_branch_fn(self, encoder, key):
         """Return the sub-map embed_branch = f(input[key]) for a single encoder input.
@@ -474,6 +586,36 @@ def make_dataset(episodes, config):
     return dataset
 
 
+# Non-purple obstacle palette (matches le-wm/utils.ObstacleRecolor); red index 0.
+COLOR_AUG_PALETTE = np.array([
+    [255, 0, 0], [255, 140, 0], [255, 200, 0], [150, 75, 0],
+    [128, 128, 0], [250, 128, 114], [140, 0, 0], [0, 150, 150],
+], dtype=np.float32)
+
+
+def color_aug_stream(dataset, palette=COLOR_AUG_PALETTE):
+    """Wrap a batch generator: recolor the red obstacle to a random non-purple
+    training color per (B) sequence, so the RSSM sees obstacles in many colors while
+    purple stays OOD. Obstacle isolated by redness a=relu(min(R-G,R-B))/255; remap
+    out = x + a*(C-RED) (exact for red-on-white edges). image: (B,T,H,W,3) uint8."""
+    RED = np.array([255., 0., 0.], np.float32)
+    while True:
+        batch = next(dataset)
+        img = batch["image"]
+        is_torch = isinstance(img, torch.Tensor)
+        arr = (img.detach().cpu().numpy() if is_torch else np.asarray(img)).astype(np.float32)
+        for b in range(arr.shape[0]):
+            C = palette[np.random.randint(len(palette))]
+            x = arr[b]                                   # (T,H,W,3)
+            a = np.clip(np.minimum(x[..., 0] - x[..., 1], x[..., 0] - x[..., 2]), 0, None) / 255.0
+            for ci in range(3):
+                x[..., ci] = np.clip(x[..., ci] + a * (C[ci] - RED[ci]), 0, 255)
+            arr[b] = x
+        arr = arr.astype(np.uint8)
+        batch["image"] = torch.from_numpy(arr).to(img.device) if is_torch else arr
+        yield batch
+
+
 def main(config):
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
@@ -495,7 +637,8 @@ def main(config):
     print("Create envs.")
     
     action_space = gym.spaces.Box(
-        low=-config.turnRate, high=config.turnRate, shape=(1,), dtype=np.float32
+        low=-config.turnRate, high=config.turnRate,
+        shape=(getattr(config, "action_dim", 1),), dtype=np.float32
     )
     bounds = np.array([[config.x_min, config.x_max], [config.y_min, config.y_max], [0, 2 * np.pi]])
     low = bounds[:, 0]
@@ -532,7 +675,10 @@ def main(config):
     print(expert_eps)
     tools.fill_offline_dataset(config, expert_eps, expert_val_eps)
     expert_dataset = make_dataset(expert_eps, config)
-    eval_dataset = make_dataset(expert_val_eps, config)
+    if getattr(config, "color_aug", False):
+        expert_dataset = color_aug_stream(expert_dataset)
+        print("[dreamer_offline] obstacle color_aug ON (purple held out)")
+    eval_dataset = make_dataset(expert_val_eps, config)  # eval stays red (in-dist)
 
     print("Length of training data:", len(expert_eps))
     print("Length of validation data:", len(expert_val_eps))
@@ -634,13 +780,36 @@ if __name__ == "__main__":
                         help="finite-difference step for enc_lip_mode=fd")
     parser.add_argument("--enc_lip_sigma", type=float, default=0.1,
                         help="perturbation std for enc_lip_mode=invariance (delta = sigma*N(0,I))")
+    parser.add_argument("--sa_weight", type=float, default=0.0, help="safety-adv reg weight (0 = off)")
+    parser.add_argument("--sa_target", type=str, default="head", choices=["head", "latent"])
+    parser.add_argument("--sa_eps", type=float, default=8 / 255)
+    parser.add_argument("--sa_n_sub", type=int, default=8)
+    parser.add_argument("--sa_pgd_steps", type=int, default=2)
+    parser.add_argument("--sa_pgd_step_frac", type=float, default=0.5)
+    parser.add_argument("--sa_enc_weight", type=float, default=1.0)
+    parser.add_argument("--sa_pred_weight", type=float, default=1.0)
+    parser.add_argument("--sa_min_steps", type=int, default=2000)
+    parser.add_argument("--sa_auc_gate", type=float, default=0.95)
+    parser.add_argument("--sa_ramp_steps", type=int, default=10000)
     parser.add_argument("--logdir", type=str, default=None)
     parser.add_argument("--steps", type=int, default=None,
                         help="override DreamerConfig.steps (WM pretrain steps)")
+    parser.add_argument("--color_aug", action="store_true", default=False,
+                        help="recolor the red obstacle to random non-purple colors "
+                             "per sequence (purple held out as OOD)")
+    parser.add_argument("--dataset_path", type=str, default=None,
+                        help="override the offline dataset h5 (trajectory-grouped)")
+    parser.add_argument("--batch_length", type=int, default=None,
+                        help="override RSSM training sequence length (<= traj length)")
+    parser.add_argument("--action_dim", type=int, default=None,
+                        help="action dimensionality (1 for dubins, 2 for safety-gym Car)")
 
     args = parser.parse_args()
 
     config = DreamerConfig()
+    if args.dataset_path is not None: config.dataset_path = args.dataset_path
+    if args.batch_length is not None: config.batch_length = args.batch_length
+    config.action_dim = args.action_dim if args.action_dim is not None else 1
     if args.steps is not None:
         config.steps = args.steps
     config.relu_weight = args.relu_weight
@@ -653,7 +822,11 @@ if __name__ == "__main__":
     config.enc_lip_mode = args.enc_lip_mode
     config.enc_lip_fd_eps = args.enc_lip_fd_eps
     config.enc_lip_sigma = args.enc_lip_sigma
+    for k, v in vars(args).items():
+        if k.startswith("sa_"):
+            setattr(config, k, v)
     config.logdir = args.logdir if args.logdir else f"{DREAMER_DIR}"
+    config.color_aug = args.color_aug
     env_conf = Config()
 
     config.turnRate = env_conf.max_angular_velocity

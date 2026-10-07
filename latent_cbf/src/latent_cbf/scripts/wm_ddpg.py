@@ -65,6 +65,12 @@ def _build_wm(env, config):
     checkpoint = torch.load(ckpt_path)
     state_dict = {k[14:]: v for k, v in checkpoint['agent_state_dict'].items() if '_wm' in k}
     wm.load_state_dict(state_dict)
+    # Retrained value-function column: swap in per-appearance margin heads.
+    if getattr(config, "dreamer_margin_ckpt", None):
+        msd = torch.load(config.dreamer_margin_ckpt, map_location=config.device)
+        wm.heads["margin_gp"].load_state_dict(msd["margin_gp"])
+        wm.heads["margin_nogp"].load_state_dict(msd["margin_nogp"])
+        print(f"[wm_ddpg] loaded dreamer OOD margin from {config.dreamer_margin_ckpt}")
     wm.eval()
     return wm
 
@@ -271,6 +277,9 @@ if __name__ == "__main__":
     parser.add_argument("--lewm_run_name", type=str, default=None)
     parser.add_argument("--lewm_ckpt_path", type=str, default=None)
     parser.add_argument("--lewm_margin_ckpt", type=str, default=None)
+    parser.add_argument("--dreamer_margin_ckpt", type=str, default=None,
+                        help="For wm_backend=dreamer: override the WM's margin heads "
+                             "with per-appearance margins (retrained value-function column).")
     parser.add_argument("--buffer_path", type=str, default=None,
                         help="Override the dataset path used for env reset seeding.")
     parser.add_argument("--step_per_epoch", type=int, default=None)
@@ -301,6 +310,7 @@ if __name__ == "__main__":
         config.lewm_ckpt_path = args.lewm_ckpt_path
     if args.lewm_margin_ckpt is not None:
         config.lewm_margin_ckpt = args.lewm_margin_ckpt
+    config.dreamer_margin_ckpt = args.dreamer_margin_ckpt
     if args.buffer_path is not None:
         config.dataset_path = args.buffer_path
     if args.step_per_epoch is not None:

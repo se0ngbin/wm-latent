@@ -84,6 +84,15 @@ class _Dynamics:
         return self._parent.embed_dim
 
     def get_feat(self, state):
+        if self._parent._is_gru:
+            # Dreamer-style feature: current embed + recurrent memory. Some static
+            # eval paths build a fake single-frame state without deter_h; there is
+            # no history there, so the memory is zeros (get_feat = [embed, 0]).
+            deter = state["deter"]
+            h = state.get("deter_h")
+            if h is None:
+                h = deter.new_zeros(*deter.shape[:-1], self._parent.jepa.predictor.deter_dim)
+            return torch.cat([deter, h], dim=-1)
         return state["deter"]
 
     def observe(self, embed, action, is_first, state=None):
@@ -94,6 +103,23 @@ class _Dynamics:
         Returns (post, prior) — for LE-WM there is no separate posterior, so
         post == prior.
         """
+        if self._parent._is_gru:
+            # Carried GRU state: deter_h[t] = h_t summarizing frames strictly
+            # BEFORE z_t (the recurrent "prior"), so get_feat(t)=concat(z_t,h_t)
+            # mirrors Dreamer's [stoch_t, deter_t]. Seed state for imagine =
+            # (z_{T-1}, h_{T-1}).
+            predm = self._parent.jepa.predictor
+            act_emb = self._parent.action_encoder(action)      # (B, T, A_emb)
+            B, T = embed.shape[0], embed.shape[1]
+            h = embed.new_zeros(B, predm.deter_dim)
+            hs_pre = []
+            for t in range(T):
+                hs_pre.append(h)
+                _, h = predm.step(embed[:, t], act_emb[:, t], h)
+            deter_h = torch.stack(hs_pre, 1)                    # (B, T, deter_dim)
+            stoch = embed.new_zeros(B, T, 1)
+            state_out = {"deter": embed, "deter_h": deter_h, "stoch": stoch}
+            return state_out, state_out
         B, T, D = embed.shape
         H = self.H
         device = embed.device
@@ -133,6 +159,25 @@ class _Dynamics:
                 (deter (B, D), stoch (B, 1), hist_emb (B, H, D), hist_act (B, H, A_emb)).
         Returns the rolled-out prior dict with the time dim back in.
         """
+        if self._parent._is_gru:
+            # Carry the GRU hidden state across imagined steps (unbounded memory,
+            # unlike the transformer window). state has deter (B,D) = z_cur and
+            # deter_h (B,deter_dim) = memory strictly before z_cur.
+            predm = self._parent.jepa.predictor
+            proj = self._parent.jepa.pred_proj
+            z = state["deter"]
+            h = state["deter_h"]
+            deters, deter_hs = [], []
+            for t in range(action.shape[1]):
+                a_emb = self._parent.action_encoder(action[:, t : t + 1])[:, 0]
+                z_raw, h = predm.step(z, a_emb, h)
+                z = proj(z_raw)
+                deters.append(z.unsqueeze(1))
+                deter_hs.append(h.unsqueeze(1))
+            deter = torch.cat(deters, dim=1)
+            deter_h = torch.cat(deter_hs, dim=1)
+            stoch = deter.new_zeros(deter.shape[0], deter.shape[1], 1)
+            return {"deter": deter, "deter_h": deter_h, "stoch": stoch}
         B, T_act, A = action.shape
         H = self.H
         D = self.D
@@ -200,6 +245,14 @@ class LEWMWorldModel(nn.Module):
             p.requires_grad_(False)
         self.jepa = model
 
+        # Detect the Dreamer-style recurrent predictor (JEPA+GRU ablation): it
+        # carries a GRU hidden state (deter_h) that the adapter threads through
+        # observe/imagine and exposes in get_feat = concat(embed, deter_h). For
+        # the transformer ARPredictor this stays False and every branch below is
+        # a no-op (path byte-identical to before).
+        _pred = getattr(self.jepa, "predictor", None)
+        self._is_gru = hasattr(_pred, "deter_dim") and hasattr(_pred, "step")
+
         # Architectural constants pulled from the loaded model.
         self.embed_dim = self._infer_embed_dim()
         self.history_size = self._infer_history_size()
@@ -243,6 +296,10 @@ class LEWMWorldModel(nn.Module):
 
     # ---- introspection ----
     def _infer_embed_dim(self) -> int:
+        # JEPA+GRU: the feature the heads consume is concat(embed, deter_h).
+        if getattr(self, "_is_gru", False):
+            p = self.jepa.predictor
+            return int(p.input_dim + p.deter_dim)
         # ARPredictor positional embedding: (1, num_frames, input_dim).
         pos = getattr(self.jepa.predictor, "pos_embedding", None)
         if pos is not None:
