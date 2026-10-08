@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-07 22:30 UTC. All results are Dubins. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-08 07:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -8,9 +8,11 @@
 - **Adversarial L∞ noise invariance gives the best models we have on every shift.** Zero-shot color AUC (uniform eval): L∞ **0.910 ± 0.098**, jac+pull + L∞ **0.965 ± 0.013**, L∞ without the head **0.951 ± 0.004**. For comparison, jac+pull scores 0.753 ± 0.049 and baseline 0.144 ± 0.032. All three L∞ models are ≥ 0.994 on shape and rotation. The 50/50 eval agrees (color 0.927 / 0.958 / 0.955).
 - **The safety projection is not what makes it work, but every other ingredient is (new).** The "remove h" ablation penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. It matches or beats the head-projected version on every axis, and is far less seed-variable on color (± 0.004 vs ± 0.098). Removing any one of its other parts drops color AUC from 0.951 to 0.63–0.70 (baseline: 0.144): the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). Shape and rotation stay ≥ 0.991 in every ablation.
 - **Adding L∞ on top of jac+pull** lifts jac+pull's color AUC 0.753 → 0.965 and gives the best color number overall. It costs more prediction loss (0.0165).
+- **Safety Gym (new): the regularizer transfers and is even stronger there** ([section](#safety-gym-and-the-regularizer-on-dreamer)). LeWM + L∞ safety reg reaches zero-shot AUC 0.999 on color and **0.962 on a real 90° camera rotation**, where jac+pull scores 0.679 and sigreg only 0.557. It is also the **first model in the study whose safe/unsafe threshold survives a shift**: sign accuracy 0.987 on color and 0.977 on rotation, against 0.833 for calling everything safe. The cost is 6× the prediction loss (0.0168 vs 0.0026). On Safety Gym the penalty had to run without the AUC gate, because the sigreg-only latent doesn't generalize safety across episodes.
+- **Dreamer (new): smaller gains.** The head-projected regularizer lifts Dubins color AUC from 0.638 to 0.816 and Safety Gym color from 0.961 to 0.977. Rotation stays at chance on both benchmarks and thresholds still collapse. No-h doesn't help Dubins Dreamer at all (0.626), so for Dreamer the safety projection matters, unlike LeWM on Dubins.
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
-- **Still unsolved: the threshold under recolor.** Under purple, no model keeps its safe/unsafe cutoff: on a 50/50 safe/unsafe test set every model scores 0.500–0.505 sign accuracy, including all three L∞ models. Which way it breaks (everything safe vs everything unsafe) varies with the encoder and the head's training set. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, every L∞ model keeps a working threshold (≥ 0.958 on 50/50).
+- **Still unsolved on Dubins: the threshold under recolor.** Under purple, no Dubins model keeps its safe/unsafe cutoff (on Safety Gym, LeWM + L∞ does): on a 50/50 safe/unsafe test set every model scores 0.500–0.505 sign accuracy, including all three L∞ models. Which way it breaks (everything safe vs everything unsafe) varies with the encoder and the head's training set. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, every L∞ model keeps a working threshold (≥ 0.958 on 50/50).
 - **A structured color (hue) perturbation, tried first, did worse** and is covered in Appendix B.
 - **Costs and open questions:** prediction loss goes up: L∞ 0.0113, jac+pull + L∞ 0.0165, no-h 0.0253, vs 0.0067 for a comparable run without the regularizer. Planning and the reachability critic haven't been tested. One training seed per model.
 
@@ -148,6 +150,99 @@ Jacobians, same protocol as the section below:
 - **Detached denominator:** about as small relative to class separation as the full model (0.105), but extremely anisotropic (condition number 451, 8 effective dimensions) with the most sensitive readout. Without the separation route, the encoder squeezes sensitivity into a few directions.
 - **Random noise:** pixel sensitivity relative to class separation is 3.5× the full model's (0.347). That fits a weaker regularizer that doesn't push the classes apart.
 
+## Safety Gym, and the regularizer on Dreamer
+
+### Safety Gym (SafetyCarGoal1, top-down), LeWM and Dreamer
+
+Same regularizer settings as on Dubins (L∞, ε = 8/255, PGD 2 steps, 32 windows, ramp 10k, weight 1), same LeWM recipe as the Safety Gym references (sigreg, seed 3072, 50 epochs, data `sg_cargoal_safety` = the reference dataset plus its `failures` labels).
+
+- **One deviation for LeWM: no AUC gate** (`auc_gate: 0`, so the penalty opens at step 2000). On the Safety Gym training data the sigreg-only latent doesn't generalize safety across episodes: an MLP probe fit on its latents scores 0.981 on train episodes but 0.629 on held-out ones (jac: 0.985). So the in-training head sat at AUC ~0.56 and the gated runs never switched the penalty on. Those runs were stopped at epoch ~10 and replaced. Once the ungated penalty engaged, the in-training head went from AUC 0.55 to 0.99 within a few thousand steps: the class-separation term made safety decodable.
+- **Dreamer kept the gate.** Its own head passed 0.95 at about step 2k on Safety Gym and 5–6k on Dubins.
+
+Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearance variant is a render of the same pose; margin_gp head trained on 4000 blue-hazard frames, scored on the other 1000). Color = held-out purple hazards, rotation = a real 90° rotation of the camera (not an image rotation). 16.7% of test frames are unsafe, so "everything safe" scores 0.833 sign accuracy. There is no shape axis: the only Safety Gym shape eval is in the older protocol, which has a layout confound. Mean ± std over 3 eval seeds (head initialization and sampling; the test frames are fixed, so the spread is small). Script `safeadv_results/sg_eval/sg_plain_eval.py`; it reproduces the earlier AUCs, e.g. sigreg only 0.988 / 0.596 / 0.554 vs 0.994 / 0.604 / 0.574.
+
+**Sign accuracy**
+
+| model | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| LeWM sigreg only | 0.970 ± 0.007 | 0.833 ± 0.000 | 0.833 ± 0.000 |
+| LeWM jac | 0.992 ± 0.002 | 0.921 ± 0.002 | 0.832 ± 0.001 |
+| LeWM jac+pull | 0.997 ± 0.000 | 0.943 ± 0.004 | 0.835 ± 0.002 |
+| **LeWM + safety reg (L∞)** | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
+| **LeWM + safety reg (L∞, no h)** | 0.990 ± 0.007 | 0.943 ± 0.005 | 0.933 ± 0.006 |
+| Dreamer | 0.981 ± 0.004 | 0.835 ± 0.003 | 0.833 ± 0.000 |
+| **Dreamer + safety reg (L∞)** | 0.983 ± 0.002 | 0.856 ± 0.008 | 0.833 ± 0.000 |
+| **Dreamer + safety reg (L∞, no h)** | 0.982 ± 0.002 | 0.854 ± 0.005 | 0.833 ± 0.000 |
+
+**AUC**
+
+| model | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| LeWM sigreg only | 0.992 ± 0.003 | 0.595 ± 0.001 | 0.557 ± 0.006 |
+| LeWM jac | 0.997 ± 0.001 | 0.992 ± 0.000 | 0.641 ± 0.006 |
+| LeWM jac+pull | 0.999 ± 0.000 | 0.996 ± 0.001 | 0.679 ± 0.002 |
+| **LeWM + safety reg (L∞)** | 1.000 ± 0.000 | 0.999 ± 0.000 | 0.962 ± 0.001 |
+| **LeWM + safety reg (L∞, no h)** | 0.999 ± 0.000 | 0.985 ± 0.001 | 0.941 ± 0.005 |
+| Dreamer | 0.993 ± 0.001 | 0.961 ± 0.002 | 0.503 ± 0.047 |
+| **Dreamer + safety reg (L∞)** | 0.995 ± 0.001 | 0.977 ± 0.003 | 0.481 ± 0.043 |
+| **Dreamer + safety reg (L∞, no h)** | 0.995 ± 0.001 | 0.979 ± 0.001 | 0.491 ± 0.025 |
+
+**Predicted-safe fraction (true safe = .833)**
+
+| model | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| LeWM sigreg only | 0.820 ± 0.005 | 1.000 ± 0.000 | 1.000 ± 0.000 |
+| LeWM jac | 0.833 ± 0.004 | 0.912 ± 0.002 | 0.999 ± 0.001 |
+| LeWM jac+pull | 0.832 ± 0.000 | 0.888 ± 0.004 | 0.998 ± 0.002 |
+| **LeWM + safety reg (L∞)** | 0.830 ± 0.002 | 0.823 ± 0.006 | 0.833 ± 0.006 |
+| **LeWM + safety reg (L∞, no h)** | 0.831 ± 0.006 | 0.890 ± 0.005 | 0.858 ± 0.014 |
+| Dreamer | 0.828 ± 0.005 | 0.995 ± 0.002 | 1.000 ± 0.000 |
+| **Dreamer + safety reg (L∞)** | 0.832 ± 0.003 | 0.977 ± 0.007 | 1.000 ± 0.000 |
+| **Dreamer + safety reg (L∞, no h)** | 0.832 ± 0.002 | 0.977 ± 0.005 | 1.000 ± 0.000 |
+
+- **LeWM + safety reg (L∞) is the first model in the whole study whose threshold survives a shift.** Its zero-shot head keeps 0.987 sign accuracy on color and 0.977 on rotation, predicting 0.823 / 0.833 of states safe (true: 0.833). Every reference collapses to calling nearly everything safe.
+- **It also fixes rotation**, which nothing else did: AUC 0.962 vs 0.679 for jac+pull and 0.557 for sigreg only. Color goes to 0.999.
+- **No-h works here but is weaker** (color 0.985, rotation 0.941, thresholds partly hold at 0.943 / 0.933), and it is much costlier (below).
+- **Dreamer gains a little on color** (0.961 → 0.977 / 0.979). Rotation doesn't move (~0.49) and thresholds still collapse.
+- **Prediction cost:** final train pred_loss is 0.0168 for L∞ and 0.090 for no-h, vs 0.0026 for sigreg only (6× and 35×). Dreamer's image reconstruction loss is unchanged (32.0 / 32.8 vs 32.3 for the Dreamer baseline).
+
+### Dubins Dreamer
+
+The Dubins Dreamer reference is the same baseline used in earlier Dreamer comparisons (`enc_lip_sweep/baseline`). It uses the same recipe as the new runs: 40k steps, batch 32 × 16, seed 0. Eval: the same uniform-state protocol as the LeWM tables (`ood_margin_gp_dreamer.py`, ~17% unsafe for circle).
+
+**Sign accuracy**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| Dreamer | 0.986 ± 0.002 | 0.780 ± 0.043 | 0.936 ± 0.007 | 0.708 ± 0.007 |
+| **Dreamer + safety reg (L∞)** | 0.988 ± 0.003 | 0.793 ± 0.024 | 0.937 ± 0.011 | 0.708 ± 0.005 |
+| **Dreamer + safety reg (L∞, no h)** | 0.985 ± 0.001 | 0.726 ± 0.074 | 0.929 ± 0.005 | 0.715 ± 0.010 |
+
+**AUC**
+
+| model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| Dreamer | 0.999 ± 0.000 | 0.638 ± 0.013 | 0.993 ± 0.001 | 0.480 ± 0.011 |
+| **Dreamer + safety reg (L∞)** | 0.999 ± 0.000 | 0.816 ± 0.017 | 0.995 ± 0.001 | 0.484 ± 0.013 |
+| **Dreamer + safety reg (L∞, no h)** | 0.999 ± 0.000 | 0.626 ± 0.048 | 0.994 ± 0.001 | 0.494 ± 0.006 |
+
+- **The head-projected variant helps color** (AUC 0.638 → 0.816), and nothing else moves.
+- **No-h does nothing on Dubins Dreamer** (color 0.626). So for Dreamer the safety projection matters, the opposite of LeWM on Dubins.
+- **Rotation stays at chance** (~0.48–0.49) for every Dreamer variant on both benchmarks. Dreamer also gets the true heading as a separate non-image input, which the perturbation never touches.
+- **No usable threshold.** Dubins sign accuracy under color is about 0.78 and under rotation about 0.71, both below what calling every state safe would score (~0.83).
+- Final image reconstruction loss is 3.3 (head) / 3.2 (no h). The baseline's training log wasn't kept, so there is no direct comparison.
+
+### How the regularizer was ported to Dreamer
+
+In `latent_cbf/src/latent_cbf/scripts/dreamer_offline.py`, flags `--sa_*` (code `e99b14c`):
+- **Encoder term:** the posterior feature f(post_t). **Prediction term:** the prior feature f(prior_t), the one-step RSSM prediction from the perturbed history.
+- **Readout:** for the head variant, Dreamer's own in-training `margin_gp` head with its parameters frozen in the penalty. For no-h, the whole 544-d feature, normalized by the safe/unsafe centroid distance².
+- **Perturbation:** δ is one L∞ field per sequence, shared over time, applied to 8 of the 32 sequences on Dubins (×16 frames) and 16 on Safety Gym (×8 frames).
+- **Same RNG seed:** clean and perturbed passes reuse it, so the RSSM's stochastic samples cancel. Checked: zero δ gives exactly zero deviation.
+- **Frame 0 is excluded from label statistics,** because the loader forces its label to safe.
+- **No BatchNorm handling:** Dreamer has none.
+- **Corrected labels:** the Safety Gym Dreamer data stored each frame's label one step off from the loader's convention. The new runs train on a corrected copy (`sg_cargoal_dreamer_lab.h5`). The Dreamer baseline used the original file, but its eval trains fresh heads on correctly labelled eval data, so this doesn't affect its numbers.
+
 ## Encoder Jacobians across models
 
 Exact encoder Jacobian J = ∂z/∂x (192 × 150528, built from 192 VJPs) on the same 16 dataset frames as the earlier jacobian-mechanism analysis (`le-wm/scripts/jac_singular.py`, rng seed 0). Per-frame values are averaged. Latent scales differ across models, so the last two columns are scale-free:
@@ -182,7 +277,7 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 
    Shape and rotation, by contrast, are easy: any of these variants gets them.
 2. **It goes well beyond jacobian, by a different mechanism.** Jacobian whitens the local Jacobian and reaches color AUC 0.673. The L∞ variants keep or even sharpen the anisotropic Jacobian and reach 0.91–0.97. The two combine: jac+pull + L∞ is the best color model.
-3. **The remaining failure is calibration.** Even the best ranking comes with a coherent readout offset under purple that pushes every state across the threshold, and every L∞ variant has it. For a deployable filter, this needs recalibration or an offset-correction mechanism, not more invariance.
+3. **The remaining failure is calibration.** Even the best ranking comes with a coherent readout offset under purple that pushes every state across the threshold, and every L∞ variant has it. For a deployable filter, this needs recalibration or an offset-correction mechanism, not more invariance. On Safety Gym, LeWM + L∞ is the exception: its threshold holds under both shifts. That suggests the offset depends on the domain, perhaps on how strongly appearance and safety are entangled at the input (which is high on Dubins), rather than being inherent to the method.
 
 ## Caveats
 
@@ -190,16 +285,20 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 - **Prediction quality cost.** Final train pred_loss: L∞ 0.0113, jac+pull + L∞ 0.0165, no-h 0.0253, vs 0.0067 for the hue-variant run. Whether this hurts CEM planning hasn't been tested, and it matters most for no-h.
 - **Only the margin head is tested.** The reachability critic's zero-shot behavior (where every earlier model collapsed on color) hasn't been evaluated.
 - **Eval states are uniform, not on-policy.** They cover every heading and positions deep inside obstacles; the world model trained on expert trajectories. "In-dist" means in-distribution *appearance*.
+- **Safety Gym LeWM schedule differs** (no AUC gate). Its baseline comparison is still like-for-like in recipe, but the penalty ran from step 2k regardless of head quality.
+- **Safety Gym eval uses one fixed 1000-frame test set** from a single layout-controlled collection, so the ± only reflects head seeds.
 - **Jacobians are local**, measured at 16 dataset frames. They describe first-order sensitivity, not the finite red → purple shift.
 
 ## Next steps (proposed)
 
 1. **Second training seed** of L∞, jac+pull + L∞ and no-h, to rank them on color.
 2. **Second training seed for the single-term variants** (encoder only, predictor only), to check whether their eval-seed instability is a property of the variant.
-3. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost, especially no-h's.
-4. **Critic zero-shot** for the L∞ models, the real target.
-5. **ε sweep** (4/255, 16/255).
-6. **Calibration fix** for the threshold collapse, e.g. unsupervised re-centering of the readout per appearance.
+3. **Safety Gym follow-ups:** a second training seed of LeWM + L∞ (the threshold survival is the headline result), the same model with the gate (if a jac base makes the head learnable), and the hazard-shape axis in a layout-controlled collection.
+4. **Dreamer:** why rotation doesn't move. A candidate is the non-image heading input, which the perturbation never reaches.
+5. **Planner eval** (sg25clean protocol, in-dist and under shift), to check the pred_loss cost, especially no-h's.
+6. **Critic zero-shot** for the L∞ models, the real target.
+7. **ε sweep** (4/255, 16/255).
+8. **Calibration fix** for the threshold collapse, e.g. unsupervised re-centering of the readout per appearance.
 
 ---
 
@@ -412,7 +511,7 @@ Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbe
 ## Appendix D: where things are
 
 - **Code:** `le-wm/module.py` (`SafetyAdvInvarianceReg`, `_CleanStatBN`), config key `safety_adv` (kwargs `attack: linf | hue`, `eps_pix`, `min_steps`, `auc_gate`, `ramp_steps`, `n_sub`, `pgd_steps`), data config `data=dubins_safety`.
-- **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_lz_{rand,det,enc,pred}50/` (no-h ablations; code `9dfca47`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
+- **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_lz_{rand,det,enc,pred}50/` (no-h ablations; code `9dfca47`), `sg_safeadv_linf50_g0/` and `sg_linf_latent50_g0/` (Safety Gym, code `b9d34e2`, launchers `/data/seongbin/lewm/code_safeadv_b9d34e2/run_sg{L,LZ}g0.sh`). Dreamer: `/data/seongbin/dreamer/dreamer/safeadv/{dubins,sg}_sa_{head,latent}/rssm_ckpt.pt` (code snapshot `/data/seongbin/dreamer/code_safeadv_e99b14c/`, logs `safeadv/*.log`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
 - **Training logs and code snapshots:** `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞, `.run_L/`; jac+pull + L∞, `.run_JL/`), `code_safeadv_dab24f2/` (no h, `.run_LZ/`), `code_safeadv_9dfca47/` (ablations, `run_<k>.sh`, `.run_<k>/`), `code_safeadv_c6e93c6/` (hue), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
-- **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
+- **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `sg_eval/` (Safety Gym eval script, logs, `tables.py` for the Safety Gym and Dreamer tables), `dreamer/` (Dubins Dreamer eval logs, Safety Gym label fix `fix_sg_labels.py`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
 - **Baseline numbers:** `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `le-wm/scripts/ood_margin_gp_jepa.py`).
