@@ -345,7 +345,7 @@ class SafetyAdvInvarianceReg(nn.Module):
     def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, target="head", pgd_steps=2,
                  pgd_step_frac=0.5, pred_weight=1.0, enc_weight=1.0, rand_init="uniform", scale_grad=True, head_units=512, head_lr=3e-4,
                  zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
-                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192):
+                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192, lambda_mode="batch"):
         super().__init__()
         self.n_sub, self.grid = n_sub, grid
         # attack="hue": spatial hue/saturation field (the color prior). attack="linf": per-pixel
@@ -357,8 +357,16 @@ class SafetyAdvInvarianceReg(nn.Module):
         # target="latent": ablation without h — penalize the whole latent change ||f(x+d)-f(x)||^2
         # (and of the prediction), normalized by the live batch latent spread instead of the gap.
         # The head still trains (gate + logging); only the penalty stops reading through it.
-        assert target in ("head", "latent"), target
-        self.target = target
+        # target="lambda": penalize only the component of the latent change along the safety
+        # direction lambda = mean(z_safe) - mean(z_unsafe): ((dz . lambda) / ||lambda||^2)^2, i.e. the
+        # change projected on lambda in units of the safe/unsafe distance (0 iff dz is orthogonal).
+        # lambda_mode="batch": direction + length from the batch centroids, with grad.
+        # lambda_mode="global": direction from EMA safe/unsafe means over all batches (detached);
+        # length ||lambda|| still from the batch, with grad. No head involved (use auc_gate=0).
+        assert target in ("head", "latent", "lambda"), target
+        assert lambda_mode in ("batch", "global"), lambda_mode
+        self.target, self.lambda_mode = target, lambda_mode
+        self._u = None
         self.eps = (float(eps_hue), float(eps_logsat))
         self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
         self.pred_weight, self.enc_weight = pred_weight, enc_weight
@@ -384,6 +392,8 @@ class SafetyAdvInvarianceReg(nn.Module):
         self.register_buffer("open_step", torch.full((), -1, dtype=torch.long))
         self.register_buffer("auc_ema", torch.zeros(()))
         self.register_buffer("gap_ema", torch.zeros(()))
+        self.register_buffer("mu_safe_ema", torch.zeros(embed_dim))
+        self.register_buffer("mu_unsafe_ema", torch.zeros(embed_dim))
         self.register_buffer("n_ema", torch.zeros((), dtype=torch.long))   # for EMA bias correction
         self.register_buffer("im_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
         self.register_buffer("im_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
@@ -449,10 +459,14 @@ class SafetyAdvInvarianceReg(nn.Module):
         return ((x01.flatten(0, 1) - self.im_mean) / self.im_std).view_as(x01)
 
     def _readout(self, z):
+        if self.target == "lambda":
+            return z.float()          # projected in _dev, on the DIFFERENCE dz (so grad wrt lambda is via dz)
         return self._h(z) if self.target == "head" else z.float()
 
     def _dev(self, r, r_c, scale):
         """Squared deviation of a readout from its clean value, in units of `scale`."""
+        if self.target == "lambda":
+            return (((r - r_c) @ self._u) / scale).pow(2)
         if self.target == "head":
             return ((r - r_c) / scale).pow(2)
         return (r - r_c).pow(2).sum(-1) / scale       # latent: squared distance / spread
@@ -491,7 +505,22 @@ class SafetyAdvInvarianceReg(nn.Module):
             gap_live = (h_all[fail == 0].mean() - h_all[fail == 1].mean()).clamp_min(0.1 * float(self.gap))
         else:
             gap_live = self.gap.detach()
-        if self.target == "latent":
+        if self.target == "lambda":
+            e = emb.flatten(0, 1).float()
+            if not ((fail == 0).any() and (fail == 1).any()):
+                return torch.zeros((), device=dev)
+            lam = e[fail == 0].mean(0) - e[fail == 1].mean(0)            # batch safety direction, with grad
+            with torch.no_grad():
+                self.mu_safe_ema.mul_(self.ema).add_((1 - self.ema) * e[fail == 0].mean(0).detach())
+                self.mu_unsafe_ema.mul_(self.ema).add_((1 - self.ema) * e[fail == 1].mean(0).detach())
+            gap_live = lam.norm().clamp_min(1e-3)                          # ||lambda||, with grad
+            if self.lambda_mode == "batch":
+                self._u = lam / gap_live
+            else:
+                g = self.mu_safe_ema - self.mu_unsafe_ema                  # debiasing cancels in the direction
+                self._u = (g / g.norm().clamp_min(1e-8)).detach()
+                self.stats["cos_batch_global"] = F.cosine_similarity(lam.detach(), g, dim=0)
+        elif self.target == "latent":
             # the identity-readout analog of the gap: squared distance between the safe and
             # unsafe latent centroids of the batch, with grad (squashing the classes together
             # raises the penalty instead of lowering it)
@@ -516,9 +545,12 @@ class SafetyAdvInvarianceReg(nn.Module):
             eps = torch.tensor(self.eps_pix, device=dev)
             pshape, perturb = (n, 1) + tuple(x01.shape[2:]), (lambda x, P: (x + P).clamp(0, 1))
         bn = _CleanStatBN(model)
+        u_live = self._u
+        if u_live is not None:
+            self._u = u_live.detach()                 # clean targets + PGD use the detached direction
         with bn.capture(), torch.no_grad():          # clean targets + clean BN stats (detached)
             zc = encode_fn(x.flatten(0, 1)).view(n, T, -1)
-            hz_c = self._readout(zc.flatten(0, 1)).view((n, T) + ((-1,) if self.target == "latent" else ()))
+            hz_c = self._readout(zc.flatten(0, 1)).view((n, T) + ((-1,) if self.target in ("latent", "lambda") else ()))
             hp_c = self._readout(model.predict(zc, act)[:, -1])
         gap_pgd = gap_live.detach()
         with bn.apply():
@@ -546,6 +578,7 @@ class SafetyAdvInvarianceReg(nn.Module):
                     best_d = torch.maximum(dk, best_d)
                 if k < self.pgd_steps:
                     P = torch.max(torch.min(P.detach() + self.pgd_step_frac * eps * gP.sign(), eps), -eps)
+            self._u = u_live                          # final graded pass: direction with grad (batch mode)
             d = obj(best_P.detach(), gap_live)
         self.stats["adv_gain"] = best_d.mean() / (d_start.mean() + 1e-8)
         return ramp * d.mean()
