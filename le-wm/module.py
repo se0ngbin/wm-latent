@@ -364,7 +364,10 @@ class SafetyAdvInvarianceReg(nn.Module):
         # lambda_mode="global": direction from EMA safe/unsafe means over all batches (detached);
         # length ||lambda|| still from the batch, with grad. No head involved (use auc_gate=0).
         assert target in ("head", "latent", "lambda"), target
-        assert lambda_mode in ("batch", "global"), lambda_mode
+        # lambda_mode="global_proj": as "global", but the length is the batch gap PROJECTED on the global
+        # direction (lambda_batch . u), with grad, floored at 0.1 x the global gap length -> credit only for
+        # separating the classes along the protected axis.
+        assert lambda_mode in ("batch", "global", "global_proj"), lambda_mode
         self.target, self.lambda_mode = target, lambda_mode
         self._u = None
         self.eps = (float(eps_hue), float(eps_logsat))
@@ -520,6 +523,9 @@ class SafetyAdvInvarianceReg(nn.Module):
                 g = self.mu_safe_ema - self.mu_unsafe_ema                  # debiasing cancels in the direction
                 self._u = (g / g.norm().clamp_min(1e-8)).detach()
                 self.stats["cos_batch_global"] = F.cosine_similarity(lam.detach(), g, dim=0)
+                if self.lambda_mode == "global_proj":
+                    g_len = float(self._debias(g.norm()))                  # debiased global gap length
+                    gap_live = (lam @ self._u).clamp_min(max(0.1 * g_len, 1e-3))
         elif self.target == "latent":
             # the identity-readout analog of the gap: squared distance between the safe and
             # unsafe latent centroids of the batch, with grad (squashing the classes together
