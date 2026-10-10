@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-09 18:50 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-10 06:00 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -11,6 +11,7 @@
 - **Safety Gym (new): the regularizer transfers and is even stronger there** ([section](#safety-gym-and-the-regularizer-on-dreamer)). LeWM + L∞ safety reg reaches zero-shot AUC 0.999 on color and **0.962 on a real 90° camera rotation**, where jac+pull scores 0.679 and sigreg only 0.557. It is also the **first model in the study whose safe/unsafe threshold survives a shift**: sign accuracy 0.987 on color and 0.977 on rotation, against 0.833 for calling everything safe. The cost is 6× the prediction loss (0.0168 vs 0.0026). On Safety Gym the penalty had to run without the AUC gate, because the sigreg-only latent doesn't generalize safety across episodes.
 - **Dreamer (new): smaller gains.** The head-projected regularizer lifts Dubins color AUC from 0.638 to 0.816 and Safety Gym color from 0.961 to 0.977. Rotation stays at chance on both benchmarks and thresholds still collapse. No-h doesn't help Dubins Dreamer at all (0.626), so for Dreamer the safety projection matters, unlike LeWM on Dubins.
 - **λ-projection (new):** replacing the head with one shared safety direction λ = mean(z_safe) − mean(z_unsafe), and penalizing only the perturbation's shift along it, works on Dubins when λ is a running global average (color AUC 0.936, lowest prediction cost of any safety-reg model). It fails on Safety Gym, where the base latent has no consistent linear safety axis ([section](#safety-direction-λ-projection-instead-of-the-head)).
+- **Adversarial vs. random noise (new):** replacing PGD with random ±8/255 noise of the same size loses most of the gain on every benchmark and axis, with or without h: Dubins color 0.910 → 0.300 (with h) and 0.951 → 0.631 (no h); Safety Gym color 0.999 → 0.871 and rotation 0.962 → 0.729 (with h). Random noise through the head even breaks Dubins rotation (0.555 vs 0.956 for sigreg only) ([section](#adversarial-vs-random-noise-of-the-same-size)).
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
 - **Still unsolved on Dubins: the threshold under recolor.** Under purple, no Dubins model keeps its safe/unsafe cutoff (on Safety Gym, LeWM + L∞ does): on a 50/50 safe/unsafe test set every model scores 0.500–0.505 sign accuracy, including all three L∞ models. Which way it breaks (everything safe vs everything unsafe) varies with the encoder and the head's training set. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, every L∞ model keeps a working threshold (≥ 0.958 on 50/50).
@@ -269,6 +270,7 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 | safety reg, head (per-sample direction) | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | **0.999 ± 0.000** | **0.962 ± 0.001** | 0.0113 / 0.0168 |
 | **safety reg, λ-projected, batch λ** | 0.639 ± 0.345 | 0.996 ± 0.002 | 0.896 ± 0.013 | 0.941 ± 0.009 | 0.855 ± 0.009 | 0.0112 / 0.0242 |
 | **safety reg, λ-projected, global λ** | 0.936 ± 0.041 | 0.995 ± 0.002 | 0.995 ± 0.002 | 0.841 ± 0.001 | 0.445 ± 0.008 | 0.0081 / 0.2342 |
+| **safety reg, λ-projected, global λ, projected scale** | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 | 0.008 / 0.013 |
 | safety reg, no h (all directions) | **0.951 ± 0.004** | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 | 0.0253 / 0.090 |
 
 The full uniform, 50/50 and Safety Gym tables (sign accuracy, AUC, predicted-safe fraction) include both λ rows. On the 50/50 eval, Dubins color AUC is 0.819 ± 0.025 for batch λ and 0.892 ± 0.069 for global λ.
@@ -280,7 +282,36 @@ The full uniform, 50/50 and Safety Gym tables (sign accuracy, AUC, predicted-saf
   - **Global λ is degenerate,** as flagged during training. The sigreg-only Safety Gym latent has no consistent safety axis to start from: the batch and running directions were nearly uncorrelated (cos 0.03) before the penalty opened. The penalty therefore pinned an arbitrary direction. In-dist AUC fell to 0.945, rotation to 0.445 and pred_loss rose to 0.234.
   - **The per-sample head** is the only variant that keeps its threshold on Safety Gym (sign accuracy 0.987 / 0.977).
 - **Takeaway.** One linear safety direction is enough only when the base latent already separates the classes linearly (Dubins). There the global version is as good as the head at a lower cost. Where it doesn't (Safety Gym), a learned, sample-dependent readout or the whole latent is needed.
-- **A weakness of the global variant as run:** the scale ‖λ‖ comes from the whole batch gap, so the encoder can get credit for separating the classes in directions other than the protected one. A tighter version would use the batch gap's projection onto the global direction as the scale. Not run.
+- **Global λ with projected scale (follow-up, code `cfa5e52`, `lambda_mode: global_proj`).** In plain global λ, the scale ‖λ‖ came from the whole batch gap, so the encoder got credit for separating the classes in any direction. Here the scale is the batch gap projected onto the global direction, (λ_batch · λ̂), floored at 0.1 × the global gap length. Separation only counts along the protected axis.
+  - **On Safety Gym it fixes training but not out-of-distribution performance.** Batch and global directions now agree (cos 0.87 vs 0.03–0.19), the side-trained head reaches AUC 1.000, and pred_loss is 0.013 instead of 0.234. But zero-shot is still poor: color 0.775, rotation 0.413, in-dist 0.981. So the earlier failure was not only the scale loophole: one fixed linear axis is too little protection on Safety Gym.
+  - **On Dubins it is the best λ variant.** Color AUC is 0.950 (seeds 0.99 / 0.90 / 0.97; 50/50: 0.940), with the lowest prediction cost (0.008). On the 50/50 eval its color threshold partially survives (sign accuracy 0.690 ± 0.172, vs 0.500 for every other model), though inconsistently across seeds.
+
+## Adversarial vs. random noise of the same size
+
+Each adversarial safety-reg model was rerun with **random** noise of the same size: every pixel gets ±8/255 with a random sign (`pgd_steps: 0, rand_init: sign`). That is the same size as the PGD iterates, but with no search for the worst direction. Everything else matches the adversarial run, including the gate setting: gated on Dubins, ungated on Safety Gym. The "with h" column uses the head-projected penalty; "no h" penalizes the whole latent shift.
+
+Zero-shot AUC, mean ± std over 3 eval seeds (Dubins: uniform eval):
+
+| | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation |
+|---|---|---|---|---|---|
+| sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 |
+| **with h, adversarial** | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | **0.999 ± 0.000** | **0.962 ± 0.001** |
+| with h, random | 0.300 ± 0.024 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.871 ± 0.002 | 0.729 ± 0.003 |
+| **no h, adversarial** | **0.951 ± 0.004** | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 |
+| no h, random | 0.631 ± 0.030 | 0.997 ± 0.002 | 0.996 ± 0.001 | 0.891 ± 0.011 | 0.802 ± 0.004 |
+| *jac+pull (reference)* | *0.753 ± 0.049* | *0.977 ± 0.007* | *0.978 ± 0.003* | *0.996 ± 0.001* | *0.679 ± 0.002* |
+
+Sign accuracy under shift for the random runs:
+- **Dubins:** color 0.170 (with h) and 0.176 (no h), both the all-unsafe rate; rotation 0.822 (with h) and 0.973 (no h).
+- **Safety Gym:** color 0.868 / 0.859, rotation 0.841 / 0.859. Thresholds mostly collapse toward "all safe", where the adversarial with-h model keeps 0.987 / 0.977.
+
+The 50/50 eval agrees. Dubins color AUC is 0.237 for with h + random, vs 0.927 adversarial.
+
+- **The adversary is what does the work, everywhere.** Swapping PGD for random noise of the same size loses most of the out-of-distribution gain in every cell: Dubins color drops by 0.61 (with h) and 0.32 (no h); Safety Gym color by about 0.1 and rotation by 0.14–0.23.
+- **Random noise through the head is actively harmful on Dubins.** Rotation falls to 0.555, far below sigreg only (0.956), and color is worse than every other safety-reg variant. Penalizing the head's response to random noise makes the head locally flat in random directions without protecting the directions that matter, and it apparently distorts the latent elsewhere. Without h, random noise is merely ineffective on Dubins (rotation intact).
+- **Shape is unaffected** (≥ 0.996 everywhere): shape robustness on Dubins comes from any form of this training.
+- **Random noise is cheap.** Final train pred_loss is 0.007 / 0.011 (with h, Dubins / Safety Gym) and 0.035 (no h, Safety Gym), vs 0.0113 / 0.0168 adversarial with h. Much of the prediction cost of the adversarial runs is the price of the robustness.
+- **Training recipe:** code `cfa5e52`. Runs `lewm_dubins_safeadv_rand50`, `sg_safeadv_rand50_g0`, `sg_lz_rand50_g0`; the Dubins no-h random run is `lewm_dubins_lz_rand50` from the ablations.
 
 ## Encoder Jacobians across models
 
@@ -550,7 +581,7 @@ Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbe
 ## Appendix D: where things are
 
 - **Code:** `le-wm/module.py` (`SafetyAdvInvarianceReg`, `_CleanStatBN`), config key `safety_adv` (kwargs `attack: linf | hue`, `eps_pix`, `min_steps`, `auc_gate`, `ramp_steps`, `n_sub`, `pgd_steps`), data config `data=dubins_safety`.
-- **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_lz_{rand,det,enc,pred}50/` (no-h ablations; code `9dfca47`), `lewm_dubins_lam_{batch,global}50/`, `sg_lam_{batch,global}50/` (λ-projected, code `32263e1`), `sg_safeadv_linf50_g0/` and `sg_linf_latent50_g0/` (Safety Gym, code `b9d34e2`, launchers `/data/seongbin/lewm/code_safeadv_b9d34e2/run_sg{L,LZ}g0.sh`). Dreamer: `/data/seongbin/dreamer/dreamer/safeadv/{dubins,sg}_sa_{head,latent}/rssm_ckpt.pt` (code snapshot `/data/seongbin/dreamer/code_safeadv_e99b14c/`, logs `safeadv/*.log`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
+- **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_lz_{rand,det,enc,pred}50/` (no-h ablations; code `9dfca47`), `lewm_dubins_lam_{batch,global}50/`, `sg_lam_{batch,global}50/` (λ-projected, code `32263e1`), `lewm_dubins_lam_gproj50/`, `sg_lam_gproj50/`, `lewm_dubins_safeadv_rand50/`, `sg_safeadv_rand50_g0/`, `sg_lz_rand50_g0/` (projected-scale λ and random-noise controls, code `cfa5e52`; evals in `lambda_eval/`), `sg_safeadv_linf50_g0/` and `sg_linf_latent50_g0/` (Safety Gym, code `b9d34e2`, launchers `/data/seongbin/lewm/code_safeadv_b9d34e2/run_sg{L,LZ}g0.sh`). Dreamer: `/data/seongbin/dreamer/dreamer/safeadv/{dubins,sg}_sa_{head,latent}/rssm_ckpt.pt` (code snapshot `/data/seongbin/dreamer/code_safeadv_e99b14c/`, logs `safeadv/*.log`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
 - **Training logs and code snapshots:** `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞, `.run_L/`; jac+pull + L∞, `.run_JL/`), `code_safeadv_dab24f2/` (no h, `.run_LZ/`), `code_safeadv_9dfca47/` (ablations, `run_<k>.sh`, `.run_<k>/`), `code_safeadv_c6e93c6/` (hue), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
 - **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `sg_eval/` (Safety Gym eval script, logs, `tables.py` for the Safety Gym and Dreamer tables), `dreamer/` (Dubins Dreamer eval logs, Safety Gym label fix `fix_sg_labels.py`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
 - **Baseline numbers:** `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `le-wm/scripts/ood_margin_gp_jepa.py`).
