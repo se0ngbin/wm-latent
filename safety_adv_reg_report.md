@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-14 07:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-14 21:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -14,6 +14,7 @@
 - **Adversarial vs. random noise (new):** replacing PGD with random ±8/255 noise of the same size loses most of the gain on every benchmark and axis, with or without h: Dubins color 0.910 → 0.300 (with h) and 0.951 → 0.631 (no h); Safety Gym color 0.999 → 0.871 and rotation 0.962 → 0.729 (with h). Random noise through the head even breaks Dubins rotation (0.555 vs 0.956 for sigreg only) ([section](#adversarial-vs-random-noise-of-the-same-size)).
 - **Noise size / attack strength (new):** the Dubins color result is fragile. With the head variant, ε = 4/255 gives color AUC 0.771, ε = 16/255 gives 0.305, and 8/255 with 5 PGD steps gives 0.088 (inverted), against 0.910 for the reference 8/255 with 2 steps. Reseeds of the reference are running ([section](#noise-size-and-attack-strength)).
 - **Training-seed check (new): the main Dubins color result does not reproduce.** Retraining the reference L∞ model with two new seeds gives color AUC 0.597 and 0.422 (vs 0.910), so 0.643 ± 0.247 over three seeds. That's not reliably above jac+pull (0.753). Shape (≥ 0.990) holds across seeds. Reseeds of the other headline models are running ([section](#training-seed-variability-of-the-reference)).
+- **Planning (new): the safety reg doesn't improve raw CEM.** Baseline + L∞ safety reg plans slightly worse than sigreg only in-distribution (57.5–59.5% success / 53–57% collision on three training seeds vs 62.5% / 50.0%). jac and jac+pull stay best (81.5% success). Recolor doesn't affect CEM for any model; rotation hurts all ([section](#planning-raw-cem-on-dubins)).
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
 - **Still unsolved on Dubins: the threshold under recolor.** Under purple, no Dubins model keeps its safe/unsafe cutoff (on Safety Gym, LeWM + L∞ does): on a 50/50 safe/unsafe test set every model scores 0.500–0.505 sign accuracy, including all three L∞ models. Which way it breaks (everything safe vs everything unsafe) varies with the encoder and the head's training set. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, every L∞ model keeps a working threshold (≥ 0.958 on 50/50).
@@ -393,6 +394,44 @@ The exact reference configuration (ε = 8/255, 2 PGD steps, head variant, gate 0
 - **The 0.910 color result does not reproduce.** Over three training seeds it is 0.643 ± 0.247: far above sigreg only (0.144), but not reliably above jac+pull (0.753, itself a single training seed). Training-seed variance dominates color. This also qualifies every single-seed Dubins color comparison above (no-h vs head, the λ variants, the attack sweep).
 - **Shape holds across seeds** (0.990–0.997) and stays above jac+pull. Rotation is roughly level with jac+pull on average, because seed 2 dips to 0.935. The color threshold collapses for all three seeds on the 50/50 eval (sign accuracy 0.49–0.50).
 - **Running:** two more training seeds each of jac+pull, no-h, jac+pull + L∞, global λ (projected scale) and the Safety Gym L∞ model, so every headline comparison has 3 training seeds.
+
+## Planning: raw CEM on Dubins
+
+Does the safety reg change how well the world model plans? Raw CEM, with no safety filter, on the model-differentiating sg25clean protocol:
+- goals 25 steps ahead, placed in an annulus around the obstacles, so the greedy path crosses them;
+- horizon 25, budget 50, N = 200 episodes per cell.
+
+Same protocol as the existing sigreg only / jac / jac+pull numbers (`le-wm/scripts/raw_cem_ood.sh`). Each cell is success % / collision %. "rotated" rotates the whole world by 90°. One CEM evaluation per cell; training seed 3072 unless stated. Logs `run_logs/rawcem_sg25_<tag>_<condition>.log`; script `safeadv_results/cem/run_cem.sh`.
+
+| model | red (in-dist) | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg only | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
+| jacobian | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
+| jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
+| baseline + L∞ safety reg (seed 3072) | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
+| baseline + L∞ safety reg (seed 1) | 57.5 / 54.5 | 57.5 / 54.0 | 57.5 / 44.5 | 27.0 / 66.0 |
+| baseline + L∞ safety reg (seed 2) | 59.5 / 53.0 | 59.5 / 53.0 | 59.5 / 43.5 | 34.5 / 61.5 |
+| jac+pull + L∞ safety reg | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
+| baseline + L∞ safety reg w/o h | 59.0 / 51.5 | 60.0 / 52.0 | 59.0 / 39.5 | 21.0 / 64.0 |
+| w/o h, random noise | 57.0 / 50.5 | 57.0 / 50.0 | 57.0 / 34.5 | 16.5 / 58.5 |
+| w/o h, detached denominator | 24.0 / 77.0 | 26.0 / 76.5 | 24.5 / 70.0 | 12.5 / 56.5 |
+| w/o h, encoder term only | 54.5 / 45.0 | 54.5 / 46.0 | 54.5 / 31.0 | 16.0 / 49.5 |
+| w/o h, predictor term only | 45.0 / 58.0 | 45.0 / 58.0 | 45.0 / 51.0 | 10.0 / 69.0 |
+| L∞ safety reg, random noise | 64.5 / 37.5 | 65.5 / 37.5 | 65.0 / 28.5 | 27.0 / 63.5 |
+| L∞ safety reg, ε = 4/255 | 55.0 / 51.0 | 55.0 / 51.0 | 55.0 / 40.5 | 23.0 / 64.0 |
+| L∞ safety reg, ε = 16/255 | 55.0 / 54.5 | 54.5 / 54.5 | 55.5 / 45.0 | 15.5 / 65.5 |
+| L∞ safety reg, 5 PGD steps | 58.0 / 51.5 | 58.0 / 51.5 | 58.0 / 44.0 | 25.5 / 67.5 |
+| L∞ safety reg, λ-projected, batch λ | 49.5 / 58.0 | 49.5 / 58.0 | 49.5 / 49.5 | 34.5 / 59.5 |
+| L∞ safety reg, λ-projected, global λ | 52.5 / 49.0 | 52.5 / 48.5 | 52.5 / 40.0 | 24.0 / 66.0 |
+| L∞ safety reg, λ-projected, global λ, projected scale | 54.5 / 50.0 | 55.0 / 50.0 | 54.5 / 42.0 | 26.5 / 61.5 |
+| baseline + hue safety reg | 65.0 / 49.0 | 65.0 / 49.0 | 65.0 / 40.0 | 22.5 / 71.0 |
+| jac+pull + hue safety reg | 77.0 / 34.0 | 77.0 / 34.0 | 76.5 / 21.0 | 42.0 / 48.5 |
+
+- **The safety reg doesn't make planning better, and on the sigreg base it makes it slightly worse.** Baseline + L∞ safety reg gets 57.5–59.5% success and 53–57% collision in-distribution on all three training seeds, against 62.5% / 50.0% for sigreg only. Unlike the color AUC, this is consistent across seeds.
+- **Planning quality comes from the Jacobian reg, not the safety reg.** jac and jac+pull remain the best planners (81.5% success, 22.5–29% collision). Adding the L∞ safety reg on top of jac+pull keeps the low collision rate (29.0%) but lowers success (75.5% vs 81.5%).
+- **Prediction cost shows up as planning cost.** The detached-denominator run, whose prediction loss was 4× the others', plans worst: 24% success and 77% collision. The predictor-only run is also poor (45% / 58%). Random-noise variants, the cheapest on prediction loss, are among the better safety-reg planners (64.5% / 37.5% with h).
+- **Recolor doesn't affect raw CEM for any model.** Red and purple are within a point everywhere. The goal image is recolored too, and the planner only compares current and goal latents, so a consistent appearance shift cancels. Diamond lowers collision for everyone, because the obstacle footprint itself changes. A 90° rotation hurts every model (10–42% success). None of the safety-reg variants protects planning under rotation; the best rotated success is jac+pull and jac+pull + hue (41.5–42%).
+- **Implication:** the safety reg's gains are in the *safety readout* (margin-head ranking and thresholds), not in planning. A safety filter on top of CEM is where it could pay off; that hasn't been tested.
 
 ## Encoder Jacobians across models
 
