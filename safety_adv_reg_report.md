@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-13 19:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-14 07:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -13,6 +13,7 @@
 - **λ-projection (new):** replacing the head with one shared safety direction λ = mean(z_safe) − mean(z_unsafe), and penalizing only the perturbation's shift along it, works on Dubins when λ is a running global average (color AUC 0.936, lowest prediction cost of any safety-reg model). It fails on Safety Gym, where the base latent has no consistent linear safety axis ([section](#safety-direction-λ-projection-instead-of-the-head)).
 - **Adversarial vs. random noise (new):** replacing PGD with random ±8/255 noise of the same size loses most of the gain on every benchmark and axis, with or without h: Dubins color 0.910 → 0.300 (with h) and 0.951 → 0.631 (no h); Safety Gym color 0.999 → 0.871 and rotation 0.962 → 0.729 (with h). Random noise through the head even breaks Dubins rotation (0.555 vs 0.956 for sigreg only) ([section](#adversarial-vs-random-noise-of-the-same-size)).
 - **Noise size / attack strength (new):** the Dubins color result is fragile. With the head variant, ε = 4/255 gives color AUC 0.771, ε = 16/255 gives 0.305, and 8/255 with 5 PGD steps gives 0.088 (inverted), against 0.910 for the reference 8/255 with 2 steps. Reseeds of the reference are running ([section](#noise-size-and-attack-strength)).
+- **Training-seed check (new): the main Dubins color result does not reproduce.** Retraining the reference L∞ model with two new seeds gives color AUC 0.597 and 0.422 (vs 0.910), so 0.643 ± 0.247 over three seeds. That's not reliably above jac+pull (0.753). Shape (≥ 0.990) holds across seeds. Reseeds of the other headline models are running ([section](#training-seed-variability-of-the-reference)).
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
 - **Still unsolved on Dubins: the threshold under recolor.** Under purple, no Dubins model keeps its safe/unsafe cutoff (on Safety Gym, LeWM + L∞ does): on a 50/50 safe/unsafe test set every model scores 0.500–0.505 sign accuracy, including all three L∞ models. Which way it breaks (everything safe vs everything unsafe) varies with the encoder and the head's training set. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, every L∞ model keeps a working threshold (≥ 0.958 on 50/50).
@@ -331,7 +332,23 @@ The head-variant L∞ safety reg on Dubins with only the adversary changed: ε =
 - **Rotation moves differently.** It is poor at 4/255 (0.577) and fine with a larger ε or more steps (0.910 / 0.992). A weak attack doesn't protect rotation, while a strong one does but loses color. Only the reference setting got both.
 - **Shape is robust under every setting** (≥ 0.984).
 - **Thresholds:** only ε = 4/255 keeps some color threshold on the 50/50 eval (sign accuracy 0.722 vs 0.500 for collapse; predicted safe 0.454). Every other run collapses on color, and ε = 4/255 and 16/255 also collapse on rotation.
-- **Implication:** the reference's color result depends sharply on the adversary settings. With one training seed per setting, it may also partly be training-seed luck; its own eval-seed spread (± 0.098) was already the widest. Two reseeds of the exact reference configuration (training seeds 1 and 2) are running to check whether 0.910 reproduces.
+- **Implication:** the reference's color result depends sharply on the adversary settings, and also on the training seed (below).
+
+### Training-seed variability of the reference
+
+The exact reference configuration (ε = 8/255, 2 PGD steps, head variant, gate 0.95) retrained with training seeds 1 and 2 (code `cfa5e52`; runs `lewm_dubins_safeadv_linf50_s{1,2}`). Zero-shot AUC, Dubins uniform eval, mean ± std over 3 eval seeds per training seed:
+
+| training seed | in-dist | color | shape | rotation | color, 50/50 |
+|---|---|---|---|---|---|
+| 3072 (reference) | **0.998 ± 0.001** | **0.910 ± 0.098** | **0.997 ± 0.001** | **0.996 ± 0.002** | **0.927 ± 0.021** |
+| 1 | 0.997 ± 0.001 | 0.597 ± 0.032 | 0.996 ± 0.001 | 0.995 ± 0.002 | 0.599 ± 0.101 |
+| 2 | 0.994 ± 0.004 | 0.422 ± 0.015 | 0.990 ± 0.003 | 0.935 ± 0.033 | 0.462 ± 0.028 |
+| mean ± std over training seeds | 0.996 ± 0.002 | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.663 ± 0.239 |
+| jac+pull (one training seed) | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 | 0.747 ± 0.063 |
+
+- **The 0.910 color result does not reproduce.** Over three training seeds it is 0.643 ± 0.247: far above sigreg only (0.144), but not reliably above jac+pull (0.753, itself a single training seed). Training-seed variance dominates color. This also qualifies every single-seed Dubins color comparison above (no-h vs head, the λ variants, the attack sweep).
+- **Shape holds across seeds** (0.990–0.997) and stays above jac+pull. Rotation is roughly level with jac+pull on average, because seed 2 dips to 0.935. The color threshold collapses for all three seeds on the 50/50 eval (sign accuracy 0.49–0.50).
+- **Running:** two more training seeds each of jac+pull, no-h, jac+pull + L∞, global λ (projected scale) and the Safety Gym L∞ model, so every headline comparison has 3 training seeds.
 
 ## Encoder Jacobians across models
 
