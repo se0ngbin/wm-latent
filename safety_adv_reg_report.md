@@ -300,6 +300,22 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 
 \* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
 
+Zero-shot sign accuracy (h ≥ 0 = safe), mean ± std over 3 eval seeds. Dubins from the 50/50 eval, where 0.500 means the threshold is gone; Safety Gym, where calling every state safe scores 0.833:
+
+| model | Dubins in-dist | Dubins color | Dubins shape | Dubins rotation | Safety Gym in-dist | Safety Gym color | Safety Gym rotation |
+|---|---|---|---|---|---|---|---|
+| sigreg only | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 | 0.970 ± 0.007 | 0.833 ± 0.000 | 0.833 ± 0.000 |
+| L∞ safety reg, head (per-sample direction)\* | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
+| L∞ safety reg, λ-projected, batch λ | 0.976 ± 0.003 | 0.501 ± 0.004 | 0.959 ± 0.003 | 0.627 ± 0.049 | 0.990 ± 0.005 | 0.856 ± 0.007 | 0.836 ± 0.001 |
+| L∞ safety reg, λ-projected, global λ | 0.977 ± 0.002 | 0.500 ± 0.000 | 0.963 ± 0.002 | 0.941 ± 0.015 | 0.892 ± 0.006 | 0.844 ± 0.007 | 0.802 ± 0.008 |
+| L∞ safety reg, λ-projected, global λ, projected scale | 0.974 ± 0.003 | 0.690 ± 0.172 | 0.960 ± 0.007 | 0.920 ± 0.018 | 0.950 ± 0.003 | 0.843 ± 0.004 | 0.829 ± 0.003 |
+| L∞ safety reg w/o h (all directions) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 | 0.990 ± 0.007 | 0.943 ± 0.005 | 0.933 ± 0.006 |
+
+\* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
+
+- **Dubins:** every λ variant loses the color threshold except global λ with projected scale, which partly keeps it (0.690). Its spread across eval seeds is large and it has one training seed. Batch λ also loses the rotation threshold (0.627).
+- **Safety Gym:** all λ variants collapse toward calling everything safe (0.80–0.86, near the 0.833 all-safe rate). Only the head version keeps its thresholds (0.987 / 0.977), and w/o h partly does (0.943 / 0.933).
+
 The full uniform, 50/50 and Safety Gym tables (sign accuracy, AUC, predicted-safe fraction) include both λ rows. On the 50/50 eval, Dubins color AUC is 0.819 ± 0.025 for batch λ and 0.892 ± 0.069 for global λ.
 
 - **Dubins, global λ works.** Color AUC is 0.936 (seeds 0.98 / 0.92 / 0.90), between the head variant (0.910) and no-h (0.951). Shape and rotation stay intact. It also has the lowest prediction cost of any safety-reg model (pred_loss 0.0081), and its running direction agrees with the batch direction (cos ≈ 0.89–0.94).
