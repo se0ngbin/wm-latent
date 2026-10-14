@@ -35,9 +35,9 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 | baseline (sigreg only) | 0.943 ± 0.005 | 0.170 ± 0.006 | 0.310 ± 0.025 | 0.830 ± 0.006 |
 | jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | 0.968 ± 0.007 | 0.962 ± 0.004 |
 | jac+pull | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
-| baseline + safety reg, L∞ noise | **0.981 ± 0.004** | 0.174 ± 0.006 | **0.980 ± 0.003** | 0.975 ± 0.004 |
+| baseline + safety reg, L∞ noise | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
 | jac+pull + safety reg, L∞ noise | 0.973 ± 0.003 | 0.830 ± 0.006 | 0.978 ± 0.005 | 0.970 ± 0.009 |
-| baseline + L∞ noise, no h (whole latent) | 0.977 ± 0.005 | 0.170 ± 0.006 | 0.977 ± 0.003 | **0.977 ± 0.003** |
+| baseline + L∞ noise, no h (whole latent) | 0.977 ± 0.005 | 0.170 ± 0.006 | 0.977 ± 0.003 | 0.977 ± 0.003 |
 
 **AUC**
 
@@ -46,9 +46,9 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 | baseline (sigreg only) | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 |
 | jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.992 ± 0.003 | 0.989 ± 0.002 |
 | jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
-| baseline + safety reg, L∞ noise | **0.998 ± 0.001** | 0.910 ± 0.098 | **0.997 ± 0.001** | 0.996 ± 0.002 |
-| jac+pull + safety reg, L∞ noise | 0.996 ± 0.001 | **0.965 ± 0.013** | 0.994 ± 0.002 | 0.994 ± 0.002 |
-| baseline + L∞ noise, no h (whole latent) | 0.997 ± 0.001 | 0.951 ± 0.004 | 0.996 ± 0.001 | **0.997 ± 0.001** |
+| baseline + safety reg, L∞ noise | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
+| jac+pull + safety reg, L∞ noise | 0.996 ± 0.001 | 0.965 ± 0.013 | 0.994 ± 0.002 | 0.994 ± 0.002 |
+| baseline + L∞ noise, no h (whole latent) | 0.997 ± 0.001 | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 |
 
 Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color AUC 0.905 ± 0.121, shape ≥ 0.993, rotation ≥ 0.982. Retraining a head on the shifted appearance recovers every model to ≥ 0.930 AUC; the shift relocates the latent rather than destroying information.
 
@@ -78,9 +78,9 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
 | jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
 | jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
-| baseline + safety reg, L∞ noise | **0.980 ± 0.004** | 0.501 ± 0.001 | **0.974 ± 0.003** | 0.959 ± 0.008 |
+| baseline + safety reg, L∞ noise | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
 | jac+pull + safety reg, L∞ noise | 0.974 ± 0.004 | 0.505 ± 0.005 | 0.961 ± 0.003 | 0.958 ± 0.011 |
-| baseline + L∞ noise, no h (whole latent) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | **0.968 ± 0.009** |
+| baseline + L∞ noise, no h (whole latent) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 |
 
 **AUC**
 
@@ -89,18 +89,18 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
 | jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
 | jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
-| baseline + safety reg, L∞ noise | **0.999 ± 0.001** | 0.927 ± 0.021 | **0.998 ± 0.000** | **0.996 ± 0.002** |
-| jac+pull + safety reg, L∞ noise | 0.997 ± 0.001 | **0.958 ± 0.012** | 0.995 ± 0.001 | 0.992 ± 0.004 |
-| baseline + L∞ noise, no h (whole latent) | 0.998 ± 0.002 | 0.955 ± 0.002 | 0.997 ± 0.001 | **0.996 ± 0.001** |
+| baseline + safety reg, L∞ noise | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
+| jac+pull + safety reg, L∞ noise | 0.997 ± 0.001 | 0.958 ± 0.012 | 0.995 ± 0.001 | 0.992 ± 0.004 |
+| baseline + L∞ noise, no h (whole latent) | 0.998 ± 0.002 | 0.955 ± 0.002 | 0.997 ± 0.001 | 0.996 ± 0.001 |
 
 **Predicted-safe fraction (true = .500)**
 
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
-| jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | **0.505 ± 0.006** |
+| jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
 | jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
-| baseline + safety reg, L∞ noise | 0.501 ± 0.003 | 0.001 ± 0.001 | **0.509 ± 0.005** | 0.522 ± 0.001 |
+| baseline + safety reg, L∞ noise | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
 | jac+pull + safety reg, L∞ noise | 0.503 ± 0.001 | 0.995 ± 0.005 | 0.514 ± 0.003 | 0.508 ± 0.004 |
 | baseline + L∞ noise, no h (whole latent) | 0.503 ± 0.002 | 0.000 ± 0.000 | 0.520 ± 0.007 | 0.510 ± 0.009 |
 
@@ -122,11 +122,11 @@ Zero-shot AUC, mean ± std over 3 eval seeds; shape and rotation from the unifor
 
 | model | color, uniform | color, 50/50 | shape | rotation | final train pred_loss |
 |---|---|---|---|---|---|
-| no h, full | **0.951 ± 0.004** | **0.955 ± 0.002** | 0.996 ± 0.001 | **0.997 ± 0.001** | 0.0253 |
-| random noise (no PGD) | 0.631 ± 0.030 | 0.622 ± 0.026 | **0.997 ± 0.002** | 0.996 ± 0.001 | **0.0140** |
+| no h, full | 0.951 ± 0.004 | 0.955 ± 0.002 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0253 |
+| random noise (no PGD) | 0.631 ± 0.030 | 0.622 ± 0.026 | 0.997 ± 0.002 | 0.996 ± 0.001 | 0.0140 |
 | detached denominator | 0.643 ± 0.022 | 0.627 ± 0.004 | 0.991 ± 0.002 | 0.991 ± 0.005 | 0.1070 |
-| encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | **0.997 ± 0.001** | 0.996 ± 0.001 | 0.0225 |
-| predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | **0.997 ± 0.001** | 0.0265 |
+| encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | 0.997 ± 0.001 | 0.996 ± 0.001 | 0.0225 |
+| predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0265 |
 | *reference: sigreg only* | *0.144 ± 0.032* | *0.177 ± 0.032* | *0.913 ± 0.024* | *0.956 ± 0.023* | *not logged* |
 
 Per eval seed (color AUC, uniform / 50/50):
@@ -171,8 +171,8 @@ Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearanc
 |---|---|---|---|
 | LeWM sigreg only | 0.970 ± 0.007 | 0.833 ± 0.000 | 0.833 ± 0.000 |
 | LeWM jac | 0.992 ± 0.002 | 0.921 ± 0.002 | 0.832 ± 0.001 |
-| LeWM jac+pull | **0.997 ± 0.000** | 0.943 ± 0.004 | 0.835 ± 0.002 |
-| LeWM + safety reg (L∞) | **0.997 ± 0.002** | **0.987 ± 0.003** | **0.977 ± 0.005** |
+| LeWM jac+pull | 0.997 ± 0.000 | 0.943 ± 0.004 | 0.835 ± 0.002 |
+| LeWM + safety reg (L∞) | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
 | LeWM + safety reg (L∞, no h) | 0.990 ± 0.007 | 0.943 ± 0.005 | 0.933 ± 0.006 |
 | Dreamer | 0.981 ± 0.004 | 0.835 ± 0.003 | 0.833 ± 0.000 |
 | Dreamer + safety reg (L∞) | 0.983 ± 0.002 | 0.856 ± 0.008 | 0.833 ± 0.000 |
@@ -185,7 +185,7 @@ Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearanc
 | LeWM sigreg only | 0.992 ± 0.003 | 0.595 ± 0.001 | 0.557 ± 0.006 |
 | LeWM jac | 0.997 ± 0.001 | 0.992 ± 0.000 | 0.641 ± 0.006 |
 | LeWM jac+pull | 0.999 ± 0.000 | 0.996 ± 0.001 | 0.679 ± 0.002 |
-| LeWM + safety reg (L∞) | **1.000 ± 0.000** | **0.999 ± 0.000** | **0.962 ± 0.001** |
+| LeWM + safety reg (L∞) | 1.000 ± 0.000 | 0.999 ± 0.000 | 0.962 ± 0.001 |
 | LeWM + safety reg (L∞, no h) | 0.999 ± 0.000 | 0.985 ± 0.001 | 0.941 ± 0.005 |
 | Dreamer | 0.993 ± 0.001 | 0.961 ± 0.002 | 0.503 ± 0.047 |
 | Dreamer + safety reg (L∞) | 0.995 ± 0.001 | 0.977 ± 0.003 | 0.481 ± 0.043 |
@@ -198,7 +198,7 @@ Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearanc
 | LeWM sigreg only | 0.820 ± 0.005 | 1.000 ± 0.000 | 1.000 ± 0.000 |
 | LeWM jac | 0.833 ± 0.004 | 0.912 ± 0.002 | 0.999 ± 0.001 |
 | LeWM jac+pull | 0.832 ± 0.000 | 0.888 ± 0.004 | 0.998 ± 0.002 |
-| LeWM + safety reg (L∞) | 0.830 ± 0.002 | **0.823 ± 0.006** | **0.833 ± 0.006** |
+| LeWM + safety reg (L∞) | 0.830 ± 0.002 | 0.823 ± 0.006 | 0.833 ± 0.006 |
 | LeWM + safety reg (L∞, no h) | 0.831 ± 0.006 | 0.890 ± 0.005 | 0.858 ± 0.014 |
 | Dreamer | 0.828 ± 0.005 | 0.995 ± 0.002 | 1.000 ± 0.000 |
 | Dreamer + safety reg (L∞) | 0.832 ± 0.003 | 0.977 ± 0.007 | 1.000 ± 0.000 |
@@ -219,16 +219,16 @@ The Dubins Dreamer reference is the same baseline used in earlier Dreamer compar
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | Dreamer | 0.986 ± 0.002 | 0.780 ± 0.043 | 0.936 ± 0.007 | 0.708 ± 0.007 |
-| Dreamer + safety reg (L∞) | **0.988 ± 0.003** | 0.793 ± 0.024 | **0.937 ± 0.011** | 0.708 ± 0.005 |
+| Dreamer + safety reg (L∞) | 0.988 ± 0.003 | 0.793 ± 0.024 | 0.937 ± 0.011 | 0.708 ± 0.005 |
 | Dreamer + safety reg (L∞, no h) | 0.985 ± 0.001 | 0.726 ± 0.074 | 0.929 ± 0.005 | 0.715 ± 0.010 |
 
 **AUC**
 
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
-| Dreamer | **0.999 ± 0.000** | 0.638 ± 0.013 | 0.993 ± 0.001 | 0.480 ± 0.011 |
-| Dreamer + safety reg (L∞) | **0.999 ± 0.000** | **0.816 ± 0.017** | **0.995 ± 0.001** | 0.484 ± 0.013 |
-| Dreamer + safety reg (L∞, no h) | **0.999 ± 0.000** | 0.626 ± 0.048 | 0.994 ± 0.001 | **0.494 ± 0.006** |
+| Dreamer | 0.999 ± 0.000 | 0.638 ± 0.013 | 0.993 ± 0.001 | 0.480 ± 0.011 |
+| Dreamer + safety reg (L∞) | 0.999 ± 0.000 | 0.816 ± 0.017 | 0.995 ± 0.001 | 0.484 ± 0.013 |
+| Dreamer + safety reg (L∞, no h) | 0.999 ± 0.000 | 0.626 ± 0.048 | 0.994 ± 0.001 | 0.494 ± 0.006 |
 
 - **The head-projected variant helps color** (AUC 0.638 → 0.816), and nothing else moves.
 - **No-h does nothing on Dubins Dreamer** (color 0.626). So for Dreamer the safety projection matters, the opposite of LeWM on Dubins.
@@ -269,11 +269,11 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 | model | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation | final pred_loss (Dubins / Safety Gym) |
 |---|---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 | — / 0.0026 |
-| safety reg, head (per-sample direction) | 0.910 ± 0.098 | **0.997 ± 0.001** | 0.996 ± 0.002 | **0.999 ± 0.000** | **0.962 ± 0.001** | 0.0113 / 0.0168 |
+| safety reg, head (per-sample direction) | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 | 0.0113 / 0.0168 |
 | safety reg, λ-projected, batch λ | 0.639 ± 0.345 | 0.996 ± 0.002 | 0.896 ± 0.013 | 0.941 ± 0.009 | 0.855 ± 0.009 | 0.0112 / 0.0242 |
 | safety reg, λ-projected, global λ | 0.936 ± 0.041 | 0.995 ± 0.002 | 0.995 ± 0.002 | 0.841 ± 0.001 | 0.445 ± 0.008 | 0.0081 / 0.2342 |
 | safety reg, λ-projected, global λ, projected scale | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 | 0.008 / 0.013 |
-| safety reg, no h (all directions) | **0.951 ± 0.004** | 0.996 ± 0.001 | **0.997 ± 0.001** | 0.985 ± 0.001 | 0.941 ± 0.005 | 0.0253 / 0.090 |
+| safety reg, no h (all directions) | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 | 0.0253 / 0.090 |
 
 The full uniform, 50/50 and Safety Gym tables (sign accuracy, AUC, predicted-safe fraction) include both λ rows. On the 50/50 eval, Dubins color AUC is 0.819 ± 0.025 for batch λ and 0.892 ± 0.069 for global λ.
 
@@ -297,10 +297,10 @@ Zero-shot AUC, mean ± std over 3 eval seeds (Dubins: uniform eval):
 | | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation |
 |---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 |
-| with h, adversarial | 0.910 ± 0.098 | **0.997 ± 0.001** | 0.996 ± 0.002 | **0.999 ± 0.000** | **0.962 ± 0.001** |
+| with h, adversarial | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 |
 | with h, random | 0.300 ± 0.024 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.871 ± 0.002 | 0.729 ± 0.003 |
-| no h, adversarial | **0.951 ± 0.004** | 0.996 ± 0.001 | **0.997 ± 0.001** | 0.985 ± 0.001 | 0.941 ± 0.005 |
-| no h, random | 0.631 ± 0.030 | **0.997 ± 0.002** | 0.996 ± 0.001 | 0.891 ± 0.011 | 0.802 ± 0.004 |
+| no h, adversarial | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 |
+| no h, random | 0.631 ± 0.030 | 0.997 ± 0.002 | 0.996 ± 0.001 | 0.891 ± 0.011 | 0.802 ± 0.004 |
 | *jac+pull (reference)* | *0.753 ± 0.049* | *0.977 ± 0.007* | *0.978 ± 0.003* | *0.996 ± 0.001* | *0.679 ± 0.002* |
 
 Sign accuracy under shift for the random runs:
@@ -322,11 +322,11 @@ The head-variant L∞ safety reg on Dubins with only the adversary changed: ε =
 | model | color, uniform | color, 50/50 | shape | rotation | final train pred_loss |
 |---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.177 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | — |
-| random ±8/255, no search | 0.300 ± 0.024 | 0.237 ± 0.038 | 0.996 ± 0.002 | 0.555 ± 0.077 | **0.0067** |
-| ε = 4/255, 2 steps | 0.771 ± 0.032 | 0.782 ± 0.027 | **0.997 ± 0.001** | 0.577 ± 0.105 | 0.0124 |
-| ε = 8/255, 2 steps (reference) | **0.910 ± 0.098** | **0.927 ± 0.021** | **0.997 ± 0.001** | **0.996 ± 0.002** | 0.0113 |
+| random ±8/255, no search | 0.300 ± 0.024 | 0.237 ± 0.038 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.0067 |
+| ε = 4/255, 2 steps | 0.771 ± 0.032 | 0.782 ± 0.027 | 0.997 ± 0.001 | 0.577 ± 0.105 | 0.0124 |
+| ε = 8/255, 2 steps (reference) | 0.910 ± 0.098 | 0.927 ± 0.021 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.0113 |
 | ε = 16/255, 2 steps | 0.305 ± 0.042 | 0.296 ± 0.026 | 0.984 ± 0.002 | 0.910 ± 0.020 | 0.0134 |
-| ε = 8/255, 5 steps | 0.088 ± 0.047 | 0.286 ± 0.043 | **0.997 ± 0.001** | 0.992 ± 0.003 | 0.0116 |
+| ε = 8/255, 5 steps | 0.088 ± 0.047 | 0.286 ± 0.043 | 0.997 ± 0.001 | 0.992 ± 0.003 | 0.0116 |
 
 - **Color is not monotonic in the attack.** Raising ε from 8/255 to 16/255 drops color AUC from 0.910 to 0.305. A stronger search at the same ε (5 steps) drops it to 0.088, below sigreg only, i.e. the purple ranking becomes inverted. 4/255 lands in between (0.771). Per eval seed: 4/255 is 0.80 / 0.74 / 0.78, 16/255 is 0.35 / 0.30 / 0.27, and 5 steps is 0.14 / 0.06 / 0.06. So the gaps between runs are far outside the eval-seed spread.
 - **Rotation moves differently.** It is poor at 4/255 (0.577) and fine with a larger ε or more steps (0.910 / 0.992). A weak attack doesn't protect rotation, while a strong one does but loses color. Only the reference setting got both.
@@ -340,7 +340,7 @@ The exact reference configuration (ε = 8/255, 2 PGD steps, head variant, gate 0
 
 | training seed | in-dist | color | shape | rotation | color, 50/50 |
 |---|---|---|---|---|---|
-| 3072 (reference) | **0.998 ± 0.001** | **0.910 ± 0.098** | **0.997 ± 0.001** | **0.996 ± 0.002** | **0.927 ± 0.021** |
+| 3072 (reference) | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.927 ± 0.021 |
 | 1 | 0.997 ± 0.001 | 0.597 ± 0.032 | 0.996 ± 0.001 | 0.995 ± 0.002 | 0.599 ± 0.101 |
 | 2 | 0.994 ± 0.004 | 0.422 ± 0.015 | 0.990 ± 0.003 | 0.935 ± 0.033 | 0.462 ± 0.028 |
 | mean ± std over training seeds | 0.996 ± 0.002 | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.663 ± 0.239 |
@@ -544,19 +544,19 @@ The adversary maximizes the same d. An earlier draft normalized by the latent sp
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.943 ± 0.005 | 0.170 ± 0.006 | 0.310 ± 0.025 | 0.830 ± 0.006 |
-| jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | **0.968 ± 0.007** | **0.962 ± 0.004** |
+| jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | 0.968 ± 0.007 | 0.962 ± 0.004 |
 | jac+pull | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
-| baseline + safety reg, hue | **0.970 ± 0.003** | 0.830 ± 0.006 | 0.891 ± 0.005 | 0.843 ± 0.024 |
-| jac+pull + safety reg, hue | 0.969 ± 0.004 | 0.816 ± 0.026 | **0.968 ± 0.003** | 0.892 ± 0.018 |
+| baseline + safety reg, hue | 0.970 ± 0.003 | 0.830 ± 0.006 | 0.891 ± 0.005 | 0.843 ± 0.024 |
+| jac+pull + safety reg, hue | 0.969 ± 0.004 | 0.816 ± 0.026 | 0.968 ± 0.003 | 0.892 ± 0.018 |
 
 **AUC**
 
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 |
-| jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | **0.992 ± 0.003** | **0.989 ± 0.002** |
-| jac+pull | 0.983 ± 0.001 | **0.753 ± 0.049** | 0.977 ± 0.007 | 0.978 ± 0.003 |
-| baseline + safety reg, hue | **0.996 ± 0.003** | 0.634 ± 0.158 | 0.612 ± 0.080 | 0.966 ± 0.009 |
+| jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.992 ± 0.003 | 0.989 ± 0.002 |
+| jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
+| baseline + safety reg, hue | 0.996 ± 0.003 | 0.634 ± 0.158 | 0.612 ± 0.080 | 0.966 ± 0.009 |
 | jac+pull + safety reg, hue | 0.985 ± 0.004 | 0.681 ± 0.150 | 0.977 ± 0.007 | 0.983 ± 0.005 |
 
 50/50 eval (sign accuracy, AUC, predicted-safe fraction):
@@ -566,19 +566,19 @@ The adversary maximizes the same d. An earlier draft normalized by the latent sp
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
-| jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | **0.952 ± 0.003** | **0.946 ± 0.009** |
+| jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
 | jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
-| baseline + safety reg, hue | **0.970 ± 0.005** | 0.500 ± 0.000 | 0.500 ± 0.000 | 0.629 ± 0.069 |
-| jac+pull + safety reg, hue | 0.964 ± 0.003 | **0.645 ± 0.101** | 0.942 ± 0.005 | 0.849 ± 0.046 |
+| baseline + safety reg, hue | 0.970 ± 0.005 | 0.500 ± 0.000 | 0.500 ± 0.000 | 0.629 ± 0.069 |
+| jac+pull + safety reg, hue | 0.964 ± 0.003 | 0.645 ± 0.101 | 0.942 ± 0.005 | 0.849 ± 0.046 |
 
 **AUC**
 
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
-| jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | **0.992 ± 0.001** | **0.990 ± 0.003** |
-| jac+pull | 0.987 ± 0.002 | **0.747 ± 0.063** | 0.981 ± 0.001 | 0.983 ± 0.004 |
-| baseline + safety reg, hue | **0.996 ± 0.002** | 0.623 ± 0.150 | 0.631 ± 0.084 | 0.967 ± 0.013 |
+| jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
+| jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
+| baseline + safety reg, hue | 0.996 ± 0.002 | 0.623 ± 0.150 | 0.631 ± 0.084 | 0.967 ± 0.013 |
 | jac+pull + safety reg, hue | 0.993 ± 0.001 | 0.685 ± 0.086 | 0.987 ± 0.002 | 0.986 ± 0.004 |
 
 **Predicted-safe fraction (true = .500)**
@@ -586,10 +586,10 @@ The adversary maximizes the same d. An earlier draft normalized by the latent sp
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
-| jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | **0.505 ± 0.006** |
+| jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
 | jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
 | baseline + safety reg, hue | 0.507 ± 0.006 | 1.000 ± 0.000 | 1.000 ± 0.000 | 0.856 ± 0.071 |
-| jac+pull + safety reg, hue | 0.500 ± 0.013 | 0.388 ± 0.159 | **0.504 ± 0.025** | 0.360 ± 0.051 |
+| jac+pull + safety reg, hue | 0.500 ± 0.013 | 0.388 ± 0.159 | 0.504 ± 0.025 | 0.360 ± 0.051 |
 
 Predicted-safe fraction under purple:
 
