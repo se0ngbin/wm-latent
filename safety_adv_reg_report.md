@@ -35,9 +35,11 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 | baseline (sigreg only) | 0.943 ± 0.005 | 0.170 ± 0.006 | 0.310 ± 0.025 | 0.830 ± 0.006 |
 | jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | 0.968 ± 0.007 | 0.962 ± 0.004 |
 | jac+pull | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
-| baseline + L∞ safety reg | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
+| baseline + L∞ safety reg\* | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
 | jac+pull + L∞ safety reg | 0.973 ± 0.003 | 0.830 ± 0.006 | 0.978 ± 0.005 | 0.970 ± 0.009 |
 | baseline + L∞ safety reg w/o h | 0.977 ± 0.005 | 0.170 ± 0.006 | 0.977 ± 0.003 | 0.977 ± 0.003 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 **AUC**
 
@@ -46,9 +48,11 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 | baseline (sigreg only) | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 |
 | jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.992 ± 0.003 | 0.989 ± 0.002 |
 | jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
-| baseline + L∞ safety reg | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
+| baseline + L∞ safety reg\* | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
 | jac+pull + L∞ safety reg | 0.996 ± 0.001 | 0.965 ± 0.013 | 0.994 ± 0.002 | 0.994 ± 0.002 |
 | baseline + L∞ safety reg w/o h | 0.997 ± 0.001 | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color AUC 0.905 ± 0.121, shape ≥ 0.993, rotation ≥ 0.982. Retraining a head on the shifted appearance recovers every model to ≥ 0.930 AUC; the shift relocates the latent rather than destroying information.
 
@@ -61,9 +65,11 @@ Under purple, sign accuracy is misleading on its own. With ~17% unsafe states, a
 | baseline (sigreg only) | 0.000 ± 0.000 | 0.830 ± 0.006 |
 | jacobian | 0.001 ± 0.001 | 0.830 ± 0.006 |
 | jac+pull | 0.976 ± 0.041 | 0.830 ± 0.006 |
-| baseline + L∞ safety reg | not logged; sign accuracy 0.174 ± 0.006 equals the unsafe rate, so ≈ 0.000 (measured directly in the 50/50 eval) | 0.830 ± 0.006 |
+| baseline + L∞ safety reg\* | not logged; sign accuracy 0.174 ± 0.006 equals the unsafe rate, so ≈ 0.000 (measured directly in the 50/50 eval) | 0.830 ± 0.006 |
 | jac+pull + L∞ safety reg | not logged; sign accuracy 0.830 ± 0.006 equals the safe rate, so ≈ 1.000 | 0.830 ± 0.006 |
 | baseline + L∞ safety reg w/o h | not logged; sign accuracy 0.170 ± 0.006 equals the unsafe rate, so ≈ 0.000 | 0.830 ± 0.006 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 So **no model keeps a usable threshold under the color shift**. On this eval set baseline, jacobian and L∞ call everything unsafe and jac+pull calls everything safe; but the 50/50 eval below shows the *direction* flips with the head's training set (jac+pull calls everything unsafe there), so only the collapse itself is a stable finding. What separates the models on color is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its 0.830 sign accuracy came from calling everything safe. Under shape and rotation the L∞ threshold does survive (sign accuracy 0.980 / 0.975).
 
@@ -78,9 +84,11 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
 | jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
 | jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
-| baseline + L∞ safety reg | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
+| baseline + L∞ safety reg\* | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
 | jac+pull + L∞ safety reg | 0.974 ± 0.004 | 0.505 ± 0.005 | 0.961 ± 0.003 | 0.958 ± 0.011 |
 | baseline + L∞ safety reg w/o h | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 **AUC**
 
@@ -89,9 +97,11 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
 | jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
 | jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
-| baseline + L∞ safety reg | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
+| baseline + L∞ safety reg\* | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
 | jac+pull + L∞ safety reg | 0.997 ± 0.001 | 0.958 ± 0.012 | 0.995 ± 0.001 | 0.992 ± 0.004 |
 | baseline + L∞ safety reg w/o h | 0.998 ± 0.002 | 0.955 ± 0.002 | 0.997 ± 0.001 | 0.996 ± 0.001 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 **Predicted-safe fraction (true = .500)**
 
@@ -100,9 +110,11 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
 | jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
 | jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
-| baseline + L∞ safety reg | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
+| baseline + L∞ safety reg\* | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
 | jac+pull + L∞ safety reg | 0.503 ± 0.001 | 0.995 ± 0.005 | 0.514 ± 0.003 | 0.508 ± 0.004 |
 | baseline + L∞ safety reg w/o h | 0.503 ± 0.002 | 0.000 ± 0.000 | 0.520 ± 0.007 | 0.510 ± 0.009 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 What it shows:
 - **Confirms:** every model's color threshold collapses (sign accuracy 0.500–0.503). L∞ has the best ranking on every shift: color AUC 0.927 ± 0.021 (less seed-variable than in the uniform eval), shape 0.998, rotation 0.996. L∞ keeps working thresholds on shape (0.974) and rotation (0.959).
@@ -278,11 +290,13 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 | model | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation | final pred_loss (Dubins / Safety Gym) |
 |---|---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 | — / 0.0026 |
-| safety reg, head (per-sample direction) | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 | 0.0113 / 0.0168 |
+| safety reg, head (per-sample direction)\* | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 | 0.0113 / 0.0168 |
 | safety reg, λ-projected, batch λ | 0.639 ± 0.345 | 0.996 ± 0.002 | 0.896 ± 0.013 | 0.941 ± 0.009 | 0.855 ± 0.009 | 0.0112 / 0.0242 |
 | safety reg, λ-projected, global λ | 0.936 ± 0.041 | 0.995 ± 0.002 | 0.995 ± 0.002 | 0.841 ± 0.001 | 0.445 ± 0.008 | 0.0081 / 0.2342 |
 | safety reg, λ-projected, global λ, projected scale | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 | 0.008 / 0.013 |
 | safety reg, no h (all directions) | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 | 0.0253 / 0.090 |
+
+\* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
 
 The full uniform, 50/50 and Safety Gym tables (sign accuracy, AUC, predicted-safe fraction) include both λ rows. On the 50/50 eval, Dubins color AUC is 0.819 ± 0.025 for batch λ and 0.892 ± 0.069 for global λ.
 
@@ -306,11 +320,13 @@ Zero-shot AUC, mean ± std over 3 eval seeds (Dubins: uniform eval):
 | | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation |
 |---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 |
-| with h, adversarial | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 |
+| with h, adversarial\* | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 |
 | with h, random | 0.300 ± 0.024 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.871 ± 0.002 | 0.729 ± 0.003 |
 | no h, adversarial | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 |
 | no h, random | 0.631 ± 0.030 | 0.997 ± 0.002 | 0.996 ± 0.001 | 0.891 ± 0.011 | 0.802 ± 0.004 |
 | *jac+pull (reference)* | *0.753 ± 0.049* | *0.977 ± 0.007* | *0.978 ± 0.003* | *0.996 ± 0.001* | *0.679 ± 0.002* |
+
+\* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
 
 Sign accuracy under shift for the random runs:
 - **Dubins:** color 0.170 (with h) and 0.176 (no h), both the all-unsafe rate; rotation 0.822 (with h) and 0.973 (no h).
@@ -333,9 +349,11 @@ The head-variant L∞ safety reg on Dubins with only the adversary changed: ε =
 | sigreg only | 0.144 ± 0.032 | 0.177 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | — |
 | random ±8/255, no search | 0.300 ± 0.024 | 0.237 ± 0.038 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.0067 |
 | ε = 4/255, 2 steps | 0.771 ± 0.032 | 0.782 ± 0.027 | 0.997 ± 0.001 | 0.577 ± 0.105 | 0.0124 |
-| ε = 8/255, 2 steps (reference) | 0.910 ± 0.098 | 0.927 ± 0.021 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.0113 |
+| ε = 8/255, 2 steps (reference)\* | 0.910 ± 0.098 | 0.927 ± 0.021 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.0113 |
 | ε = 16/255, 2 steps | 0.305 ± 0.042 | 0.296 ± 0.026 | 0.984 ± 0.002 | 0.910 ± 0.020 | 0.0134 |
 | ε = 8/255, 5 steps | 0.088 ± 0.047 | 0.286 ± 0.043 | 0.997 ± 0.001 | 0.992 ± 0.003 | 0.0116 |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 - **Color is not monotonic in the attack.** Raising ε from 8/255 to 16/255 drops color AUC from 0.910 to 0.305. A stronger search at the same ε (5 steps) drops it to 0.088, below sigreg only, i.e. the purple ranking becomes inverted. 4/255 lands in between (0.771). Per eval seed: 4/255 is 0.80 / 0.74 / 0.78, 16/255 is 0.35 / 0.30 / 0.27, and 5 steps is 0.14 / 0.06 / 0.06. So the gaps between runs are far outside the eval-seed spread.
 - **Rotation moves differently.** It is poor at 4/255 (0.577) and fine with a larger ε or more steps (0.910 / 0.992). A weak attack doesn't protect rotation, while a strong one does but loses color. Only the reference setting got both.
