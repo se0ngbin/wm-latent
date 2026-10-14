@@ -274,8 +274,8 @@ In `latent_cbf/src/latent_cbf/scripts/dreamer_offline.py`, flags `--sa_*` (code 
 
 **Idea.** The head variant penalizes a perturbation's effect through the learned margin head h, which in effect reads the latent along a direction that differs per sample. This variant uses one shared **safety direction**, λ = mean(z of safe frames) − mean(z of unsafe frames). It only penalizes the component of the perturbation-induced shift along λ, i.e. it asks the shift to be **orthogonal** to the safety direction:
 
-    d = mean_t [((f(x_t + δ) − f(x_t)) · λ) / ‖λ‖²]² + [((P(f(x + δ), a) − P(f(x))) · λ) / ‖λ‖²]²  where
-    λ = mean(z of safe frames) − mean(z of unsafe frames)
+    d = mean_t [((f(x_t + δ) − f(x_t)) · λ_n) / ‖λ‖]² + [((P(f(x + δ), a) − P(f(x), a)) · λ_n) / ‖λ‖]²  where
+    λ = mean(z of safe frames) − mean(z of unsafe frames),  λ_n = λ / ‖λ‖ (unit vector along λ)
 
 - Each term is the move along λ in units of the safe/unsafe distance, and is zero exactly when the move is orthogonal to λ.
 - The adversary is unchanged (L∞, 8/255, PGD maximizing this d).
