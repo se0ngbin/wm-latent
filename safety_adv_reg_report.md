@@ -35,11 +35,9 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 | baseline (sigreg only) | 0.943 ± 0.005 | 0.170 ± 0.006 | 0.310 ± 0.025 | 0.830 ± 0.006 |
 | jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | 0.968 ± 0.007 | 0.962 ± 0.004 |
 | jac+pull | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
-| baseline + safety reg, L∞ noise (3 training seeds) | 0.977 ± 0.003 | 0.331 ± 0.252 | 0.978 ± 0.002 | 0.957 ± 0.029 |
+| baseline + safety reg, L∞ noise | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
 | jac+pull + safety reg, L∞ noise | 0.973 ± 0.003 | 0.830 ± 0.006 | 0.978 ± 0.005 | 0.970 ± 0.009 |
 | baseline + L∞ noise, no h (whole latent) | 0.977 ± 0.005 | 0.170 ± 0.006 | 0.977 ± 0.003 | 0.977 ± 0.003 |
-
-*Training seeds: baseline + safety reg, L∞ noise has 3 (3072, 1, 2); its value is the mean over training seeds ± std across training seeds (each training seed first averaged over its 3 eval seeds). Every other row has 1 training seed (3072); its ± is the std over 3 eval seeds (different test-state samples and head initializations) of that one model. The original single-seed L∞ values (seed 3072) are in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
 
 **AUC**
 
@@ -48,11 +46,9 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 | baseline (sigreg only) | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 |
 | jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.992 ± 0.003 | 0.989 ± 0.002 |
 | jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
-| baseline + safety reg, L∞ noise (3 training seeds) | 0.996 ± 0.002 | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 |
+| baseline + safety reg, L∞ noise | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
 | jac+pull + safety reg, L∞ noise | 0.996 ± 0.001 | 0.965 ± 0.013 | 0.994 ± 0.002 | 0.994 ± 0.002 |
 | baseline + L∞ noise, no h (whole latent) | 0.997 ± 0.001 | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 |
-
-*Training seeds: baseline + safety reg, L∞ noise has 3 (3072, 1, 2); its value is the mean over training seeds ± std across training seeds (each training seed first averaged over its 3 eval seeds). Every other row has 1 training seed (3072); its ± is the std over 3 eval seeds (different test-state samples and head initializations) of that one model. The original single-seed L∞ values (seed 3072) are in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
 
 Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color AUC 0.905 ± 0.121, shape ≥ 0.993, rotation ≥ 0.982. Retraining a head on the shifted appearance recovers every model to ≥ 0.930 AUC; the shift relocates the latent rather than destroying information.
 
@@ -82,11 +78,9 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
 | jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
 | jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
-| baseline + safety reg, L∞ noise (3 training seeds) | 0.976 ± 0.003 | 0.498 ± 0.005 | 0.968 ± 0.009 | 0.927 ± 0.051 |
+| baseline + safety reg, L∞ noise | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
 | jac+pull + safety reg, L∞ noise | 0.974 ± 0.004 | 0.505 ± 0.005 | 0.961 ± 0.003 | 0.958 ± 0.011 |
 | baseline + L∞ noise, no h (whole latent) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 |
-
-*Training seeds: baseline + safety reg, L∞ noise has 3 (3072, 1, 2); its value is the mean over training seeds ± std across training seeds (each training seed first averaged over its 3 eval seeds). Every other row has 1 training seed (3072); its ± is the std over 3 eval seeds (different test-state samples and head initializations) of that one model. The original single-seed L∞ values (seed 3072) are in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
 
 **AUC**
 
@@ -95,11 +89,9 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
 | jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
 | jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
-| baseline + safety reg, L∞ noise (3 training seeds) | 0.997 ± 0.002 | 0.662 ± 0.239 | 0.996 ± 0.003 | 0.974 ± 0.036 |
+| baseline + safety reg, L∞ noise | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
 | jac+pull + safety reg, L∞ noise | 0.997 ± 0.001 | 0.958 ± 0.012 | 0.995 ± 0.001 | 0.992 ± 0.004 |
 | baseline + L∞ noise, no h (whole latent) | 0.998 ± 0.002 | 0.955 ± 0.002 | 0.997 ± 0.001 | 0.996 ± 0.001 |
-
-*Training seeds: baseline + safety reg, L∞ noise has 3 (3072, 1, 2); its value is the mean over training seeds ± std across training seeds (each training seed first averaged over its 3 eval seeds). Every other row has 1 training seed (3072); its ± is the std over 3 eval seeds (different test-state samples and head initializations) of that one model. The original single-seed L∞ values (seed 3072) are in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
 
 **Predicted-safe fraction (true = .500)**
 
@@ -108,17 +100,24 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 | baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
 | jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
 | jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
-| baseline + safety reg, L∞ noise (3 training seeds) | 0.502 ± 0.001 | 0.212 ± 0.366 | 0.511 ± 0.005 | 0.554 ± 0.054 |
+| baseline + safety reg, L∞ noise | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
 | jac+pull + safety reg, L∞ noise | 0.503 ± 0.001 | 0.995 ± 0.005 | 0.514 ± 0.003 | 0.508 ± 0.004 |
 | baseline + L∞ noise, no h (whole latent) | 0.503 ± 0.002 | 0.000 ± 0.000 | 0.520 ± 0.007 | 0.510 ± 0.009 |
-
-*Training seeds: baseline + safety reg, L∞ noise has 3 (3072, 1, 2); its value is the mean over training seeds ± std across training seeds (each training seed first averaged over its 3 eval seeds). Every other row has 1 training seed (3072); its ± is the std over 3 eval seeds (different test-state samples and head initializations) of that one model. The original single-seed L∞ values (seed 3072) are in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
 
 What it shows:
 - **Confirms:** every model's color threshold collapses (sign accuracy 0.500–0.503). L∞ has the best ranking on every shift: color AUC 0.927 ± 0.021 (less seed-variable than in the uniform eval), shape 0.998, rotation 0.996. L∞ keeps working thresholds on shape (0.974) and rotation (0.959).
 - **Corrects (direction of collapse):** jac+pull now calls almost everything *unsafe* under purple (predicted safe 0.003 ± 0.005), whereas in the uniform eval it called everything *safe* (0.976). Same encoder, different head training set. The collapse is a property of the encoder; its direction is not.
 - **New models:** jac+pull + L∞ (color AUC 0.958 ± 0.012) and no-h (0.955 ± 0.002) both beat L∞ (0.927 ± 0.021) on color and match it elsewhere. Both still lose the color threshold, in opposite directions: jac+pull + L∞ calls almost everything *safe* (0.995), no-h calls everything *unsafe* (0.000).
 - **Corrects (baseline rotation):** baseline's rotation threshold also collapses (sign accuracy 0.500, everything called safe). In the uniform eval its 0.830 rotation sign accuracy equalled the all-safe rate, which hid this.
+
+*Note on training-seed variability. The ± in the tables above is the std over 3 eval seeds: different test-state samples and margin-head initializations, for a single trained world model (training seed 3072). It does not include variability across world-model training seeds, and the L∞ color result does not survive it. Retraining the exact same configuration with seeds 1 and 2 gives:*
+- *color AUC (uniform): 0.910 (seed 3072), 0.597 (seed 1), 0.422 (seed 2), i.e. 0.643 ± 0.247 over 3 training seeds. Below jac+pull's 0.753 on average (jac+pull is itself 1 training seed).*
+- *color AUC (50/50): 0.927, 0.599, 0.462, i.e. 0.662 ± 0.239.*
+- *color sign accuracy (uniform): 0.331 ± 0.252.*
+- *shape AUC: 0.997, 0.996, 0.990, i.e. 0.994 ± 0.004. It holds across seeds.*
+- *rotation AUC: 0.996, 0.995, 0.935, i.e. 0.975 ± 0.035.*
+
+*Details in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
 
 ## Ablations: what makes the no-h regularizer work
 
