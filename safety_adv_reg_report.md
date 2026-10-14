@@ -408,30 +408,17 @@ Same protocol as the existing sigreg only / jac / jac+pull numbers (`le-wm/scrip
 | sigreg only | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
 | jacobian | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
 | jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
-| baseline + L∞ safety reg (seed 3072) | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
-| baseline + L∞ safety reg (seed 1) | 57.5 / 54.5 | 57.5 / 54.0 | 57.5 / 44.5 | 27.0 / 66.0 |
-| baseline + L∞ safety reg (seed 2) | 59.5 / 53.0 | 59.5 / 53.0 | 59.5 / 43.5 | 34.5 / 61.5 |
+| baseline + L∞ safety reg\* | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
 | jac+pull + L∞ safety reg | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
 | baseline + L∞ safety reg w/o h | 59.0 / 51.5 | 60.0 / 52.0 | 59.0 / 39.5 | 21.0 / 64.0 |
-| w/o h, random noise | 57.0 / 50.5 | 57.0 / 50.0 | 57.0 / 34.5 | 16.5 / 58.5 |
-| w/o h, detached denominator | 24.0 / 77.0 | 26.0 / 76.5 | 24.5 / 70.0 | 12.5 / 56.5 |
-| w/o h, encoder term only | 54.5 / 45.0 | 54.5 / 46.0 | 54.5 / 31.0 | 16.0 / 49.5 |
-| w/o h, predictor term only | 45.0 / 58.0 | 45.0 / 58.0 | 45.0 / 51.0 | 10.0 / 69.0 |
-| L∞ safety reg, random noise | 64.5 / 37.5 | 65.5 / 37.5 | 65.0 / 28.5 | 27.0 / 63.5 |
-| L∞ safety reg, ε = 4/255 | 55.0 / 51.0 | 55.0 / 51.0 | 55.0 / 40.5 | 23.0 / 64.0 |
-| L∞ safety reg, ε = 16/255 | 55.0 / 54.5 | 54.5 / 54.5 | 55.5 / 45.0 | 15.5 / 65.5 |
-| L∞ safety reg, 5 PGD steps | 58.0 / 51.5 | 58.0 / 51.5 | 58.0 / 44.0 | 25.5 / 67.5 |
-| L∞ safety reg, λ-projected, batch λ | 49.5 / 58.0 | 49.5 / 58.0 | 49.5 / 49.5 | 34.5 / 59.5 |
-| L∞ safety reg, λ-projected, global λ | 52.5 / 49.0 | 52.5 / 48.5 | 52.5 / 40.0 | 24.0 / 66.0 |
-| L∞ safety reg, λ-projected, global λ, projected scale | 54.5 / 50.0 | 55.0 / 50.0 | 54.5 / 42.0 | 26.5 / 61.5 |
-| baseline + hue safety reg | 65.0 / 49.0 | 65.0 / 49.0 | 65.0 / 40.0 | 22.5 / 71.0 |
-| jac+pull + hue safety reg | 77.0 / 34.0 | 77.0 / 34.0 | 76.5 / 21.0 | 42.0 / 48.5 |
 
-- **The safety reg doesn't make planning better, and on the sigreg base it makes it slightly worse.** Baseline + L∞ safety reg gets 57.5–59.5% success and 53–57% collision in-distribution on all three training seeds, against 62.5% / 50.0% for sigreg only. Unlike the color AUC, this is consistent across seeds.
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Seeds 1 and 2 give 57.5 / 54.5 and 59.5 / 53.0 in-distribution (all conditions in [Appendix E](#appendix-e-full-cem-table)).
+
+- **The L∞ safety reg doesn't make planning better, and on the sigreg base it makes it slightly worse.** Baseline + L∞ safety reg gets 57.5% success and 57.0% collision in-distribution, against 62.5% / 50.0% for sigreg only. Its two reseeds are in the same range (57.5–59.5% / 53–54.5%), so unlike the color AUC this holds across training seeds. Without h it is about the same (59.0% / 51.5%).
 - **Planning quality comes from the Jacobian reg, not the safety reg.** jac and jac+pull remain the best planners (81.5% success, 22.5–29% collision). Adding the L∞ safety reg on top of jac+pull keeps the low collision rate (29.0%) but lowers success (75.5% vs 81.5%).
-- **Prediction cost shows up as planning cost.** The detached-denominator run, whose prediction loss was 4× the others', plans worst: 24% success and 77% collision. The predictor-only run is also poor (45% / 58%). Random-noise variants, the cheapest on prediction loss, are among the better safety-reg planners (64.5% / 37.5% with h).
-- **Recolor doesn't affect raw CEM for any model.** Red and purple are within a point everywhere. The goal image is recolored too, and the planner only compares current and goal latents, so a consistent appearance shift cancels. Diamond lowers collision for everyone, because the obstacle footprint itself changes. A 90° rotation hurts every model (10–42% success). None of the safety-reg variants protects planning under rotation; the best rotated success is jac+pull and jac+pull + hue (41.5–42%).
+- **Recolor doesn't affect raw CEM for any model.** Red and purple are within a point everywhere. The goal image is recolored too, and the planner only compares current and goal latents, so a consistent appearance shift cancels. Diamond lowers collision for everyone, because the obstacle footprint itself changes. A 90° rotation hurts every model (20–42% success here), and no safety-reg variant protects planning under rotation.
 - **Implication:** the safety reg's gains are in the *safety readout* (margin-head ranking and thresholds), not in planning. A safety filter on top of CEM is where it could pay off; that hasn't been tested.
+- **All other models** (the other training seeds, the w/o h ablations, random noise, attack sweep, λ variants, hue) are in [Appendix E](#appendix-e-full-cem-table).
 
 ## Encoder Jacobians across models
 
@@ -712,3 +699,36 @@ Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbe
 - **Training logs and code snapshots:** `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞, `.run_L/`; jac+pull + L∞, `.run_JL/`), `code_safeadv_dab24f2/` (no h, `.run_LZ/`), `code_safeadv_9dfca47/` (ablations, `run_<k>.sh`, `.run_<k>/`), `code_safeadv_c6e93c6/` (hue), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
 - **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `sg_eval/` (Safety Gym eval script, logs, `tables.py` for the Safety Gym and Dreamer tables), `dreamer/` (Dubins Dreamer eval logs, Safety Gym label fix `fix_sg_labels.py`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
 - **Baseline numbers:** `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `le-wm/scripts/ood_margin_gp_jepa.py`).
+
+## Appendix E: full CEM table
+
+All Dubins LeWM models under raw CEM, same protocol as [Planning: raw CEM on Dubins](#planning-raw-cem-on-dubins): success % / collision %, N = 200 per cell, training seed 3072 unless stated.
+
+| model | red (in-dist) | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg only | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
+| jacobian | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
+| jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
+| baseline + L∞ safety reg (seed 3072) | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
+| baseline + L∞ safety reg (seed 1) | 57.5 / 54.5 | 57.5 / 54.0 | 57.5 / 44.5 | 27.0 / 66.0 |
+| baseline + L∞ safety reg (seed 2) | 59.5 / 53.0 | 59.5 / 53.0 | 59.5 / 43.5 | 34.5 / 61.5 |
+| jac+pull + L∞ safety reg | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
+| baseline + L∞ safety reg w/o h | 59.0 / 51.5 | 60.0 / 52.0 | 59.0 / 39.5 | 21.0 / 64.0 |
+| w/o h, random noise | 57.0 / 50.5 | 57.0 / 50.0 | 57.0 / 34.5 | 16.5 / 58.5 |
+| w/o h, detached denominator | 24.0 / 77.0 | 26.0 / 76.5 | 24.5 / 70.0 | 12.5 / 56.5 |
+| w/o h, encoder term only | 54.5 / 45.0 | 54.5 / 46.0 | 54.5 / 31.0 | 16.0 / 49.5 |
+| w/o h, predictor term only | 45.0 / 58.0 | 45.0 / 58.0 | 45.0 / 51.0 | 10.0 / 69.0 |
+| L∞ safety reg, random noise | 64.5 / 37.5 | 65.5 / 37.5 | 65.0 / 28.5 | 27.0 / 63.5 |
+| L∞ safety reg, ε = 4/255 | 55.0 / 51.0 | 55.0 / 51.0 | 55.0 / 40.5 | 23.0 / 64.0 |
+| L∞ safety reg, ε = 16/255 | 55.0 / 54.5 | 54.5 / 54.5 | 55.5 / 45.0 | 15.5 / 65.5 |
+| L∞ safety reg, 5 PGD steps | 58.0 / 51.5 | 58.0 / 51.5 | 58.0 / 44.0 | 25.5 / 67.5 |
+| L∞ safety reg, λ-projected, batch λ | 49.5 / 58.0 | 49.5 / 58.0 | 49.5 / 49.5 | 34.5 / 59.5 |
+| L∞ safety reg, λ-projected, global λ | 52.5 / 49.0 | 52.5 / 48.5 | 52.5 / 40.0 | 24.0 / 66.0 |
+| L∞ safety reg, λ-projected, global λ, projected scale | 54.5 / 50.0 | 55.0 / 50.0 | 54.5 / 42.0 | 26.5 / 61.5 |
+| baseline + hue safety reg | 65.0 / 49.0 | 65.0 / 49.0 | 65.0 / 40.0 | 22.5 / 71.0 |
+| jac+pull + hue safety reg | 77.0 / 34.0 | 77.0 / 34.0 | 76.5 / 21.0 | 42.0 / 48.5 |
+
+- **Prediction cost shows up as planning cost.** The w/o h detached-denominator run, whose prediction loss was 4× the others', plans worst: 24% success and 77% collision. The predictor-only run is also poor (45% / 58%).
+- **Random-noise variants plan relatively well.** They are the cheapest on prediction loss; with h, random noise gets 64.5% / 37.5%, better than any adversarial safety-reg model on the sigreg base.
+- **λ variants and the attack sweep** sit at or below the main L∞ model (49.5–58% success). The hue models plan like their bases: 65% on sigreg, 77% on jac+pull.
+- **Rotation:** the best rotated success among all models is jac+pull and jac+pull + hue safety reg (41.5–42%).
