@@ -345,7 +345,7 @@ class SafetyAdvInvarianceReg(nn.Module):
     def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, target="head", pgd_steps=2,
                  pgd_step_frac=0.5, pred_weight=1.0, enc_weight=1.0, rand_init="uniform", scale_grad=True, head_units=512, head_lr=3e-4,
                  zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
-                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192, lambda_mode="batch"):
+                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192, lambda_mode="batch", attack_target=None):
         super().__init__()
         self.n_sub, self.grid = n_sub, grid
         # attack="hue": spatial hue/saturation field (the color prior). attack="linf": per-pixel
@@ -369,6 +369,12 @@ class SafetyAdvInvarianceReg(nn.Module):
         # separating the classes along the protected axis.
         assert lambda_mode in ("batch", "global", "global_proj"), lambda_mode
         self.target, self.lambda_mode = target, lambda_mode
+        # attack_target: what PGD maximizes (default = target). attack_target="head" with target="latent":
+        # the adversary looks for the delta that moves the SAFETY SCORE most (head gap units), and the
+        # model then penalizes the WHOLE-latent shift at that delta (||dz||^2 / C, C with grad).
+        assert attack_target in (None, target, "head"), attack_target
+        assert attack_target in (None, target) or target == "latent", "attack_target=head needs target=latent"
+        self.attack_target = attack_target or target
         self._u = None
         self.eps = (float(eps_hue), float(eps_logsat))
         self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
@@ -508,6 +514,7 @@ class SafetyAdvInvarianceReg(nn.Module):
             gap_live = (h_all[fail == 0].mean() - h_all[fail == 1].mean()).clamp_min(0.1 * float(self.gap))
         else:
             gap_live = self.gap.detach()
+        gap_head = gap_live
         if self.target == "lambda":
             e = emb.flatten(0, 1).float()
             if not ((fail == 0).any() and (fail == 1).any()):
@@ -554,11 +561,25 @@ class SafetyAdvInvarianceReg(nn.Module):
         u_live = self._u
         if u_live is not None:
             self._u = u_live.detach()                 # clean targets + PGD use the detached direction
+        pen_target, att_target = self.target, self.attack_target
+        def clean_targets(tgt):
+            self.target = tgt
+            hz = self._readout(zc.flatten(0, 1)).view((n, T) + ((-1,) if tgt in ("latent", "lambda") else ()))
+            hp = self._readout(pc)
+            self.target = pen_target
+            return hz, hp
         with bn.capture(), torch.no_grad():          # clean targets + clean BN stats (detached)
             zc = encode_fn(x.flatten(0, 1)).view(n, T, -1)
-            hz_c = self._readout(zc.flatten(0, 1)).view((n, T) + ((-1,) if self.target in ("latent", "lambda") else ()))
-            hp_c = self._readout(model.predict(zc, act)[:, -1])
-        gap_pgd = gap_live.detach()
+            pc = model.predict(zc, act)[:, -1]
+            hz_c, hp_c = clean_targets(pen_target)
+            hz_a, hp_a = clean_targets(att_target) if att_target != pen_target else (hz_c, hp_c)
+        gap_pgd = (gap_head if att_target != pen_target else gap_live).detach()
+        def att_obj(P, g):                            # PGD objective (may read through a different target)
+            self.target = att_target
+            try:
+                return self._objective(model, encode_fn, self._norm(perturb(x01, P)), act, hz_a, hp_a, g)
+            finally:
+                self.target = pen_target
         with bn.apply():
             obj = lambda P, g: self._objective(model, encode_fn, self._norm(perturb(x01, P)), act, hz_c, hp_c, g)
             if self.rand_init == "sign":
@@ -570,11 +591,11 @@ class SafetyAdvInvarianceReg(nn.Module):
                 if k < self.pgd_steps:
                     P = P.detach().requires_grad_(True)
                     with torch.enable_grad():
-                        dk = obj(P, gap_pgd)
+                        dk = att_obj(P, gap_pgd)
                         gP = torch.autograd.grad(dk.sum(), P)[0]
                 else:
                     with torch.no_grad():
-                        dk = obj(P, gap_pgd)
+                        dk = att_obj(P, gap_pgd)
                 dk = dk.detach()
                 if best_d is None:
                     best_d, d_start = dk, dk
