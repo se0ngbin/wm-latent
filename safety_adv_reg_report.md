@@ -133,7 +133,7 @@ What it shows:
 
 ## Ablations: what makes the no-h regularizer work
 
-Four runs (code `9dfca47`). Each is **the baseline model (sigreg only, same recipe and seed) plus the no-h regularizer with one change**: no Jacobian/pull terms, and the head is not in the penalty. They are compared with the full no-h model and with the unregularized baseline:
+Four runs (code `9dfca47`). Each is **the baseline model (sigreg only, same recipe and seed) plus the no-h regularizer with one change**: no Jacobian/pull terms, and the head is not in the penalty. They are compared with the full no-h model and with the L∞ safety reg w/ h (the head-projected version):
 - **random noise:** random ±ε noise at every pixel, the same size as PGD's iterates but with no adversarial search (`pgd_steps: 0, rand_init: sign`);
 - **detached denominator:** the centroid-distance normalizer is detached, so it keeps its scale but gives no reward for separating the classes (`scale_grad: false`);
 - **encoder term only:** `pred_weight: 0`;
@@ -148,7 +148,9 @@ Zero-shot AUC, mean ± std over 3 eval seeds; shape and rotation from the unifor
 | w/o h, detached denominator | 0.643 ± 0.022 | 0.627 ± 0.004 | 0.991 ± 0.002 | 0.991 ± 0.005 | 0.1070 |
 | w/o h, encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | 0.997 ± 0.001 | 0.996 ± 0.001 | 0.0225 |
 | w/o h, predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0265 |
-| *reference: sigreg only* | *0.144 ± 0.032* | *0.177 ± 0.032* | *0.913 ± 0.024* | *0.956 ± 0.023* | *not logged* |
+| *reference: L∞ safety reg w/ h\** | *0.910 ± 0.098* | *0.927 ± 0.021* | *0.997 ± 0.001* | *0.996 ± 0.002* | *0.0113* |
+
+\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 Per eval seed (color AUC, uniform / 50/50):
 - encoder only: 0.949 / 0.920, 0.416 / 0.398, 0.745 / 0.432;
