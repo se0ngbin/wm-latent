@@ -550,7 +550,15 @@ Same 4000 uniform Dubins states rendered red vs purple, one eval seed (`diagnost
 
 Run `lewm_dubins_linf_latent50`, code `dab24f2` (`target: latent`), launched 2026-10-06 00:45 UTC. Everything is identical to the L∞ run (ε, PGD, 32 windows, BatchNorm handling, schedule, and the head, which is still trained because it drives the AUC gate) except the quantity being protected. The head no longer appears in the penalty:
 
-d = mean_t ‖f(x_t + δ) − f(x_t)‖² / C + ‖P(f(x + δ), a) − P(f(x), a)‖² / C,  C = ‖μ_safe − μ_unsafe‖² (in-batch latent centroids, with gradient)
+For each window, with clean context frames x₁..₃, perturbed frames x₁..₃ + δ, actions a, encoder f, predictor P:
+
+    d = mean over t of ‖f(x_t + δ) − f(x_t)‖² / C  +  ‖P(f(x + δ), a) − P(f(x), a)‖² / C
+
+- **First term:** the whole latent of each perturbed context frame must match the clean one. ‖·‖² is the squared Euclidean length over the 192 latent dimensions; it plays the role of the squared scalar difference in A.4.
+- **Second term:** the same for the predictor's last prediction.
+- **Clean targets** f(x_t) and P(f(x), a) are computed once without gradient.
+- **C** = ‖μ_safe − μ_unsafe‖², the squared distance between the in-batch safe and unsafe latent centroids, **with gradient**. It replaces A.4's gap.
+- **Loss added to training:** λ · ramp · mean(d) over the 32 windows, with λ = 1.0.
 
 The adversary maximizes the same d. An earlier draft normalized by the latent spread instead; that let the regularizer win by squashing the latent, so it was replaced by the centroid distance before this run.
 
