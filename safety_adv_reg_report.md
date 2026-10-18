@@ -1,19 +1,19 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-14 21:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-19 00:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
 - **What we tried:** a training-time regularizer that makes the world model's *safety readout* insensitive to adversarial perturbations. The readout is a margin head learned from the binary failure labels; no OOD data is used. The main variant uses plain per-pixel **L∞ noise** (ε = 8/255). Full training details are in Appendix A.
-- **Adversarial L∞ noise invariance gives the best models we have on every shift.** Zero-shot color AUC (uniform eval): L∞ **0.643 ± 0.247 over 3 training seeds** (0.910 for the original seed), jac+pull + L∞ **0.965 ± 0.013**, L∞ without the head **0.951 ± 0.004** (both 1 training seed). For comparison, jac+pull scores 0.753 ± 0.049 and baseline 0.144 ± 0.032. All three L∞ models are ≥ 0.994 on shape and rotation. The 50/50 eval agrees (color 0.927 / 0.958 / 0.955).
-- **The safety projection is not what makes it work, but every other ingredient is (new).** The "remove h" ablation penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. It matches or beats the head-projected version on every axis, and is far less seed-variable on color (± 0.004 vs ± 0.098). Removing any one of its other parts drops color AUC from 0.951 to 0.63–0.70 (baseline: 0.144): the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). Shape and rotation stay ≥ 0.991 in every ablation.
-- **Adding L∞ on top of jac+pull** lifts jac+pull's color AUC 0.753 → 0.965 and gives the best color number overall. It costs more prediction loss (0.0165).
-- **Safety Gym (new): the regularizer transfers and is even stronger there** ([section](#safety-gym-and-the-regularizer-on-dreamer)). LeWM + L∞ safety reg reaches zero-shot AUC 0.999 on color and **0.962 on a real 90° camera rotation**, where jac+pull scores 0.679 and sigreg only 0.557. It is also the **first model in the study whose safe/unsafe threshold survives a shift**: sign accuracy 0.987 on color and 0.977 on rotation, against 0.833 for calling everything safe. The cost is 6× the prediction loss (0.0168 vs 0.0026). On Safety Gym the penalty had to run without the AUC gate, because the sigreg-only latent doesn't generalize safety across episodes.
+- **On Dubins, jac+pull + L∞ safety reg is the best model and the only one that is stable across world-model training seeds** ([training-seed variability](#training-seed-variability)). Zero-shot color AUC (uniform eval, mean ± std over 3 WM seeds): jac+pull + L∞ safety reg **0.957 ± 0.021**, baseline + L∞ safety reg w/o h 0.852 ± 0.098, baseline + L∞ safety reg 0.643 ± 0.247, jac+pull 0.498 ± 0.234; sigreg only 0.144 (1 seed). Every model keeps shape and rotation (≥ 0.975). The 50/50 eval agrees (0.955 ± 0.017 for jac+pull + L∞ safety reg). The single-seed numbers first reported (0.910 for the L∞ safety reg, 0.753 for jac+pull) were lucky seeds.
+- **The safety projection is not what makes it work, but every other ingredient is.** The "w/o h" version penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. Over 3 WM seeds it beats the head-projected version on color (0.852 ± 0.098 vs 0.643 ± 0.247). Removing any one of its other parts drops color AUC to 0.63–0.70 (one seed each): the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). The attack must also search the quantity being penalized: attacking through h while penalizing the whole latent gives 0.251.
+- **Adding the L∞ safety reg on top of jac+pull** lifts color AUC from 0.498 ± 0.234 to 0.957 ± 0.021 over 3 WM seeds. It costs more prediction loss (0.016–0.017 vs 0.012–0.014).
+- **Safety Gym (new): the regularizer transfers and is even stronger there** ([section](#safety-gym-and-the-regularizer-on-dreamer)). LeWM + L∞ safety reg reaches zero-shot AUC 0.999 on color and **0.962 on a real 90° camera rotation**, where jac+pull scores 0.679 and sigreg only 0.557. It is also the **first model in the study whose safe/unsafe threshold survives a shift**: sign accuracy 0.987 on color and 0.977 on rotation, against 0.833 for calling everything safe. Over 3 WM seeds this holds on 2 of 3: color AUC 0.985 ± 0.024 and sign accuracy 0.957 ± 0.056, but rotation AUC 0.851 ± 0.222, because seed 2 loses most of the rotation gain (0.596). The cost is 6× the prediction loss (0.0168 vs 0.0026). On Safety Gym the penalty had to run without the AUC gate, because the sigreg-only latent doesn't generalize safety across episodes.
 - **Dreamer (new): smaller gains.** The head-projected regularizer lifts Dubins color AUC from 0.638 to 0.816 and Safety Gym color from 0.961 to 0.977. Rotation stays at chance on both benchmarks and thresholds still collapse. No-h doesn't help Dubins Dreamer at all (0.626), so for Dreamer the safety projection matters, unlike LeWM on Dubins.
 - **λ-projection (new):** replacing the head with one shared safety direction λ = mean(z_safe) − mean(z_unsafe), and penalizing only the perturbation's shift along it, works on Dubins when λ is a running global average (color AUC 0.936, lowest prediction cost of any safety-reg model). It fails on Safety Gym, where the base latent has no consistent linear safety axis ([section](#safety-direction-λ-projection-instead-of-the-head)).
 - **Adversarial vs. random noise (new):** replacing PGD with random ±8/255 noise of the same size loses most of the gain on every benchmark and axis, with or without h: Dubins color 0.910 → 0.300 (with h) and 0.951 → 0.631 (no h); Safety Gym color 0.999 → 0.871 and rotation 0.962 → 0.729 (with h). Random noise through the head even breaks Dubins rotation (0.555 vs 0.956 for sigreg only) ([section](#adversarial-vs-random-noise-of-the-same-size)).
 - **Noise size / attack strength (new):** the Dubins color result is fragile. With the head variant, ε = 4/255 gives color AUC 0.771, ε = 16/255 gives 0.305, and 8/255 with 5 PGD steps gives 0.088 (inverted), against 0.910 for the reference 8/255 with 2 steps. Reseeds of the reference are running ([section](#noise-size-and-attack-strength)).
-- **Training-seed check (new): the main Dubins color result does not reproduce.** Retraining the reference L∞ model with two new seeds gives color AUC 0.597 and 0.422 (vs 0.910), so 0.643 ± 0.247 over three seeds. That's not reliably above jac+pull (0.753). Shape (≥ 0.990) holds across seeds. Reseeds of the other headline models are running ([section](#training-seed-variability-of-the-reference)).
+- **Training-seed check:** every headline model was retrained with two more seeds. Single-seed Dubins color numbers swing by up to ±0.37 across training seeds, so the tables give each retrained model a second row with mean ± std across WM seeds ([details](#training-seed-variability)). Shape and rotation are stable across seeds; color is not, except for jac+pull + L∞ safety reg.
 - **Planning (new): the safety reg doesn't improve raw CEM.** Baseline + L∞ safety reg plans slightly worse than sigreg only in-distribution (57.5–59.5% success / 53–57% collision on three training seeds vs 62.5% / 50.0%). jac and jac+pull stay best (81.5% success). Recolor doesn't affect CEM for any model; rotation hurts all ([section](#planning-raw-cem-on-dubins)).
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
@@ -29,18 +29,26 @@ Zero-shot margin_gp head: trained on the normal (red, circle, upright) appearanc
 
 All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eval states are uniform over the world, about 17% unsafe (circle) or 11% (diamond).
 
+**Two kinds of rows.** Models retrained with three world-model (WM) training seeds (3072, 1, 2) have two rows throughout the report:
+- **"(WM seed 3072)":** one trained world model; ± is the std over 3 eval seeds (test-state samples and margin-head initializations).
+- **"(3 WM seeds)":** each training seed is first averaged over its eval seeds; the row shows mean ± std across the three training seeds. This ± includes world-model training variability, and it is the one to use for claims.
+
+Models with one row have only training seed 3072. The 3-seed models are jac+pull, baseline + L∞ safety reg, jac+pull + L∞ safety reg, baseline + L∞ safety reg w/o h, global λ with projected scale, and the Safety Gym L∞ safety reg.
+
 **Sign accuracy**
 
 | model | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.943 ± 0.005 | 0.170 ± 0.006 | 0.310 ± 0.025 | 0.830 ± 0.006 |
 | jacobian | 0.968 ± 0.002 | 0.171 ± 0.007 | 0.968 ± 0.007 | 0.962 ± 0.004 |
-| jac+pull | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
-| baseline + L∞ safety reg\* | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
-| jac+pull + L∞ safety reg | 0.973 ± 0.003 | 0.830 ± 0.006 | 0.978 ± 0.005 | 0.970 ± 0.009 |
-| baseline + L∞ safety reg w/o h | 0.977 ± 0.005 | 0.170 ± 0.006 | 0.977 ± 0.003 | 0.977 ± 0.003 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
+| jac+pull (WM seed 3072) | 0.959 ± 0.003 | 0.830 ± 0.007 | 0.957 ± 0.008 | 0.939 ± 0.003 |
+| jac+pull (3 WM seeds) | 0.962 ± 0.003 | 0.828 ± 0.004 | 0.956 ± 0.013 | 0.951 ± 0.011 |
+| baseline + L∞ safety reg (WM seed 3072) | 0.981 ± 0.004 | 0.174 ± 0.006 | 0.980 ± 0.003 | 0.975 ± 0.004 |
+| baseline + L∞ safety reg (3 WM seeds) | 0.977 ± 0.003 | 0.331 ± 0.252 | 0.978 ± 0.002 | 0.957 ± 0.029 |
+| jac+pull + L∞ safety reg (WM seed 3072) | 0.973 ± 0.003 | 0.830 ± 0.006 | 0.978 ± 0.005 | 0.970 ± 0.009 |
+| jac+pull + L∞ safety reg (3 WM seeds) | 0.975 ± 0.002 | 0.830 ± 0.000 | 0.978 ± 0.001 | 0.971 ± 0.001 |
+| baseline + L∞ safety reg w/o h (WM seed 3072) | 0.977 ± 0.005 | 0.170 ± 0.006 | 0.977 ± 0.003 | 0.977 ± 0.003 |
+| baseline + L∞ safety reg w/o h (3 WM seeds) | 0.978 ± 0.001 | 0.389 ± 0.382 | 0.978 ± 0.002 | 0.977 ± 0.002 |
 
 **AUC**
 
@@ -48,12 +56,14 @@ All values are mean ± std over 3 eval seeds; in-dist is from the color run. Eva
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 |
 | jacobian | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.992 ± 0.003 | 0.989 ± 0.002 |
-| jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
-| baseline + L∞ safety reg\* | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
-| jac+pull + L∞ safety reg | 0.996 ± 0.001 | 0.965 ± 0.013 | 0.994 ± 0.002 | 0.994 ± 0.002 |
-| baseline + L∞ safety reg w/o h | 0.997 ± 0.001 | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
+| jac+pull (WM seed 3072) | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 |
+| jac+pull (3 WM seeds) | 0.987 ± 0.003 | 0.498 ± 0.234 | 0.982 ± 0.004 | 0.982 ± 0.003 |
+| baseline + L∞ safety reg (WM seed 3072) | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 |
+| baseline + L∞ safety reg (3 WM seeds) | 0.996 ± 0.002 | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 |
+| jac+pull + L∞ safety reg (WM seed 3072) | 0.996 ± 0.001 | 0.965 ± 0.013 | 0.994 ± 0.002 | 0.994 ± 0.002 |
+| jac+pull + L∞ safety reg (3 WM seeds) | 0.996 ± 0.000 | 0.957 ± 0.021 | 0.994 ± 0.000 | 0.994 ± 0.001 |
+| baseline + L∞ safety reg w/o h (WM seed 3072) | 0.997 ± 0.001 | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 |
+| baseline + L∞ safety reg w/o h (3 WM seeds) | 0.997 ± 0.001 | 0.852 ± 0.098 | 0.996 ± 0.001 | 0.997 ± 0.000 |
 
 Each new run is compared against the matched model without the regularizer (same recipe, seed, 50 epochs). The second head type (margin_nogp) agrees for the L∞ model: color AUC 0.905 ± 0.121, shape ≥ 0.993, rotation ≥ 0.982. Retraining a head on the shifted appearance recovers every model to ≥ 0.930 AUC; the shift relocates the latent rather than destroying information.
 
@@ -66,11 +76,9 @@ Under purple, sign accuracy is misleading on its own. With ~17% unsafe states, a
 | baseline (sigreg only) | 0.000 ± 0.000 | 0.830 ± 0.006 |
 | jacobian | 0.001 ± 0.001 | 0.830 ± 0.006 |
 | jac+pull | 0.976 ± 0.041 | 0.830 ± 0.006 |
-| baseline + L∞ safety reg\* | not logged; sign accuracy 0.174 ± 0.006 equals the unsafe rate, so ≈ 0.000 (measured directly in the 50/50 eval) | 0.830 ± 0.006 |
+| baseline + L∞ safety reg | not logged; sign accuracy 0.174 ± 0.006 equals the unsafe rate, so ≈ 0.000 (measured directly in the 50/50 eval) | 0.830 ± 0.006 |
 | jac+pull + L∞ safety reg | not logged; sign accuracy 0.830 ± 0.006 equals the safe rate, so ≈ 1.000 | 0.830 ± 0.006 |
 | baseline + L∞ safety reg w/o h | not logged; sign accuracy 0.170 ± 0.006 equals the unsafe rate, so ≈ 0.000 | 0.830 ± 0.006 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 So **no model keeps a usable threshold under the color shift**. On this eval set baseline, jacobian and L∞ call everything unsafe and jac+pull calls everything safe; but the 50/50 eval below shows the *direction* flips with the head's training set (jac+pull calls everything unsafe there), so only the collapse itself is a stable finding. What separates the models on color is AUC, i.e. whether the safe/unsafe *ranking* survives. This overturns the earlier claim that jac+pull "survives color": its 0.830 sign accuracy came from calling everything safe. Under shape and rotation the L∞ threshold does survive (sign accuracy 0.980 / 0.975).
 
@@ -84,12 +92,14 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 |
 | jacobian | 0.963 ± 0.003 | 0.500 ± 0.000 | 0.952 ± 0.003 | 0.946 ± 0.009 |
-| jac+pull | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
-| baseline + L∞ safety reg\* | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
-| jac+pull + L∞ safety reg | 0.974 ± 0.004 | 0.505 ± 0.005 | 0.961 ± 0.003 | 0.958 ± 0.011 |
-| baseline + L∞ safety reg w/o h | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
+| jac+pull (WM seed 3072) | 0.940 ± 0.005 | 0.503 ± 0.005 | 0.919 ± 0.005 | 0.919 ± 0.013 |
+| jac+pull (3 WM seeds) | 0.950 ± 0.008 | 0.477 ± 0.030 | 0.924 ± 0.017 | 0.933 ± 0.012 |
+| baseline + L∞ safety reg (WM seed 3072) | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 |
+| baseline + L∞ safety reg (3 WM seeds) | 0.976 ± 0.003 | 0.498 ± 0.005 | 0.968 ± 0.009 | 0.927 ± 0.051 |
+| jac+pull + L∞ safety reg (WM seed 3072) | 0.974 ± 0.004 | 0.505 ± 0.005 | 0.961 ± 0.003 | 0.958 ± 0.011 |
+| jac+pull + L∞ safety reg (3 WM seeds) | 0.974 ± 0.001 | 0.604 ± 0.176 | 0.964 ± 0.002 | 0.959 ± 0.002 |
+| baseline + L∞ safety reg w/o h (WM seed 3072) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 |
+| baseline + L∞ safety reg w/o h (3 WM seeds) | 0.977 ± 0.001 | 0.497 ± 0.009 | 0.963 ± 0.002 | 0.965 ± 0.007 |
 
 **AUC**
 
@@ -97,12 +107,14 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.985 ± 0.002 | 0.177 ± 0.032 | 0.911 ± 0.029 | 0.902 ± 0.041 |
 | jacobian | 0.994 ± 0.001 | 0.711 ± 0.069 | 0.992 ± 0.001 | 0.990 ± 0.003 |
-| jac+pull | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
-| baseline + L∞ safety reg\* | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
-| jac+pull + L∞ safety reg | 0.997 ± 0.001 | 0.958 ± 0.012 | 0.995 ± 0.001 | 0.992 ± 0.004 |
-| baseline + L∞ safety reg w/o h | 0.998 ± 0.002 | 0.955 ± 0.002 | 0.997 ± 0.001 | 0.996 ± 0.001 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
+| jac+pull (WM seed 3072) | 0.987 ± 0.002 | 0.747 ± 0.063 | 0.981 ± 0.001 | 0.983 ± 0.004 |
+| jac+pull (3 WM seeds) | 0.990 ± 0.003 | 0.448 ± 0.266 | 0.985 ± 0.004 | 0.985 ± 0.002 |
+| baseline + L∞ safety reg (WM seed 3072) | 0.999 ± 0.001 | 0.927 ± 0.021 | 0.998 ± 0.000 | 0.996 ± 0.002 |
+| baseline + L∞ safety reg (3 WM seeds) | 0.997 ± 0.002 | 0.662 ± 0.239 | 0.996 ± 0.003 | 0.974 ± 0.036 |
+| jac+pull + L∞ safety reg (WM seed 3072) | 0.997 ± 0.001 | 0.958 ± 0.012 | 0.995 ± 0.001 | 0.992 ± 0.004 |
+| jac+pull + L∞ safety reg (3 WM seeds) | 0.997 ± 0.000 | 0.955 ± 0.017 | 0.995 ± 0.000 | 0.993 ± 0.001 |
+| baseline + L∞ safety reg w/o h (WM seed 3072) | 0.998 ± 0.002 | 0.955 ± 0.002 | 0.997 ± 0.001 | 0.996 ± 0.001 |
+| baseline + L∞ safety reg w/o h (3 WM seeds) | 0.998 ± 0.000 | 0.849 ± 0.101 | 0.997 ± 0.000 | 0.996 ± 0.000 |
 
 **Predicted-safe fraction (true = .500)**
 
@@ -110,12 +122,14 @@ The same eval with every set exactly balanced: heads trained on 3000 safe + 3000
 |---|---|---|---|---|
 | baseline (sigreg only) | 0.497 ± 0.003 | 0.000 ± 0.000 | 0.085 ± 0.010 | 1.000 ± 0.000 |
 | jacobian | 0.502 ± 0.002 | 0.000 ± 0.000 | 0.471 ± 0.002 | 0.505 ± 0.006 |
-| jac+pull | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
-| baseline + L∞ safety reg\* | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
-| jac+pull + L∞ safety reg | 0.503 ± 0.001 | 0.995 ± 0.005 | 0.514 ± 0.003 | 0.508 ± 0.004 |
-| baseline + L∞ safety reg w/o h | 0.503 ± 0.002 | 0.000 ± 0.000 | 0.520 ± 0.007 | 0.510 ± 0.009 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
+| jac+pull (WM seed 3072) | 0.492 ± 0.008 | 0.003 ± 0.005 | 0.480 ± 0.012 | 0.455 ± 0.010 |
+| jac+pull (3 WM seeds) | 0.498 ± 0.005 | 0.343 ± 0.513 | 0.474 ± 0.047 | 0.484 ± 0.026 |
+| baseline + L∞ safety reg (WM seed 3072) | 0.501 ± 0.003 | 0.001 ± 0.001 | 0.509 ± 0.005 | 0.522 ± 0.001 |
+| baseline + L∞ safety reg (3 WM seeds) | 0.502 ± 0.001 | 0.212 ± 0.366 | 0.511 ± 0.005 | 0.554 ± 0.054 |
+| jac+pull + L∞ safety reg (WM seed 3072) | 0.503 ± 0.001 | 0.995 ± 0.005 | 0.514 ± 0.003 | 0.508 ± 0.004 |
+| jac+pull + L∞ safety reg (3 WM seeds) | 0.503 ± 0.000 | 0.781 ± 0.376 | 0.511 ± 0.003 | 0.509 ± 0.002 |
+| baseline + L∞ safety reg w/o h (WM seed 3072) | 0.503 ± 0.002 | 0.000 ± 0.000 | 0.520 ± 0.007 | 0.510 ± 0.009 |
+| baseline + L∞ safety reg w/o h (3 WM seeds) | 0.504 ± 0.002 | 0.336 ± 0.571 | 0.519 ± 0.002 | 0.514 ± 0.014 |
 
 What it shows:
 - **Confirms:** every model's color threshold collapses (sign accuracy 0.500–0.503). L∞ has the best ranking on every shift: color AUC 0.927 ± 0.021 (less seed-variable than in the uniform eval), shape 0.998, rotation 0.996. L∞ keeps working thresholds on shape (0.974) and rotation (0.959).
@@ -123,14 +137,7 @@ What it shows:
 - **New models:** jac+pull + L∞ (color AUC 0.958 ± 0.012) and no-h (0.955 ± 0.002) both beat L∞ (0.927 ± 0.021) on color and match it elsewhere. Both still lose the color threshold, in opposite directions: jac+pull + L∞ calls almost everything *safe* (0.995), no-h calls everything *unsafe* (0.000).
 - **Corrects (baseline rotation):** baseline's rotation threshold also collapses (sign accuracy 0.500, everything called safe). In the uniform eval its 0.830 rotation sign accuracy equalled the all-safe rate, which hid this.
 
-*Note on training-seed variability. The ± in the tables above is the std over 3 eval seeds: different test-state samples and margin-head initializations, for a single trained world model (training seed 3072). It does not include variability across world-model training seeds, and the L∞ color result does not survive it. Retraining the exact same configuration with seeds 1 and 2 gives:*
-- *color AUC (uniform): 0.910 (seed 3072), 0.597 (seed 1), 0.422 (seed 2), i.e. 0.643 ± 0.247 over 3 training seeds. Below jac+pull's 0.753 on average (jac+pull is itself 1 training seed).*
-- *color AUC (50/50): 0.927, 0.599, 0.462, i.e. 0.662 ± 0.239.*
-- *color sign accuracy (uniform): 0.331 ± 0.252.*
-- *shape AUC: 0.997, 0.996, 0.990, i.e. 0.994 ± 0.004. It holds across seeds.*
-- *rotation AUC: 0.996, 0.995, 0.935, i.e. 0.975 ± 0.035.*
-
-*Details in [Training-seed variability of the reference](#training-seed-variability-of-the-reference).*
+*Per-seed values for every retrained model are in [Training-seed variability](#training-seed-variability).*
 
 ## Ablations: what makes the no-h regularizer work
 
@@ -144,14 +151,15 @@ Zero-shot AUC, mean ± std over 3 eval seeds; shape and rotation from the unifor
 
 | model | color, uniform | color, 50/50 | shape | rotation | final train pred_loss |
 |---|---|---|---|---|---|
-| L∞ safety reg w/o h | 0.951 ± 0.004 | 0.955 ± 0.002 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0253 |
+| L∞ safety reg w/o h (WM seed 3072) | 0.951 ± 0.004 | 0.955 ± 0.002 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0253 |
+| L∞ safety reg w/o h (3 WM seeds) | 0.852 ± 0.098 | 0.849 ± 0.101 | 0.996 ± 0.001 | 0.997 ± 0.000 | 0.0288 ± 0.0043 |
 | w/o h, random noise (no PGD) | 0.631 ± 0.030 | 0.622 ± 0.026 | 0.997 ± 0.002 | 0.996 ± 0.001 | 0.0140 |
 | w/o h, detached denominator | 0.643 ± 0.022 | 0.627 ± 0.004 | 0.991 ± 0.002 | 0.991 ± 0.005 | 0.1070 |
 | w/o h, encoder term only | 0.703 ± 0.269 | 0.583 ± 0.292 | 0.997 ± 0.001 | 0.996 ± 0.001 | 0.0225 |
 | w/o h, predictor term only | 0.691 ± 0.287 | 0.580 ± 0.394 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.0265 |
-| *reference: L∞ safety reg w/ h\** | *0.910 ± 0.098* | *0.927 ± 0.021* | *0.997 ± 0.001* | *0.996 ± 0.002* | *0.0113* |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
+| w/o h penalty, attack through h | 0.251 ± 0.081 | 0.237 ± 0.041 | 0.996 ± 0.001 | 0.996 ± 0.001 | 0.0188 |
+| *reference: L∞ safety reg w/ h (WM seed 3072)* | *0.910 ± 0.098* | *0.927 ± 0.021* | *0.997 ± 0.001* | *0.996 ± 0.002* | *0.0113* |
+| *reference: L∞ safety reg w/ h (3 WM seeds)* | *0.643 ± 0.247* | *0.662 ± 0.239* | *0.994 ± 0.004* | *0.975 ± 0.035* | *0.0121 ± 0.0015* |
 
 Per eval seed (color AUC, uniform / 50/50):
 - encoder only: 0.949 / 0.920, 0.416 / 0.398, 0.745 / 0.432;
@@ -163,6 +171,31 @@ Per eval seed (color AUC, uniform / 50/50):
 - **The separation reward matters, and without it the penalty fights prediction.** With the denominator detached, the only way to lower the penalty is real invariance. The penalty stays an order of magnitude higher (0.22 vs ~0.02), pred_loss is 4× the full model's (0.107), and color AUC is 0.643.
 - **Each term alone is unstable; together they're stable.** Encoder-only and predictor-only reach about 0.70 on average, but individual eval seeds (fresh state samples and head initializations) range from 0.12 to 0.95. Whether the color ranking survives then depends on the particular head. Only with both terms is every head 0.95.
 - **Caveat:** one training seed per variant. The *spread* across eval seeds is a property of the encoder; the gap between full no-h and the single-term variants could still partly be training-seed luck.
+
+### The same ablations with h
+
+The head-projected L∞ safety reg (gate 0.95, training seed 3072, code `cfa5e52`) with one change each:
+- **random noise:** ±ε random signs, no PGD;
+- **detached gap:** the head's safe/unsafe gap in the denominator is detached (`scale_grad: false`);
+- **encoder term only:** `pred_weight: 0`;
+- **predictor term only:** `enc_weight: 0`.
+
+Zero-shot AUC, Dubins:
+
+| model | color, uniform | color, 50/50 | shape | rotation | final train pred_loss |
+|---|---|---|---|---|---|
+| L∞ safety reg w/ h (WM seed 3072) | 0.910 ± 0.098 | 0.927 ± 0.021 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.0113 |
+| L∞ safety reg w/ h (3 WM seeds) | 0.643 ± 0.247 | 0.662 ± 0.239 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.0121 ± 0.0015 |
+| w/ h, random noise (no PGD) | 0.300 ± 0.024 | 0.237 ± 0.038 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.0067 |
+| w/ h, detached gap | 0.778 ± 0.041 | 0.779 ± 0.024 | 0.992 ± 0.001 | 0.961 ± 0.017 | 0.0092 |
+| w/ h, encoder term only | 0.277 ± 0.019 | 0.272 ± 0.021 | 0.997 ± 0.002 | 0.997 ± 0.001 | 0.0107 |
+| w/ h, predictor term only | 0.536 ± 0.048 | 0.485 ± 0.067 | 0.996 ± 0.001 | 0.998 ± 0.001 | 0.0107 |
+
+- **Read color against the reference's training-seed range (0.42–0.91).** Each ablation has one training seed.
+- **Encoder-only (0.277) and random noise (0.300) fall below that range,** so dropping the predictor term or the adversary likely does hurt.
+- **The detached gap (0.778) and predictor-only (0.536) sit inside it,** so they are not distinguishable from the full model.
+- **Shape and rotation stay ≥ 0.992,** except random noise, which breaks rotation (0.555).
+- **Attack through h, penalize the whole latent** (`attack_target: head`, `target: latent`, row in the table above): PGD looks for the δ that moves the safety score most, then the model is trained to keep the *whole* latent still under it. Dubins color drops to 0.251, against 0.852 ± 0.098 when the attack and the penalty both use the whole latent. On Safety Gym it gets color 0.938 / rotation 0.829 (vs 0.985 / 0.941), with pred_loss 0.081. The adversary has to search for the same quantity the penalty protects.
 
 Jacobians, same protocol as the section below:
 
@@ -196,7 +229,8 @@ Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearanc
 | LeWM sigreg only | 0.970 ± 0.007 | 0.833 ± 0.000 | 0.833 ± 0.000 |
 | LeWM jac | 0.992 ± 0.002 | 0.921 ± 0.002 | 0.832 ± 0.001 |
 | LeWM jac+pull | 0.997 ± 0.000 | 0.943 ± 0.004 | 0.835 ± 0.002 |
-| LeWM + L∞ safety reg | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
+| LeWM + L∞ safety reg (WM seed 3072) | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
+| LeWM + L∞ safety reg (3 WM seeds) | 0.989 ± 0.010 | 0.957 ± 0.056 | 0.933 ± 0.089 |
 | LeWM + L∞ safety reg w/o h | 0.990 ± 0.007 | 0.943 ± 0.005 | 0.933 ± 0.006 |
 | Dreamer | 0.981 ± 0.004 | 0.835 ± 0.003 | 0.833 ± 0.000 |
 | Dreamer + L∞ safety reg | 0.983 ± 0.002 | 0.856 ± 0.008 | 0.833 ± 0.000 |
@@ -209,7 +243,8 @@ Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearanc
 | LeWM sigreg only | 0.992 ± 0.003 | 0.595 ± 0.001 | 0.557 ± 0.006 |
 | LeWM jac | 0.997 ± 0.001 | 0.992 ± 0.000 | 0.641 ± 0.006 |
 | LeWM jac+pull | 0.999 ± 0.000 | 0.996 ± 0.001 | 0.679 ± 0.002 |
-| LeWM + L∞ safety reg | 1.000 ± 0.000 | 0.999 ± 0.000 | 0.962 ± 0.001 |
+| LeWM + L∞ safety reg (WM seed 3072) | 1.000 ± 0.000 | 0.999 ± 0.000 | 0.962 ± 0.001 |
+| LeWM + L∞ safety reg (3 WM seeds) | 0.998 ± 0.004 | 0.985 ± 0.024 | 0.851 ± 0.222 |
 | LeWM + L∞ safety reg w/o h | 0.999 ± 0.000 | 0.985 ± 0.001 | 0.941 ± 0.005 |
 | Dreamer | 0.993 ± 0.001 | 0.961 ± 0.002 | 0.503 ± 0.047 |
 | Dreamer + L∞ safety reg | 0.995 ± 0.001 | 0.977 ± 0.003 | 0.481 ± 0.043 |
@@ -222,7 +257,8 @@ Eval: the layout-controlled protocol (`sg_multicolor_train.npz`; every appearanc
 | LeWM sigreg only | 0.820 ± 0.005 | 1.000 ± 0.000 | 1.000 ± 0.000 |
 | LeWM jac | 0.833 ± 0.004 | 0.912 ± 0.002 | 0.999 ± 0.001 |
 | LeWM jac+pull | 0.832 ± 0.000 | 0.888 ± 0.004 | 0.998 ± 0.002 |
-| LeWM + L∞ safety reg | 0.830 ± 0.002 | 0.823 ± 0.006 | 0.833 ± 0.006 |
+| LeWM + L∞ safety reg (WM seed 3072) | 0.830 ± 0.002 | 0.823 ± 0.006 | 0.833 ± 0.006 |
+| LeWM + L∞ safety reg (3 WM seeds) | 0.832 ± 0.003 | 0.866 ± 0.061 | 0.889 ± 0.093 |
 | LeWM + L∞ safety reg w/o h | 0.831 ± 0.006 | 0.890 ± 0.005 | 0.858 ± 0.014 |
 | Dreamer | 0.828 ± 0.005 | 0.995 ± 0.002 | 1.000 ± 0.000 |
 | Dreamer + L∞ safety reg | 0.832 ± 0.003 | 0.977 ± 0.007 | 1.000 ± 0.000 |
@@ -292,26 +328,28 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 | model | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation | final pred_loss (Dubins / Safety Gym) |
 |---|---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 | — / 0.0026 |
-| L∞ safety reg, head (per-sample direction)\* | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 | 0.0113 / 0.0168 |
+| L∞ safety reg, head (per-sample direction) (WM seed 3072) | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 | 0.0113 / 0.0168 |
+| L∞ safety reg, head (per-sample direction) (3 WM seeds) | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.985 ± 0.024 | 0.851 ± 0.222 | 0.0121 ± 0.0015 / 0.0197 ± 0.0030 |
 | L∞ safety reg, λ-projected, batch λ | 0.639 ± 0.345 | 0.996 ± 0.002 | 0.896 ± 0.013 | 0.941 ± 0.009 | 0.855 ± 0.009 | 0.0112 / 0.0242 |
 | L∞ safety reg, λ-projected, global λ | 0.936 ± 0.041 | 0.995 ± 0.002 | 0.995 ± 0.002 | 0.841 ± 0.001 | 0.445 ± 0.008 | 0.0081 / 0.2342 |
-| L∞ safety reg, λ-projected, global λ, projected scale | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 | 0.008 / 0.013 |
-| L∞ safety reg w/o h (all directions) | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 | 0.0253 / 0.090 |
-
-\* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
+| L∞ safety reg, λ-projected, global λ, projected scale (WM seed 3072) | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 | 0.008 / 0.013 |
+| L∞ safety reg, λ-projected, global λ, projected scale (3 WM seeds) | 0.612 ± 0.373 | 0.996 ± 0.001 | 0.988 ± 0.009 | — | — | — |
+| L∞ safety reg w/o h (all directions) (WM seed 3072) | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 | 0.0253 / 0.090 |
+| L∞ safety reg w/o h (all directions) (3 WM seeds) | 0.852 ± 0.098 | 0.996 ± 0.001 | 0.997 ± 0.000 | — | — | 0.0288 ± 0.0043 / — |
 
 Zero-shot sign accuracy (h ≥ 0 = safe), mean ± std over 3 eval seeds. Dubins from the 50/50 eval, where 0.500 means the threshold is gone; Safety Gym, where calling every state safe scores 0.833:
 
 | model | Dubins in-dist | Dubins color | Dubins shape | Dubins rotation | Safety Gym in-dist | Safety Gym color | Safety Gym rotation |
 |---|---|---|---|---|---|---|---|
 | sigreg only | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 | 0.970 ± 0.007 | 0.833 ± 0.000 | 0.833 ± 0.000 |
-| L∞ safety reg, head (per-sample direction)\* | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
+| L∞ safety reg, head (per-sample direction) (WM seed 3072) | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
+| L∞ safety reg, head (per-sample direction) (3 WM seeds) | 0.976 ± 0.003 | 0.498 ± 0.005 | 0.968 ± 0.009 | 0.927 ± 0.051 | 0.989 ± 0.010 | 0.957 ± 0.056 | 0.933 ± 0.089 |
 | L∞ safety reg, λ-projected, batch λ | 0.976 ± 0.003 | 0.501 ± 0.004 | 0.959 ± 0.003 | 0.627 ± 0.049 | 0.990 ± 0.005 | 0.856 ± 0.007 | 0.836 ± 0.001 |
 | L∞ safety reg, λ-projected, global λ | 0.977 ± 0.002 | 0.500 ± 0.000 | 0.963 ± 0.002 | 0.941 ± 0.015 | 0.892 ± 0.006 | 0.844 ± 0.007 | 0.802 ± 0.008 |
-| L∞ safety reg, λ-projected, global λ, projected scale | 0.974 ± 0.003 | 0.690 ± 0.172 | 0.960 ± 0.007 | 0.920 ± 0.018 | 0.950 ± 0.003 | 0.843 ± 0.004 | 0.829 ± 0.003 |
-| L∞ safety reg w/o h (all directions) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 | 0.990 ± 0.007 | 0.943 ± 0.005 | 0.933 ± 0.006 |
-
-\* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
+| L∞ safety reg, λ-projected, global λ, projected scale (WM seed 3072) | 0.974 ± 0.003 | 0.690 ± 0.172 | 0.960 ± 0.007 | 0.920 ± 0.018 | 0.950 ± 0.003 | 0.843 ± 0.004 | 0.829 ± 0.003 |
+| L∞ safety reg, λ-projected, global λ, projected scale (3 WM seeds) | 0.976 ± 0.002 | 0.564 ± 0.109 | 0.964 ± 0.004 | 0.842 ± 0.170 | — | — | — |
+| L∞ safety reg w/o h (all directions) (WM seed 3072) | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.961 ± 0.002 | 0.968 ± 0.009 | 0.990 ± 0.007 | 0.943 ± 0.005 | 0.933 ± 0.006 |
+| L∞ safety reg w/o h (all directions) (3 WM seeds) | 0.977 ± 0.001 | 0.497 ± 0.009 | 0.963 ± 0.002 | 0.965 ± 0.007 | — | — | — |
 
 - **Dubins:** every λ variant loses the color threshold except global λ with projected scale, which partly keeps it (0.690). Its spread across eval seeds is large and it has one training seed. Batch λ also loses the rotation threshold (0.627).
 - **Safety Gym:** all λ variants collapse toward calling everything safe (0.80–0.86, near the 0.833 all-safe rate). Only the head version keeps its thresholds (0.987 / 0.977), and w/o h partly does (0.943 / 0.933).
@@ -338,13 +376,14 @@ Zero-shot AUC, mean ± std over 3 eval seeds (Dubins: uniform eval):
 | | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation |
 |---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 |
-| L∞ safety reg\* | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 |
+| L∞ safety reg (WM seed 3072) | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.999 ± 0.000 | 0.962 ± 0.001 |
+| L∞ safety reg (3 WM seeds) | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.985 ± 0.024 | 0.851 ± 0.222 |
 | L∞ safety reg, random noise | 0.300 ± 0.024 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.871 ± 0.002 | 0.729 ± 0.003 |
-| L∞ safety reg w/o h | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 |
+| L∞ safety reg w/o h (WM seed 3072) | 0.951 ± 0.004 | 0.996 ± 0.001 | 0.997 ± 0.001 | 0.985 ± 0.001 | 0.941 ± 0.005 |
+| L∞ safety reg w/o h (3 WM seeds) | 0.852 ± 0.098 | 0.996 ± 0.001 | 0.997 ± 0.000 | — | — |
 | L∞ safety reg w/o h, random noise | 0.631 ± 0.030 | 0.997 ± 0.002 | 0.996 ± 0.001 | 0.891 ± 0.011 | 0.802 ± 0.004 |
-| *jac+pull (reference)* | *0.753 ± 0.049* | *0.977 ± 0.007* | *0.978 ± 0.003* | *0.996 ± 0.001* | *0.679 ± 0.002* |
-
-\* Dubins columns: multiple world-model training seeds exist for this model; the row shows training seed 3072 (see [Training-seed variability of the reference](#training-seed-variability-of-the-reference)). Safety Gym columns: one training seed.
+| *jac+pull (reference, WM seed 3072)* | *0.753 ± 0.049* | *0.977 ± 0.007* | *0.978 ± 0.003* | *0.996 ± 0.001* | *0.679 ± 0.002* |
+| *jac+pull (reference, 3 WM seeds)* | *0.498 ± 0.234* | *0.982 ± 0.004* | *0.982 ± 0.003* | — | — |
 
 Sign accuracy under shift for the random runs:
 - **Dubins:** color 0.170 (with h) and 0.176 (no h), both the all-unsafe rate; rotation 0.822 (with h) and 0.973 (no h).
@@ -367,11 +406,10 @@ The head-variant L∞ safety reg on Dubins with only the adversary changed: ε =
 | sigreg only | 0.144 ± 0.032 | 0.177 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | — |
 | random ±8/255, no search | 0.300 ± 0.024 | 0.237 ± 0.038 | 0.996 ± 0.002 | 0.555 ± 0.077 | 0.0067 |
 | ε = 4/255, 2 steps | 0.771 ± 0.032 | 0.782 ± 0.027 | 0.997 ± 0.001 | 0.577 ± 0.105 | 0.0124 |
-| ε = 8/255, 2 steps (reference)\* | 0.910 ± 0.098 | 0.927 ± 0.021 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.0113 |
+| ε = 8/255, 2 steps (reference, WM seed 3072) | 0.910 ± 0.098 | 0.927 ± 0.021 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.0113 |
+| ε = 8/255, 2 steps (reference, 3 WM seeds) | 0.643 ± 0.247 | 0.662 ± 0.239 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.0121 ± 0.0015 |
 | ε = 16/255, 2 steps | 0.305 ± 0.042 | 0.296 ± 0.026 | 0.984 ± 0.002 | 0.910 ± 0.020 | 0.0134 |
 | ε = 8/255, 5 steps | 0.088 ± 0.047 | 0.286 ± 0.043 | 0.997 ± 0.001 | 0.992 ± 0.003 | 0.0116 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Across seeds 3072 / 1 / 2: see [Training-seed variability of the reference](#training-seed-variability-of-the-reference).
 
 - **Color is not monotonic in the attack.** Raising ε from 8/255 to 16/255 drops color AUC from 0.910 to 0.305. A stronger search at the same ε (5 steps) drops it to 0.088, below sigreg only, i.e. the purple ranking becomes inverted. 4/255 lands in between (0.771). Per eval seed: 4/255 is 0.80 / 0.74 / 0.78, 16/255 is 0.35 / 0.30 / 0.27, and 5 steps is 0.14 / 0.06 / 0.06. So the gaps between runs are far outside the eval-seed spread.
 - **Rotation moves differently.** It is poor at 4/255 (0.577) and fine with a larger ε or more steps (0.910 / 0.992). A weak attack doesn't protect rotation, while a strong one does but loses color. Only the reference setting got both.
@@ -379,21 +417,33 @@ The head-variant L∞ safety reg on Dubins with only the adversary changed: ε =
 - **Thresholds:** only ε = 4/255 keeps some color threshold on the 50/50 eval (sign accuracy 0.722 vs 0.500 for collapse; predicted safe 0.454). Every other run collapses on color, and ε = 4/255 and 16/255 also collapse on rotation.
 - **Implication:** the reference's color result depends sharply on the adversary settings, and also on the training seed (below).
 
-### Training-seed variability of the reference
+### Training-seed variability
 
-The exact reference configuration (ε = 8/255, 2 PGD steps, head variant, gate 0.95) retrained with training seeds 1 and 2 (code `cfa5e52`; runs `lewm_dubins_safeadv_linf50_s{1,2}`). Zero-shot AUC, Dubins uniform eval, mean ± std over 3 eval seeds per training seed:
+Every model below was retrained with training seeds 1 and 2; seed 3072 is the original run. Per training seed, each value is the mean over 3 eval seeds; the last columns are mean ± std across the 3 training seeds. Dubins from the uniform eval unless stated.
 
-| training seed | in-dist | color | shape | rotation | color, 50/50 |
-|---|---|---|---|---|---|
-| 3072 (reference) | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.997 ± 0.001 | 0.996 ± 0.002 | 0.927 ± 0.021 |
-| 1 | 0.997 ± 0.001 | 0.597 ± 0.032 | 0.996 ± 0.001 | 0.995 ± 0.002 | 0.599 ± 0.101 |
-| 2 | 0.994 ± 0.004 | 0.422 ± 0.015 | 0.990 ± 0.003 | 0.935 ± 0.033 | 0.462 ± 0.028 |
-| mean ± std over training seeds | 0.996 ± 0.002 | 0.643 ± 0.247 | 0.994 ± 0.004 | 0.975 ± 0.035 | 0.663 ± 0.239 |
-| jac+pull (one training seed) | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.977 ± 0.007 | 0.978 ± 0.003 | 0.747 ± 0.063 |
+| model | color, seed 3072 | color, seed 1 | color, seed 2 | color, 3 WM seeds | color 50/50, 3 WM seeds | shape, 3 WM seeds | rotation, 3 WM seeds |
+|---|---|---|---|---|---|---|---|
+| jac+pull | 0.753 | 0.292 | 0.451 | 0.498 ± 0.234 | 0.448 ± 0.266 | 0.982 ± 0.004 | 0.982 ± 0.003 |
+| baseline + L∞ safety reg | 0.910 | 0.597 | 0.422 | 0.643 ± 0.247 | 0.662 ± 0.239 | 0.994 ± 0.004 | 0.975 ± 0.035 |
+| jac+pull + L∞ safety reg | 0.965 | 0.974 | 0.933 | 0.957 ± 0.021 | 0.955 ± 0.017 | 0.994 ± 0.000 | 0.994 ± 0.001 |
+| baseline + L∞ safety reg w/o h | 0.951 | 0.755 | 0.849 | 0.852 ± 0.098 | 0.849 ± 0.101 | 0.996 ± 0.001 | 0.997 ± 0.000 |
+| L∞ safety reg, λ-projected, global λ, projected scale | 0.950 | 0.675 | 0.211 | 0.612 ± 0.373 | 0.574 ± 0.371 | 0.996 ± 0.001 | 0.988 ± 0.009 |
 
-- **The 0.910 color result does not reproduce.** Over three training seeds it is 0.643 ± 0.247: far above sigreg only (0.144), but not reliably above jac+pull (0.753, itself a single training seed). Training-seed variance dominates color. This also qualifies every single-seed Dubins color comparison above (no-h vs head, the λ variants, the attack sweep).
-- **Shape holds across seeds** (0.990–0.997) and stays above jac+pull. Rotation is roughly level with jac+pull on average, because seed 2 dips to 0.935. The color threshold collapses for all three seeds on the 50/50 eval (sign accuracy 0.49–0.50).
-- **Running:** two more training seeds each of jac+pull, no-h, jac+pull + L∞, global λ (projected scale) and the Safety Gym L∞ model, so every headline comparison has 3 training seeds.
+Safety Gym, LeWM + L∞ safety reg (seeds 3072 / 1 / 2):
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| color AUC | 0.999 | 0.998 | 0.957 | 0.985 ± 0.024 |
+| color sign accuracy | 0.987 | 0.991 | 0.892 | 0.957 ± 0.056 |
+| rotation AUC | 0.962 | 0.995 | 0.596 | 0.851 ± 0.222 |
+| rotation sign accuracy | 0.977 | 0.992 | 0.831 | 0.933 ± 0.089 |
+
+- **jac+pull + L∞ safety reg is the only model whose Dubins color result is stable across seeds** (0.933–0.974, 0.957 ± 0.021), and it is the best. It is also the most stable on the 50/50 eval (0.955 ± 0.017) and keeps shape and rotation at 0.994.
+- **The other single-seed color numbers were optimistic.** jac+pull's 0.753 becomes 0.498 ± 0.234, baseline + L∞ safety reg's 0.910 becomes 0.643 ± 0.247, and projected-scale λ's 0.950 becomes 0.612 ± 0.373 (one seed at 0.211). w/o h holds up best of the sigreg-base models: 0.852 ± 0.098.
+- **Shape and rotation are stable for every model** (≥ 0.975 mean), except that the head version's rotation dips on seed 2 (0.935).
+- **Thresholds:** on the Dubins 50/50 eval, color sign accuracy stays at collapse for every model's 3-seed mean (0.48–0.60). jac+pull + L∞ safety reg is the highest (0.604 ± 0.176).
+- **Safety Gym:** the L∞ safety reg's threshold survival holds on 2 of 3 seeds. Seed 2 is weaker on color (sign accuracy 0.892) and loses most of its rotation gain (AUC 0.596, sign accuracy 0.831, near all-safe).
+- **Prediction loss across seeds:** baseline + L∞ safety reg 0.0121 ± 0.0015; w/o h 0.0288 ± 0.0043; jac+pull + L∞ safety reg 0.0165, 0.0158, 0.0167; Safety Gym L∞ 0.0197 ± 0.0030.
 
 ## Planning: raw CEM on Dubins
 
@@ -408,11 +458,10 @@ Same protocol as the existing sigreg only / jac / jac+pull numbers (`le-wm/scrip
 | sigreg only | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
 | jacobian | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
 | jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
-| baseline + L∞ safety reg\* | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
+| baseline + L∞ safety reg (WM seed 3072) | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
+| baseline + L∞ safety reg (3 WM seeds) | 58.2 ± 1.2 / 54.8 ± 2.0 | 58.2 ± 1.2 / 54.7 ± 2.1 | 58.2 ± 1.2 / 44.7 ± 1.3 | 27.3 ± 7.0 / 66.0 ± 4.5 |
 | jac+pull + L∞ safety reg | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
 | baseline + L∞ safety reg w/o h | 59.0 / 51.5 | 60.0 / 52.0 | 59.0 / 39.5 | 21.0 / 64.0 |
-
-\* Multiple world-model training seeds exist for this model; the row shows training seed 3072. Seeds 1 and 2 give 57.5 / 54.5 and 59.5 / 53.0 in-distribution (all conditions in [Appendix E](#appendix-e-full-cem-table)).
 
 - **The L∞ safety reg doesn't make planning better, and on the sigreg base it makes it slightly worse.** Baseline + L∞ safety reg gets 57.5% success and 57.0% collision in-distribution, against 62.5% / 50.0% for sigreg only. Its two reseeds are in the same range (57.5–59.5% / 53–54.5%), so unlike the color AUC this holds across training seeds. Without h it is about the same (59.0% / 51.5%).
 - **Planning quality comes from the Jacobian reg, not the safety reg.** jac and jac+pull remain the best planners (81.5% success, 22.5–29% collision). Adding the L∞ safety reg on top of jac+pull keeps the low collision rate (29.0%) but lowers success (75.5% vs 81.5%).
@@ -444,7 +493,7 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 
 ## Interpretation
 
-1. **Adversarial noise invariance transfers to large shifts, and the safety projection isn't needed, but the rest is.** Small adversarial pixel noise gives robustness to three shifts it never saw, including the color shift that a hand-designed color perturbation handled worse (Appendix B). The no-h ablation penalizes the whole latent instead of the readout and is at least as good (color 0.951 ± 0.004 vs 0.910 ± 0.098). The follow-up ablations show that color needs all of the following:
+1. **Adversarial noise invariance transfers to large shifts, and the safety projection isn't needed, but the rest is.** Small adversarial pixel noise gives robustness to three shifts it never saw, including the color shift that a hand-designed color perturbation handled worse (Appendix B). The no-h ablation penalizes the whole latent instead of the readout and is at least as good (color 0.852 ± 0.098 vs 0.643 ± 0.247 over 3 WM seeds). The most reliable model combines the regularizer with jac+pull (0.957 ± 0.021). The follow-up ablations show that color needs all of the following:
    - a worst-case search: random noise of the same size gives 0.631, consistent with earlier *global* random-noise invariance regularizers never fixing color;
    - the gradient through the class-separation denominator: detached gives 0.643, and prediction suffers;
    - both the encoder and the predictor term: either alone is unstable across heads.
@@ -455,7 +504,7 @@ Script `diagnostics/jac_compare.py`, output `jac_compare.out`.
 
 ## Caveats
 
-- **One training seed per model.** The 3 seeds are eval seeds (sampled states and head initializations). L∞'s color result varies a lot across them (0.910 ± 0.098), and the ordering among the three L∞ variants on color (0.910 / 0.951 / 0.965) is within what one training seed can move. A second training seed is needed before ranking them.
+- **Training seeds.** Six models have 3 world-model training seeds (see [Training-seed variability](#training-seed-variability)); everything else, including all ablations, the attack sweep, the λ variants except projected scale, and the Dreamer runs, has one. Dubins color varies by up to ±0.37 across training seeds, so single-seed color differences of that size are not conclusive. Shape and rotation are stable across seeds.
 - **Prediction quality cost.** Final train pred_loss: L∞ 0.0113, jac+pull + L∞ 0.0165, no-h 0.0253, vs 0.0067 for the hue-variant run. Whether this hurts CEM planning hasn't been tested, and it matters most for no-h.
 - **Only the margin head is tested.** The reachability critic's zero-shot behavior (where every earlier model collapsed on color) hasn't been evaluated.
 - **Eval states are uniform, not on-policy.** They cover every heading and positions deep inside obstacles; the world model trained on expert trajectories. "In-dist" means in-distribution *appearance*.
