@@ -351,7 +351,11 @@ class SafetyAdvInvarianceReg(nn.Module):
         # attack="hue": spatial hue/saturation field (the color prior). attack="linf": per-pixel
         # L_inf noise |delta|<=eps_pix in [0,1] RGB, one delta per sequence shared across ctx frames
         # (threat-agnostic ablation: same safety-projected penalty, no color assumption).
-        assert attack in ("hue", "linf"), attack
+        # attack="jac": no adversary. First-order version of the L_inf lambda penalty: the worst-case
+        # eps-perturbation moves the safety coordinate lambda_n.f(x) by eps*||grad_x||_1 (L1 = dual of L_inf),
+        # so penalize (eps*||grad_x (lambda_n.f(x_t))||_1 / s)^2 (+ same for the prediction). Needs target="lambda".
+        assert attack in ("hue", "linf", "jac"), attack
+        assert attack != "jac" or target == "lambda", "attack=jac needs target=lambda"
         self.attack, self.eps_pix = attack, float(eps_pix)
         # target="head": penalize the change of the safety readout h (safety-projected, default).
         # target="latent": ablation without h — penalize the whole latent change ||f(x+d)-f(x)||^2
@@ -555,6 +559,21 @@ class SafetyAdvInvarianceReg(nn.Module):
         x = pixels[:n, :T].float()
         act = ctx_act[:n].detach()
         x01 = (x * self.im_std.unsqueeze(0) + self.im_mean.unsqueeze(0)).clamp(0, 1)
+        if self.attack == "jac":
+            bn = _CleanStatBN(model)
+            xg = x01.detach().requires_grad_(True)
+            with bn.capture(), torch.enable_grad():
+                z = encode_fn(self._norm(xg).flatten(0, 1)).view(n, T, -1).float()
+                sz = z @ self._u                                        # (n, T) safety coordinate per frame
+                sp = model.predict(z, act)[:, -1].float() @ self._u     # (n,) of the 1-step prediction
+                gz = torch.autograd.grad(sz.sum(), xg, create_graph=True)[0]   # frame t only feeds sz[:, t]
+                gp = torch.autograd.grad(sp.sum(), xg, create_graph=True)[0]
+            e = self.eps_pix
+            dz = (e * gz.abs().flatten(2).sum(-1) / gap_live).pow(2).mean(1)             # per frame, then mean_t
+            dp = (e * gp.sum(1).abs().flatten(1).sum(-1) / gap_live).pow(2)              # delta shared over frames
+            d = self.enc_weight * dz + self.pred_weight * dp
+            self.stats["jac_l1"] = (gz.abs().flatten(2).sum(-1).mean()).detach()
+            return ramp * d.mean()
         if self.attack == "hue":
             eps = torch.tensor(self.eps, device=dev).view(1, 2, 1, 1)
             pshape, perturb = (n, 2, self.grid, self.grid), self._perturb
