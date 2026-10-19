@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-19 09:45 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-19 23:15 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -476,7 +476,17 @@ Safety Gym, LeWM + L∞ safety reg:
 | rotation sign accuracy | 0.964 | 0.941 | 0.982 | 0.962 ± 0.021 |
 | final train pred_loss | 0.0328 | 0.0369 | 0.0322 | 0.0340 ± 0.0026 |
 
-Safety Gym jac+pull reseeds (the 3-seed baseline for this table) are running.
+#oct-18 Safety Gym, LeWM jac+pull (the 3-seed baseline for the table above):
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| in-dist AUC | 0.999 | 0.998 | 0.996 | 0.998 ± 0.002 |
+| color AUC | 0.996 | 0.994 | 0.987 | 0.993 ± 0.005 |
+| color sign accuracy | 0.943 | 0.964 | 0.930 | 0.946 ± 0.017 |
+| rotation AUC | 0.679 | 0.593 | 0.598 | 0.623 ± 0.048 |
+| rotation sign accuracy | 0.835 | 0.836 | 0.833 | 0.835 ± 0.002 |
+
+- #oct-18 **On Safety Gym, adding the L∞ safety reg to jac+pull fixes camera rotation on every seed.** Rotation AUC goes from 0.623 ± 0.048 to 0.981 ± 0.018, and rotation sign accuracy from 0.835 (calling everything safe) to 0.962 ± 0.021. Color is already high for jac+pull (AUC 0.993); the safety reg raises its sign accuracy from 0.946 to 0.979. jac+pull's final prediction loss is 0.009–0.011, against 0.032–0.037 with the safety reg.
 
 Raw CEM (sg25clean), baseline + L∞ safety reg, success % / collision %, mean ± std over 3 training seeds:
 
