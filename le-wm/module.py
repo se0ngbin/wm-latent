@@ -367,7 +367,9 @@ class SafetyAdvInvarianceReg(nn.Module):
         # lambda_mode="global_proj": as "global", but the length is the batch gap PROJECTED on the global
         # direction (lambda_batch . u), with grad, floored at 0.1 x the global gap length -> credit only for
         # separating the classes along the protected axis.
-        assert lambda_mode in ("batch", "global", "global_proj"), lambda_mode
+        # lambda_mode="batch_detached": direction from the batch centroids but DETACHED (no grad through the
+        # direction); length ||lambda_batch|| with grad.
+        assert lambda_mode in ("batch", "batch_detached", "global", "global_proj"), lambda_mode
         self.target, self.lambda_mode = target, lambda_mode
         # attack_target: what PGD maximizes (default = target). attack_target="head" with target="latent":
         # the adversary looks for the delta that moves the SAFETY SCORE most (head gap units), and the
@@ -526,6 +528,8 @@ class SafetyAdvInvarianceReg(nn.Module):
             gap_live = lam.norm().clamp_min(1e-3)                          # ||lambda||, with grad
             if self.lambda_mode == "batch":
                 self._u = lam / gap_live
+            elif self.lambda_mode == "batch_detached":
+                self._u = (lam / gap_live).detach()
             else:
                 g = self.mu_safe_ema - self.mu_unsafe_ema                  # debiasing cancels in the direction
                 self._u = (g / g.norm().clamp_min(1e-8)).detach()
