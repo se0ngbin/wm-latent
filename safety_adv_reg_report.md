@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-19 23:15 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-20 06:45 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -8,7 +8,7 @@
 - **On Dubins, jac+pull + L∞ safety reg is the best model and the only one that is stable across world-model training seeds** ([training-seed variability](#training-seed-variability)). Zero-shot color AUC (uniform eval, mean ± std over 3 WM seeds): jac+pull + L∞ safety reg **0.957 ± 0.021**, baseline + L∞ safety reg w/o h 0.852 ± 0.098, baseline + L∞ safety reg 0.643 ± 0.247, jac+pull 0.498 ± 0.234; sigreg only 0.144 (1 seed). Every model keeps shape and rotation (≥ 0.975). The 50/50 eval agrees (0.955 ± 0.017 for jac+pull + L∞ safety reg). The single-seed numbers first reported (0.910 for the L∞ safety reg, 0.753 for jac+pull) were lucky seeds. #oct-18
 - **The safety projection is not what makes it work, but every other ingredient is.** The "w/o h" version penalizes the whole latent shift ‖f(x + δ) − f(x)‖², scaled by the safe/unsafe centroid distance, and never touches the head. Over 3 WM seeds it beats the head-projected version on color (0.852 ± 0.098 vs 0.643 ± 0.247). Removing any one of its other parts drops color AUC to 0.63–0.70 (one seed each): the adversarial search, the gradient through the class-separation denominator, the encoder term, or the predictor term ([ablations](#ablations-what-makes-the-no-h-regularizer-work)). The attack must also search the quantity being penalized: attacking through h while penalizing the whole latent gives 0.251. #oct-18
 - **Adding the L∞ safety reg on top of jac+pull** lifts color AUC from 0.498 ± 0.234 to 0.957 ± 0.021 over 3 WM seeds. It costs more prediction loss (0.016–0.017 vs 0.012–0.014). #oct-18
-- #oct-18 **On Safety Gym, jac+pull + L∞ safety reg is the best and most stable model:** over 3 WM seeds color AUC 1.000 ± 0.000, rotation 0.981 ± 0.018, and the threshold holds on every seed (sign accuracy 0.979 / 0.962). With the Dubins result, it's the same recipe that wins on both benchmarks. Separately, **batch λ with a detached direction** fixes batch λ (Dubins color 0.948, Safety Gym thresholds kept; one seed).
+- #oct-18 **On Safety Gym, jac+pull + L∞ safety reg is the best and most stable model:** over 3 WM seeds color AUC 1.000 ± 0.000, rotation 0.981 ± 0.018, and the threshold holds on every seed (sign accuracy 0.979 / 0.962). With the Dubins result, it's the same recipe that wins on both benchmarks. Separately, **batch λ with a detached direction** keeps Safety Gym thresholds on all 3 seeds (rotation 0.945 ± 0.023), but its Dubins color is seed-unstable (0.721 ± 0.434).
 - **Safety Gym (new): the regularizer transfers and is even stronger there** ([section](#safety-gym-and-the-regularizer-on-dreamer)). LeWM + L∞ safety reg reaches zero-shot AUC 0.999 on color and **0.962 on a real 90° camera rotation**, where jac+pull scores 0.679 and sigreg only 0.557. It is also the **first model in the study whose safe/unsafe threshold survives a shift**: sign accuracy 0.987 on color and 0.977 on rotation, against 0.833 for calling everything safe. #oct-18 Over 3 WM seeds this holds on 2 of 3: color AUC 0.985 ± 0.024 and sign accuracy 0.957 ± 0.056, but rotation AUC 0.851 ± 0.222, because seed 2 loses most of the rotation gain (0.596). The cost is 6× the prediction loss (0.0168 vs 0.0026). On Safety Gym the penalty had to run without the AUC gate, because the sigreg-only latent doesn't generalize safety across episodes.
 - **Dreamer (new): smaller gains.** The head-projected regularizer lifts Dubins color AUC from 0.638 to 0.816 and Safety Gym color from 0.961 to 0.977. Rotation stays at chance on both benchmarks and thresholds still collapse. No-h doesn't help Dubins Dreamer at all (0.626), so for Dreamer the safety projection matters, unlike LeWM on Dubins.
 - **λ-projection (new):** replacing the head with one shared safety direction λ = mean(z_safe) − mean(z_unsafe), and penalizing only the perturbation's shift along it, works on Dubins when λ is a running global average (color AUC 0.936, lowest prediction cost of any safety-reg model). It fails on Safety Gym, where the base latent has no consistent linear safety axis ([section](#safety-direction-λ-projection-instead-of-the-head)).
@@ -327,7 +327,7 @@ Zero-shot sign accuracy (h ≥ 0 = safe), mean ± std over 3 eval seeds. Dubins 
 
 The full uniform, 50/50 and Safety Gym tables (sign accuracy, AUC, predicted-safe fraction) include both λ rows. On the 50/50 eval, Dubins color AUC is 0.819 ± 0.025 for batch λ and 0.892 ± 0.069 for global λ.
 
-- #oct-18 **Batch λ with a detached direction fixes batch λ** (`lambda_mode: batch_detached`, one training seed). The direction comes from the current batch's class means but carries no gradient; the scale ‖λ_batch‖ keeps its gradient. On Dubins, color AUC is 0.948 ± 0.013 (eval seeds 0.94 / 0.94 / 0.96), against 0.639 ± 0.345 for batch λ, and rotation is back to 0.996 (batch λ: 0.896). On Safety Gym it reaches color 0.992 and rotation 0.962, and it is the first λ variant whose thresholds survive (sign accuracy 0.992 / 0.983; batch λ 0.856 / 0.836). Prediction loss is low (0.0106 / 0.0221). The gradient through the direction is what broke batch λ, presumably because it let the encoder rotate the protected axis. A noisy per-batch direction is fine once it is detached. The Dubins color threshold still collapses (50/50 sign accuracy 0.500). One training seed, so it needs reseeding before ranking it against the head version.
+- #oct-18 **Batch λ with a detached direction fixes batch λ** (`lambda_mode: batch_detached`, one training seed). The direction comes from the current batch's class means but carries no gradient; the scale ‖λ_batch‖ keeps its gradient. On Dubins, color AUC is 0.948 ± 0.013 (eval seeds 0.94 / 0.94 / 0.96), against 0.639 ± 0.345 for batch λ, and rotation is back to 0.996 (batch λ: 0.896). On Safety Gym it reaches color 0.992 and rotation 0.962, and it is the first λ variant whose thresholds survive (sign accuracy 0.992 / 0.983; batch λ 0.856 / 0.836). Prediction loss is low (0.0106 / 0.0221). The gradient through the direction is what broke batch λ, presumably because it let the encoder rotate the protected axis. A noisy per-batch direction is fine once it is detached. The Dubins color threshold still collapses (50/50 sign accuracy 0.500). #oct-18 Over 3 training seeds it holds on Safety Gym (color 0.993 ± 0.007, rotation 0.945 ± 0.023, thresholds kept on every seed) but not on Dubins color (0.721 ± 0.434, one seed at 0.220); see [Training-seed variability](#training-seed-variability).
 - **Dubins, global λ works.** Color AUC is 0.936 (seeds 0.98 / 0.92 / 0.90), above the L∞ safety reg w/ h (0.910). Shape and rotation stay intact. It also has the lowest prediction cost of any safety-reg model (pred_loss 0.0081), and its running direction agrees with the batch direction (cos ≈ 0.89–0.94).
 - **Dubins, batch λ is unstable and hurts rotation.** Color AUC by eval seed is 0.83 / 0.84 / 0.24, and rotation drops to 0.896, below sigreg only (0.956). Having gradient through a noisy per-batch direction lets the encoder move the axis it is being protected along.
 - **Safety Gym: neither λ variant matches the head.**
@@ -487,6 +487,23 @@ Safety Gym, LeWM + L∞ safety reg:
 | rotation sign accuracy | 0.835 | 0.836 | 0.833 | 0.835 ± 0.002 |
 
 - #oct-18 **On Safety Gym, adding the L∞ safety reg to jac+pull fixes camera rotation on every seed.** Rotation AUC goes from 0.623 ± 0.048 to 0.981 ± 0.018, and rotation sign accuracy from 0.835 (calling everything safe) to 0.962 ± 0.021. Color is already high for jac+pull (AUC 0.993); the safety reg raises its sign accuracy from 0.946 to 0.979. jac+pull's final prediction loss is 0.009–0.011, against 0.032–0.037 with the safety reg.
+
+#oct-18 L∞ safety reg, λ-projected, batch λ with detached direction, both benchmarks:
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| Dubins color AUC (uniform) | 0.948 | 0.220 | 0.995 | 0.721 ± 0.434 |
+| Dubins color AUC (50/50) | 0.953 | 0.262 | 0.994 | 0.736 ± 0.411 |
+| Dubins shape AUC | 0.996 | 0.996 | 0.997 | 0.996 ± 0.000 |
+| Dubins rotation AUC | 0.996 | 0.990 | 0.993 | 0.993 ± 0.003 |
+| Dubins rotation sign accuracy (50/50) | 0.951 | 0.840 | 0.932 | 0.908 ± 0.060 |
+| Safety Gym color AUC | 0.992 | 0.986 | 1.000 | 0.993 ± 0.007 |
+| Safety Gym color sign accuracy | 0.992 | 0.988 | 0.997 | 0.992 ± 0.005 |
+| Safety Gym rotation AUC | 0.962 | 0.954 | 0.919 | 0.945 ± 0.023 |
+| Safety Gym rotation sign accuracy | 0.983 | 0.959 | 0.963 | 0.968 ± 0.013 |
+| final train pred_loss (Dubins / Safety Gym) | 0.0106 / 0.0221 | 0.0101 / 0.0291 | 0.0141 / 0.0270 | |
+
+- #oct-18 **Detached batch λ is seed-stable on Safety Gym but not on Dubins color.** On Safety Gym all three seeds keep both thresholds (sign accuracy ≥ 0.959; predicted safe 0.83–0.86 vs 0.833 true), with color AUC 0.993 ± 0.007 and rotation 0.945 ± 0.023. That's close to jac+pull + L∞ safety reg (1.000 / 0.981) at lower prediction cost (0.022–0.029 vs 0.032–0.037), and on the sigreg base. On Dubins, color swings from 0.22 to 0.995 across seeds, like the other λ variants. Shape and rotation are stable.
 
 Raw CEM (sg25clean), baseline + L∞ safety reg, success % / collision %, mean ± std over 3 training seeds:
 
