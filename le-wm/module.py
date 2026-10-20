@@ -562,7 +562,8 @@ class SafetyAdvInvarianceReg(nn.Module):
         if self.attack == "jac":
             bn = _CleanStatBN(model)
             xg = x01.detach().requires_grad_(True)
-            with bn.capture(), torch.enable_grad():
+            from torch.nn.attention import sdpa_kernel, SDPBackend
+            with bn.capture(), torch.enable_grad(), sdpa_kernel(SDPBackend.MATH):   # flash attn has no double backward
                 z = encode_fn(self._norm(xg).flatten(0, 1)).view(n, T, -1).float()
                 sz = z @ self._u                                        # (n, T) safety coordinate per frame
                 sp = model.predict(z, act)[:, -1].float() @ self._u     # (n,) of the 1-step prediction
