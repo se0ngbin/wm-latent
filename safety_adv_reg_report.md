@@ -390,7 +390,7 @@ The head-variant L∞ safety reg on Dubins with only the adversary changed: ε =
 
 ### Training-seed variability
 
-#oct-18 Six models were retrained with world-model training seeds 1 and 2; seed 3072 is the original run. For each training seed, values are first averaged over its 3 eval seeds. Then the tables show mean ± std across the 3 training seeds.
+Six models were retrained with world-model training seeds 1 and 2; seed 3072 is the original run. For each training seed, values are first averaged over its 3 eval seeds. Then the tables show mean ± std across the 3 training seeds.
 
 Dubins, uniform eval:
 
