@@ -698,7 +698,7 @@ The margin heads are trained on binary failure labels only (margin_gp: zero-sum 
 - **Near and inside obstacles it is graded.** Unsafe states are ordered by depth (0.72–0.81), and safe states near the boundary are moderately ordered (0.59–0.77).
 - **The L∞ safety reg improves near-boundary ordering and keeps it under shift.** In-distribution, L∞ w/ h scores 0.770 and w/o h 0.760, against 0.682 for sigreg only and 0.661 for jac+pull. Under the color shift sigreg only drops below chance (0.412) and jac / jac+pull fall to 0.56–0.57, while the L∞ models keep 0.65–0.66. Under rotation, w/o h keeps the most (0.755).
 - **The orthogonal variants order safe states worst** (0.659 in-distribution; 0.475 under rotation).
-Each point below is one test state: x is its true distance to the nearest obstacle (negative = inside), y is the zero-shot head's output. Top row: in-distribution; bottom row: under the color shift. The y-axes differ per panel. First the raw margin score h, then the signed latent distance to the head's decision boundary h(z) = 0, computed to first order as h / ‖∇_z h‖ in units of the class gap:
+Dubins. Each point below is one test state: x is its true distance to the nearest obstacle (negative = inside), y is the zero-shot head's output. Top row: in-distribution; bottom row: under the color shift. The y-axes differ per panel. First the raw margin score h, then the signed latent distance to the head's decision boundary h(z) = 0, computed to first order as h / ‖∇_z h‖ in units of the class gap:
 
 ![](figs/safety_margin_scatter.png)
 
@@ -708,7 +708,26 @@ Each point below is one test state: x is its true distance to the nearest obstac
 - **Under the color shift, the baselines lose the structure.** sigreg only collapses to a flat band below 0 (everything called unsafe); jac+pull to a nearly flat band above 0 (everything safe). The L∞ models keep the step shape but the whole curve slides up or down. That is what "ranking survives, threshold collapses" looks like.
 - **The two views agree:** the latent distance to the decision boundary follows the same shape as the raw score.
 
-- **Safety Gym is not included.** Its eval set stores only binary labels; the collector computes the margin but doesn't save it, so it needs a re-collection with margins saved.
+**Safety Gym.** A new eval set records each frame's true distance to the nearest hazard edge (3000 frames, 17% unsafe; `safeadv_results/sg_eval/collect_margin.py`, data `sg_margin_eval.npz`). The head is trained on 2000 blue frames and tested on 1000; the rows are in-distribution, purple hazards and the real 90° camera rotation.
+
+![](figs/sg_safety_margin_scatter.png)
+
+![](figs/sg_safety_bdist_scatter.png)
+
+| model | in-dist: safe | in-dist: safe, near boundary | in-dist: unsafe | color: safe, near boundary | rotation: safe, near boundary |
+|---|---|---|---|---|---|
+| sigreg only | 0.550 | 0.515 | 0.593 | 0.518 | 0.482 |
+| jac+pull | 0.549 | 0.578 | 0.582 | 0.586 | 0.520 |
+| L∞ w/ h | 0.521 | 0.522 | 0.527 | 0.532 | 0.473 |
+| L∞ w/o h | 0.539 | 0.576 | 0.533 | 0.589 | 0.453 |
+| jac+pull + L∞ | 0.536 | 0.569 | 0.579 | 0.551 | 0.583 |
+| batch λ detached | 0.574 | 0.552 | 0.562 | 0.530 | 0.547 |
+
+- **On Safety Gym the readout is binary.** Every head separates safe from unsafe with a sharp step at 0, but within each class there is almost no ordering by distance: 0.46–0.59 pairwise accuracy for every model and shift, near chance. Two reasons:
+  - unsafe states all sit within 0.2 of a hazard edge (the hazards are small), so there is little depth to order;
+  - safe states form a flat band, so their score does not rise with distance from a hazard.
+- **The shifts behave as in the Safety Gym tables.** sigreg only is pushed all-safe under both shifts, jac+pull under rotation. The L∞ models keep the step under both, most cleanly jac+pull + L∞ under rotation.
+- **Both benchmarks show the same thing beyond the boundary.** Binary-label training gives a readout that is graded only very near the boundary (Dubins) or not at all (Safety Gym). A distance-like margin would need a graded target, e.g. regression on distance or a reachability value.
 
 ## Planning: raw CEM on Dubins
 
