@@ -646,7 +646,7 @@ spread is the RMS radius of the clean latent cloud, so every factor is comparabl
 - **gap** = (gap / spread)(model) / (gap / spread)(sigreg only). ×2 means safe and unsafe are twice as far apart.
 
 A value below ×1 means worse than sigreg only on that route. Measured on 2000 held-out states per benchmark (training seed 3072), with λ from those states, for three shifts:
-- **PGD:** the worst ε = 8/255 L∞ perturbation along the model's own λ_n, i.e. what training targets.
+- **PGD:** the worst ε = 8/255 L∞ perturbation along the model's own λ_n (2 PGD steps, as in training). It's the same attack for every model, including those trained without one. It matches the λ-projected training objective, not the head (w/ h) or whole-latent (w/o h) ones.
 - **color** and **rotation:** the real shifts, from paired renders of the same states.
 
 Script `safeadv_results/diagnostics/three_routes.py`; full output for all 12 models in `safeadv_results/routes/`.
