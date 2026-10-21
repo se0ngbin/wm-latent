@@ -314,6 +314,8 @@ Four ways to get the direction λ_n and the scale (‖λ‖ in d).
 ### Results
 Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 
+![](figs/lambda_auc.png)
+
 | model | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation |
 |---|---|---|---|---|---|
 | sigreg only | 0.144 ± 0.032 | 0.913 ± 0.024 | 0.956 ± 0.023 | 0.595 ± 0.001 | 0.557 ± 0.006 |
@@ -324,6 +326,8 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 | L∞ safety reg, λ-projected, global λ, projected scale | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 |
 
 Zero-shot sign accuracy (h ≥ 0 = safe), mean ± std over 3 eval seeds. Dubins from the 50/50 eval, where 0.500 means the threshold is gone; Safety Gym, where calling every state safe scores 0.833:
+
+![](figs/lambda_sign_acc.png)
 
 | model | Dubins in-dist | Dubins color | Dubins shape | Dubins rotation | Safety Gym in-dist | Safety Gym color | Safety Gym rotation |
 |---|---|---|---|---|---|---|---|
