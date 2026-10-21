@@ -345,7 +345,7 @@ class SafetyAdvInvarianceReg(nn.Module):
     def __init__(self, n_sub=32, grid=4, eps_hue=1.5708, eps_logsat=0.6931, attack="hue", eps_pix=8 / 255, target="head", pgd_steps=2,
                  pgd_step_frac=0.5, pred_weight=1.0, enc_weight=1.0, rand_init="uniform", scale_grad=True, head_units=512, head_lr=3e-4,
                  zs_weight=0.1, relu_weight=1.0, gp_weight=10.0, gp_thresh=0.1,
-                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192, lambda_mode="batch", attack_target=None):
+                 min_steps=2000, auc_gate=0.95, ramp_steps=10000, ema=0.99, embed_dim=192, lambda_mode="batch", attack_target=None, lambda_pen="proj"):
         super().__init__()
         self.n_sub, self.grid = n_sub, grid
         # attack="hue": spatial hue/saturation field (the color prior). attack="linf": per-pixel
@@ -381,6 +381,12 @@ class SafetyAdvInvarianceReg(nn.Module):
         assert attack_target in (None, target, "head"), attack_target
         assert attack_target in (None, target) or target == "latent", "attack_target=head needs target=latent"
         self.attack_target = attack_target or target
+        # lambda_pen (target="lambda"): what the TRAINING penalty measures. "proj" = ((dz.u)/s)^2 (default);
+        # "cos" = (dz.u)^2 / max(||dz||_detached, 0.1 s)^2, i.e. cos^2(dz, u) with the norm detached so the encoder
+        # cannot lower it by inflating sideways movement (pure orthogonality, no separation reward);
+        # "cos+proj" = sum. PGD always maximizes "proj" (the attack is unchanged).
+        assert lambda_pen in ("proj", "cos", "cos+proj"), lambda_pen
+        self.lambda_pen = lambda_pen; self._pen_now = "proj"
         self._u = None
         self.eps = (float(eps_hue), float(eps_logsat))
         self.pgd_steps, self.pgd_step_frac = pgd_steps, pgd_step_frac
@@ -481,7 +487,13 @@ class SafetyAdvInvarianceReg(nn.Module):
     def _dev(self, r, r_c, scale):
         """Squared deviation of a readout from its clean value, in units of `scale`."""
         if self.target == "lambda":
-            return (((r - r_c) @ self._u) / scale).pow(2)
+            dz = r - r_c; along = dz @ self._u; out = 0
+            if "proj" in self._pen_now:
+                out = out + (along / scale).pow(2)
+            if "cos" in self._pen_now:
+                den = torch.maximum(dz.norm(dim=-1).detach(), 0.1 * scale.detach())
+                out = out + (along / den).pow(2)
+            return out
         if self.target == "head":
             return ((r - r_c) / scale).pow(2)
         return (r - r_c).pow(2).sum(-1) / scale       # latent: squared distance / spread
@@ -582,6 +594,7 @@ class SafetyAdvInvarianceReg(nn.Module):
             eps = torch.tensor(self.eps_pix, device=dev)
             pshape, perturb = (n, 1) + tuple(x01.shape[2:]), (lambda x, P: (x + P).clamp(0, 1))
         bn = _CleanStatBN(model)
+        self._pen_now = "proj"                        # PGD always attacks the projection penalty
         u_live = self._u
         if u_live is not None:
             self._u = u_live.detach()                 # clean targets + PGD use the detached direction
@@ -630,6 +643,7 @@ class SafetyAdvInvarianceReg(nn.Module):
                 if k < self.pgd_steps:
                     P = torch.max(torch.min(P.detach() + self.pgd_step_frac * eps * gP.sign(), eps), -eps)
             self._u = u_live                          # final graded pass: direction with grad (batch mode)
+            self._pen_now = self.lambda_pen
             d = obj(best_P.detach(), gap_live)
         self.stats["adv_gain"] = best_d.mean() / (d_start.mean() + 1e-8)
         return ramp * d.mean()
