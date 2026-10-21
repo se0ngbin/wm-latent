@@ -678,7 +678,7 @@ Safety Gym, log10 change vs sigreg only (orthogonality / invariance / gap):
 - **jac and jac+pull shrink the class gap** (gap term +0.31 / +0.35 on Dubins): the Jacobian penalty compresses the whole latent, the safe/unsafe distance included. Adding the L∞ reg partly undoes this (+0.25).
 - **Caveat:** one training seed per model. Dubins color in particular varies a lot across seeds (see [Training-seed variability](#training-seed-variability)).
 
-## Is safety ordered beyond the binary label? #oct-18
+## Is safety ordered beyond the binary label?
 
 The margin heads are trained on binary failure labels only (margin_gp: zero-sum term, hinges at 0, gradient penalty), so nothing asks a state far from an obstacle to score higher than one just outside it. To check, for Dubins we compute each state's true signed distance to the nearest obstacle boundary (‖p − c‖ − r, negative inside) and measure **pairwise ordering accuracy**: over random pairs of states, the fraction where the state farther from the obstacles gets the higher margin score. It's the AUC idea with continuous distance instead of a binary label: 0.5 is chance, 1.0 is perfect ordering. We measure it *within* safe states and *within* unsafe states, where the binary label carries no information. The head is the usual margin_gp probe, trained on 4000 red frames and tested on 2000 others. Near boundary = safe states within 0.3 of an obstacle edge; training seed 3072. Script `safeadv_results/diagnostics/safety_ordering.py`; full output, including the latent coordinate z · λ_n and all 12 models, in `safeadv_results/routes/safety_ordering.out`.
 
