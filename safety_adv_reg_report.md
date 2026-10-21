@@ -283,7 +283,7 @@ In `latent_cbf/src/latent_cbf/scripts/dreamer_offline.py`, flags `--sa_*` (code 
 - **No BatchNorm handling:** Dreamer has none.
 - **Corrected labels:** the Safety Gym Dreamer data stored each frame's label one step off from the loader's convention. The new runs train on a corrected copy (`sg_cargoal_dreamer_lab.h5`). The Dreamer baseline used the original file, but its eval trains fresh heads on correctly labelled eval data, so this doesn't affect its numbers.
 
-## Safety-direction (λ) projection instead of the head #oct-18
+## Safety-direction (λ) projection instead of the head
 
 **Idea.** The head variant penalizes a perturbation's effect through the learned margin head h, which in effect reads the latent along a direction that differs per sample. This variant uses one shared **safety direction**, λ = mean(z of safe frames) − mean(z of unsafe frames). It only penalizes the component of the perturbation-induced shift along λ, i.e. it asks the shift to be **orthogonal** to the safety direction:
 
@@ -532,7 +532,7 @@ Safety Gym, LeWM jac+pull (the 3-seed baseline for the table above):
 
 - **On Safety Gym, adding the L∞ safety reg to jac+pull fixes camera rotation on every seed.** Rotation AUC goes from 0.623 ± 0.048 to 0.981 ± 0.018, and rotation sign accuracy from 0.835 (calling everything safe) to 0.962 ± 0.021. Color is already high for jac+pull (AUC 0.993); the safety reg raises its sign accuracy from 0.946 to 0.979. jac+pull's final prediction loss is 0.009–0.011, against 0.032–0.037 with the safety reg.
 
-#oct-18 λ-projected variants with 3 WM training seeds, mean ± std across seeds. Dubins:
+λ-projected variants with 3 WM training seeds, mean ± std across seeds. Dubins:
 
 **AUC (uniform eval)**
 
