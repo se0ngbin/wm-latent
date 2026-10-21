@@ -456,28 +456,64 @@ Per training seed, Dubins color AUC (uniform):
 | baseline + L∞ safety reg w/o h | 0.951 | 0.755 | 0.849 |
 | L∞ safety reg, λ-projected, global λ, projected scale | 0.950 | 0.675 | 0.211 |
 
-Safety Gym, LeWM (jac+pull's seed-3072 pred_loss was not logged):
+Safety Gym, mean ± std across 3 WM training seeds:
 
-| model | metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
-|---|---|---|---|---|---|
-| jac+pull | in-dist AUC | 0.999 | 0.998 | 0.996 | 0.998 ± 0.002 |
-| jac+pull | color AUC | 0.996 | 0.994 | 0.987 | 0.993 ± 0.005 |
-| jac+pull | color sign accuracy | 0.943 | 0.964 | 0.930 | 0.946 ± 0.017 |
-| jac+pull | rotation AUC | 0.679 | 0.593 | 0.598 | 0.623 ± 0.048 |
-| jac+pull | rotation sign accuracy | 0.835 | 0.836 | 0.833 | 0.835 ± 0.002 |
-| jac+pull | final train pred_loss | — | 0.0090 | 0.0111 | — |
-| L∞ safety reg | in-dist AUC | 1.000 | 1.000 | 0.993 | 0.998 ± 0.004 |
-| L∞ safety reg | color AUC | 0.999 | 0.998 | 0.957 | 0.985 ± 0.024 |
-| L∞ safety reg | color sign accuracy | 0.987 | 0.991 | 0.892 | 0.957 ± 0.056 |
-| L∞ safety reg | rotation AUC | 0.962 | 0.995 | 0.596 | 0.851 ± 0.222 |
-| L∞ safety reg | rotation sign accuracy | 0.977 | 0.992 | 0.831 | 0.933 ± 0.089 |
-| L∞ safety reg | final train pred_loss | 0.0168 | 0.0228 | 0.0196 | 0.0197 ± 0.0030 |
-| jac+pull + L∞ safety reg | in-dist AUC | 1.000 | 1.000 | 1.000 | 1.000 ± 0.000 |
-| jac+pull + L∞ safety reg | color AUC | 1.000 | 1.000 | 0.999 | 1.000 ± 0.000 |
-| jac+pull + L∞ safety reg | color sign accuracy | 0.973 | 0.990 | 0.973 | 0.979 ± 0.010 |
-| jac+pull + L∞ safety reg | rotation AUC | 0.985 | 0.962 | 0.997 | 0.981 ± 0.018 |
-| jac+pull + L∞ safety reg | rotation sign accuracy | 0.964 | 0.941 | 0.982 | 0.962 ± 0.021 |
-| jac+pull + L∞ safety reg | final train pred_loss | 0.0328 | 0.0369 | 0.0322 | 0.0340 ± 0.0026 |
+**AUC**
+
+| model (3 WM seeds) | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| jac+pull | 0.998 ± 0.002 | 0.993 ± 0.005 | 0.623 ± 0.048 |
+| L∞ safety reg | 0.998 ± 0.004 | 0.985 ± 0.024 | 0.851 ± 0.222 |
+| jac+pull + L∞ safety reg | 1.000 ± 0.000 | 1.000 ± 0.000 | 0.981 ± 0.018 |
+
+**Sign accuracy (calling everything safe scores .833)**
+
+| model (3 WM seeds) | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| jac+pull | 0.995 ± 0.002 | 0.946 ± 0.017 | 0.835 ± 0.002 |
+| L∞ safety reg | 0.989 ± 0.010 | 0.957 ± 0.056 | 0.933 ± 0.089 |
+| jac+pull + L∞ safety reg | 0.999 ± 0.001 | 0.979 ± 0.010 | 0.962 ± 0.021 |
+
+**Predicted-safe fraction (true safe = .833)**
+
+| model (3 WM seeds) | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| jac+pull | 0.832 ± 0.001 | 0.881 ± 0.020 | 0.998 ± 0.002 |
+| L∞ safety reg | 0.832 ± 0.003 | 0.866 ± 0.061 | 0.889 ± 0.093 |
+| jac+pull + L∞ safety reg | 0.833 ± 0.001 | 0.854 ± 0.010 | 0.868 ± 0.021 |
+
+Per training seed:
+
+Safety Gym, LeWM + L∞ safety reg:
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| in-dist AUC | — | — | — | 0.998 ± 0.004 |
+| color AUC | 0.999 | 0.998 | 0.957 | 0.985 ± 0.024 |
+| color sign accuracy | 0.987 | 0.991 | 0.892 | 0.957 ± 0.056 |
+| rotation AUC | 0.962 | 0.995 | 0.596 | 0.851 ± 0.222 |
+| rotation sign accuracy | 0.977 | 0.992 | 0.831 | 0.933 ± 0.089 |
+
+Safety Gym, LeWM jac+pull + L∞ safety reg:
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| in-dist AUC | 1.000 | 1.000 | 1.000 | 1.000 ± 0.000 |
+| color AUC | 1.000 | 1.000 | 0.999 | 1.000 ± 0.000 |
+| color sign accuracy | 0.973 | 0.990 | 0.973 | 0.979 ± 0.010 |
+| rotation AUC | 0.985 | 0.962 | 0.997 | 0.981 ± 0.018 |
+| rotation sign accuracy | 0.964 | 0.941 | 0.982 | 0.962 ± 0.021 |
+| final train pred_loss | 0.0328 | 0.0369 | 0.0322 | 0.0340 ± 0.0026 |
+
+Safety Gym, LeWM jac+pull (the 3-seed baseline for the table above):
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| in-dist AUC | 0.999 | 0.998 | 0.996 | 0.998 ± 0.002 |
+| color AUC | 0.996 | 0.994 | 0.987 | 0.993 ± 0.005 |
+| color sign accuracy | 0.943 | 0.964 | 0.930 | 0.946 ± 0.017 |
+| rotation AUC | 0.679 | 0.593 | 0.598 | 0.623 ± 0.048 |
+| rotation sign accuracy | 0.835 | 0.836 | 0.833 | 0.835 ± 0.002 |
 
 - **On Safety Gym, adding the L∞ safety reg to jac+pull fixes camera rotation on every seed.** Rotation AUC goes from 0.623 ± 0.048 to 0.981 ± 0.018, and rotation sign accuracy from 0.835 (calling everything safe) to 0.962 ± 0.021. Color is already high for jac+pull (AUC 0.993); the safety reg raises its sign accuracy from 0.946 to 0.979. jac+pull's final prediction loss is 0.009–0.011, against 0.032–0.037 with the safety reg.
 
