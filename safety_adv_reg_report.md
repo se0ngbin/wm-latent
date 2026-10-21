@@ -698,6 +698,16 @@ The margin heads are trained on binary failure labels only (margin_gp: zero-sum 
 - **Near and inside obstacles it is graded.** Unsafe states are ordered by depth (0.72–0.81), and safe states near the boundary are moderately ordered (0.59–0.77).
 - **The L∞ safety reg improves near-boundary ordering and keeps it under shift.** In-distribution, L∞ w/ h scores 0.770 and w/o h 0.760, against 0.682 for sigreg only and 0.661 for jac+pull. Under the color shift sigreg only drops below chance (0.412) and jac / jac+pull fall to 0.56–0.57, while the L∞ models keep 0.65–0.66. Under rotation, w/o h keeps the most (0.755).
 - **The orthogonal variants order safe states worst** (0.659 in-distribution; 0.475 under rotation).
+Each point below is one test state: x is its true distance to the nearest obstacle (negative = inside), y is the zero-shot head's output. Top row: in-distribution; bottom row: under the color shift. The y-axes differ per panel. First the raw margin score h, then the signed latent distance to the head's decision boundary h(z) = 0, computed to first order as h / ‖∇_z h‖ in units of the class gap:
+
+![](figs/safety_margin_scatter.png)
+
+![](figs/safety_bdist_scatter.png)
+
+- **In-distribution, the L∞ models give a clean step.** A steep, well-ordered ramp within about ±0.2 of the obstacle edge, then a flat plateau. sigreg only and jac+pull are noisier, with many clearly safe states scored near 0.
+- **Under the color shift, the baselines lose the structure.** sigreg only collapses to a flat band below 0 (everything called unsafe); jac+pull to a nearly flat band above 0 (everything safe). The L∞ models keep the step shape but the whole curve slides up or down. That is what "ranking survives, threshold collapses" looks like.
+- **The two views agree:** the latent distance to the decision boundary follows the same shape as the raw score.
+
 - **Safety Gym is not included.** Its eval set stores only binary labels; the collector computes the margin but doesn't save it, so it needs a re-collection with margins saved.
 
 ## Planning: raw CEM on Dubins
