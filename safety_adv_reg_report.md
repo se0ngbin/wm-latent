@@ -295,14 +295,14 @@ In `latent_cbf/src/latent_cbf/scripts/dreamer_offline.py`, flags `--sa_*` (code 
 - There is no head in the penalty and so no AUC gate: the penalty opens at step 2000 and ramps up over 10k steps.
 - Code: `target: lambda`, commit `32263e1`.
 
-#oct-18 Four ways to get the direction λ_n and the scale (‖λ‖ in d). Every variant takes the scale from the current batch with gradient, so the encoder can lower d by separating the classes; they differ in which direction is protected and which separation counts:
+#oct-18 Four ways to get the direction λ_n and the scale (‖λ‖ in d). Notation: λ_batch = mean(z of safe frames) − mean(z of unsafe frames) in the current batch; λ_run = the same difference from running averages over all batches (decay 0.99). Every scale comes from the current batch with gradient, so the encoder can lower d by separating the classes.
 
 | variant | direction λ_n | scale (‖λ‖ in d) | gradient through the direction | `lambda_mode` |
 |---|---|---|---|---|
-| batch λ | the current batch's safe-minus-unsafe mean difference | its length ‖λ_batch‖ | yes | `batch` |
-| batch λ, detached direction | the current batch's mean difference | ‖λ_batch‖ | no | `batch_detached` |
-| global λ | running averages of the safe and unsafe means over all batches (decay 0.99) | ‖λ_batch‖, the full batch gap in any direction | no | `global` |
-| global λ, projected scale | the same running averages | λ_batch · λ_n, the batch gap measured along λ_n, floored at 0.1 × the global gap length | no | `global_proj` |
+| batch λ | λ_batch / ‖λ_batch‖ | ‖λ_batch‖ | yes | `batch` |
+| batch λ, detached direction | λ_batch / ‖λ_batch‖ | ‖λ_batch‖ | no | `batch_detached` |
+| global λ | λ_run / ‖λ_run‖ | ‖λ_batch‖ | no | `global` |
+| global λ, projected scale | λ_run / ‖λ_run‖ | λ_batch · λ_n (floored at 0.1 × ‖λ_run‖) | no | `global_proj` |
 
 - With gradient through the direction (batch λ), the encoder can also rotate the protected axis to lower d; detaching it removes that route.
 - With the full batch gap as the scale (global λ), separating the classes in any direction counts; projected scale only counts separation along the protected direction.
