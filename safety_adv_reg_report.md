@@ -153,12 +153,12 @@ Per eval seed (color AUC, uniform / 50/50):
 #oct-18
 
 The head-projected L∞ safety reg (gate 0.95, training seed 3072, code `cfa5e52`) with one change each:
-- **random noise:** ±ε random signs, no PGD;
-- **detached gap:** the head's safe/unsafe gap in the denominator is detached (`scale_grad: false`);
-- **encoder term only:** `pred_weight: 0`;
-- **predictor term only:** `enc_weight: 0`.
+- #oct-18 **random noise:** ±ε random signs, no PGD;
+- #oct-18 **detached gap:** the head's safe/unsafe gap in the denominator is detached (`scale_grad: false`);
+- #oct-18 **encoder term only:** `pred_weight: 0`;
+- #oct-18 **predictor term only:** `enc_weight: 0`.
 
-Zero-shot AUC, Dubins:
+#oct-18 Zero-shot AUC, Dubins:
 
 | model | color, uniform | color, 50/50 | shape | rotation | final train pred_loss |
 |---|---|---|---|---|---|
@@ -168,10 +168,10 @@ Zero-shot AUC, Dubins:
 | w/ h, encoder term only | 0.277 ± 0.019 | 0.272 ± 0.021 | 0.997 ± 0.002 | 0.997 ± 0.001 | 0.0107 |
 | w/ h, predictor term only | 0.536 ± 0.048 | 0.485 ± 0.067 | 0.996 ± 0.001 | 0.998 ± 0.001 | 0.0107 |
 
-- **Read color against the reference's training-seed range (0.42–0.91).** Each ablation has one training seed.
-- **Encoder-only (0.277) and random noise (0.300) fall below that range,** so dropping the predictor term or the adversary likely does hurt.
-- **The detached gap (0.778) and predictor-only (0.536) sit inside it,** so they are not distinguishable from the full model.
-- **Shape and rotation stay ≥ 0.992,** except random noise, which breaks rotation (0.555).
+- #oct-18 **Read color against the reference's training-seed range (0.42–0.91).** Each ablation has one training seed.
+- #oct-18 **Encoder-only (0.277) and random noise (0.300) fall below that range,** so dropping the predictor term or the adversary likely does hurt.
+- #oct-18 **The detached gap (0.778) and predictor-only (0.536) sit inside it,** so they are not distinguishable from the full model.
+- #oct-18 **Shape and rotation stay ≥ 0.992,** except random noise, which breaks rotation (0.555).
 - #oct-18 **Attack through h, penalize the whole latent** (`attack_target: head`, `target: latent`, row in the table above): PGD looks for the δ that moves the safety score most, then the model is trained to keep the *whole* latent still under it. Dubins color drops to 0.251, against 0.852 ± 0.098 when the attack and the penalty both use the whole latent. On Safety Gym it gets color 0.938 / rotation 0.829 (vs 0.985 / 0.941), with pred_loss 0.081. The adversary has to search for the same quantity the penalty protects.
 
 Jacobians, same protocol as the section below:
@@ -529,7 +529,7 @@ Raw CEM (sg25clean), baseline + L∞ safety reg, success % / collision %, mean �
 - s: the projected scale (the batch gap along λ_n, with gradient), as in global λ with projected scale.
 - ε = 8/255, so d is on the same scale as the adversarial penalty; weight 1, opens at step 2000, ramps over 10k steps.
 - The prediction term uses one gradient over all three context frames, since δ is shared across frames.
-- Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
+#oct-18 - Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
 
 | metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
 |---|---|---|---|---|
@@ -545,11 +545,11 @@ Raw CEM (sg25clean), baseline + L∞ safety reg, success % / collision %, mean �
 | Safety Gym color / rotation sign accuracy | 0.864 / 0.907 | 0.919 / 0.916 | 0.167 / 0.167 | 0.650 ± 0.419 / 0.663 ± 0.430 |
 | final train pred_loss (Dubins / Safety Gym) | 0.198 / 0.207 | 0.126 / 0.248 | 0.320 / 0.019 | |
 
-For comparison, over 3 WM seeds: L∞ safety reg w/ h gets Dubins color 0.643 ± 0.247 and Safety Gym 0.985 / 0.851; jac+pull + L∞ safety reg gets 0.957 ± 0.021 and 1.000 / 0.981; global λ with projected scale (adversarial) gets Dubins color 0.612 ± 0.373. Adversarial runs end at pred_loss ≈ 0.01–0.04.
+#oct-18 For comparison, over 3 WM seeds: L∞ safety reg w/ h gets Dubins color 0.643 ± 0.247 and Safety Gym 0.985 / 0.851; jac+pull + L∞ safety reg gets 0.957 ± 0.021 and 1.000 / 0.981; global λ with projected scale (adversarial) gets Dubins color 0.612 ± 0.373. Adversarial runs end at pred_loss ≈ 0.01–0.04.
 
-- **The first-order penalty does not reproduce the adversarial result.** On Safety Gym it is clearly worse than any adversarial L∞ model: color 0.880 vs 0.985–1.000, rotation 0.865 vs 0.851–0.981, and the thresholds are not kept. On Dubins its color AUC (0.729 ± 0.164) is less seed-variable than the adversarial λ variants but still below jac+pull + L∞ safety reg.
-- **Driving the gradient norm down directly wrecks prediction.** Final pred_loss is 0.13–0.32 in five of six runs, 10–30× the adversarial versions. The one cheap run (Safety Gym seed 2, 0.019) is degenerate: its in-dist AUC drops to 0.904 and its zero-shot head calls everything unsafe under both shifts.
-- **Together with the random-noise result, the finite-step search matters.** A small worst-case step in pixel space is not well summarized by the local gradient. Penalizing the realized shift at the PGD point gives better robustness at far lower prediction cost than penalizing the gradient everywhere.
+- #oct-18 **The first-order penalty does not reproduce the adversarial result.** On Safety Gym it is clearly worse than any adversarial L∞ model: color 0.880 vs 0.985–1.000, rotation 0.865 vs 0.851–0.981, and the thresholds are not kept. On Dubins its color AUC (0.729 ± 0.164) is less seed-variable than the adversarial λ variants but still below jac+pull + L∞ safety reg.
+- #oct-18 **Driving the gradient norm down directly wrecks prediction.** Final pred_loss is 0.13–0.32 in five of six runs, 10–30× the adversarial versions. The one cheap run (Safety Gym seed 2, 0.019) is degenerate: its in-dist AUC drops to 0.904 and its zero-shot head calls everything unsafe under both shifts.
+- #oct-18 **Together with the random-noise result, the finite-step search matters.** A small worst-case step in pixel space is not well summarized by the local gradient. Penalizing the realized shift at the PGD point gives better robustness at far lower prediction cost than penalizing the gradient everywhere.
 
 ## Planning: raw CEM on Dubins
 
