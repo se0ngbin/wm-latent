@@ -1,6 +1,6 @@
 # Safety-projected adversarial invariance: report
 
-*Updated 2026-10-20 06:45 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
+*Updated 2026-10-21 05:30 UTC. Dubins unless marked Safety Gym; LeWM unless marked Dreamer. Branch `safety-adv-reg`; a copy lives at the main checkout root.*
 
 ## TL;DR
 
@@ -16,6 +16,7 @@
 - **Noise size / attack strength (new):** the Dubins color result is fragile. With the head variant, ε = 4/255 gives color AUC 0.771, ε = 16/255 gives 0.305, and 8/255 with 5 PGD steps gives 0.088 (inverted), against 0.910 for the reference 8/255 with 2 steps. Reseeds of the reference are running ([section](#noise-size-and-attack-strength)).
 - **Training-seed check:** every headline model was retrained with two more seeds. Single-seed Dubins color numbers swing by up to ±0.37 across training seeds, so the 3-seed results are in their own tables ([training-seed variability](#training-seed-variability)), and the comparison tables elsewhere stay single-seed. Shape and rotation are stable across seeds; color is not, except for jac+pull + L∞ safety reg. #oct-18
 - **Planning (new): the safety reg doesn't improve raw CEM.** Baseline + L∞ safety reg plans slightly worse than sigreg only in-distribution (57.5–59.5% success / 53–57% collision on three training seeds vs 62.5% / 50.0%). jac and jac+pull stay best (81.5% success). Recolor doesn't affect CEM for any model; rotation hurts all ([section](#planning-raw-cem-on-dubins)).
+- #oct-18 **Targeted Jacobian reg (first-order λ penalty, no adversary) doesn't reproduce the adversarial gains** ([section](#targeted-jacobian-reg-the-first-order-version-without-an-adversary)). Over 3 WM seeds: Dubins color 0.729 ± 0.164, Safety Gym color 0.880 / rotation 0.865 with thresholds lost. Prediction loss is 10–30× higher (0.13–0.32). The finite-step adversarial search is doing real work.
 - **It generalizes rather than covering the test.** An 8/255 per-pixel budget cannot reach purple (red → purple needs a ~0.5 change per channel), and noise contains no shape or rotation change, so all three shifts are outside the training perturbation.
 - **Encoder Jacobians (new, [section below](#encoder-jacobians-across-models)):** L∞ shrinks the Jacobian about 4× but keeps baseline's low-rank, spiky shape, and the readout's pixel sensitivity drops 8×. The Jacobian penalty instead whitens J (condition number ~4, ~85–90 effective dimensions). Local sensitivity alone doesn't predict color robustness: plain jacobian has the lowest readout sensitivity of all and only 0.673 color AUC.
 - **Still unsolved on Dubins: the threshold under recolor.** Under purple, no Dubins model keeps its safe/unsafe cutoff (on Safety Gym, LeWM + L∞ does): on a 50/50 safe/unsafe test set every model scores 0.500–0.505 sign accuracy, including all three L∞ models. Which way it breaks (everything safe vs everything unsafe) varies with the encoder and the head's training set. Jac+pull's earlier "color survival" was this artifact. Under shape and rotation, every L∞ model keeps a working threshold (≥ 0.958 on 50/50).
@@ -518,6 +519,38 @@ Raw CEM (sg25clean), baseline + L∞ safety reg, success % / collision %, mean �
 - **Safety Gym:** the L∞ safety reg's threshold survival holds on 2 of 3 seeds. Seed 2 is weaker on color (sign accuracy 0.892) and loses most of its rotation gain (AUC 0.596, sign accuracy 0.831, near all-safe).
 - **Prediction loss across seeds:** baseline + L∞ safety reg 0.0121 ± 0.0015; w/o h 0.0288 ± 0.0043; jac+pull + L∞ safety reg 0.0165, 0.0158, 0.0167; Safety Gym L∞ 0.0197 ± 0.0030.
 
+## Targeted Jacobian reg: the first-order version without an adversary
+
+#oct-18 To first order, the worst ε-perturbation in an L∞ ball moves the safety coordinate λ_n · f(x) by ε‖J_fᵀλ_n‖₁ (L1 is the dual norm of L∞). So the L∞ λ-projected reg is approximately a one-row Jacobian penalty. This run penalizes that quantity directly, with no PGD:
+
+    d = mean over t of (ε ‖∇ₓ(λ_n · f(x_t))‖₁ / s)²  +  (ε ‖∇ₓ(λ_n · P(f(x), a))‖₁ / s)²
+
+- λ_n: the detached global direction, from running averages of the safe and unsafe means.
+- s: the projected scale (the batch gap along λ_n, with gradient), as in global λ with projected scale.
+- ε = 8/255, so d is on the same scale as the adversarial penalty; weight 1, opens at step 2000, ramps over 10k steps.
+- The prediction term uses one gradient over all three context frames, since δ is shared across frames.
+- Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
+
+| metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
+|---|---|---|---|---|
+| Dubins in-dist AUC | 0.988 | 0.986 | 0.993 | 0.989 ± 0.004 |
+| Dubins color AUC (uniform) | 0.542 | 0.801 | 0.845 | 0.729 ± 0.164 |
+| Dubins color AUC (50/50) | 0.551 | 0.799 | 0.877 | 0.743 ± 0.170 |
+| Dubins shape AUC | 0.984 | 0.979 | 0.991 | 0.985 ± 0.006 |
+| Dubins rotation AUC | 0.988 | 0.984 | 0.991 | 0.988 ± 0.004 |
+| Dubins color sign accuracy (50/50) | 0.531 | 0.712 | 0.500 | 0.581 ± 0.114 |
+| Safety Gym in-dist AUC | 0.996 | 0.986 | 0.904 | 0.962 ± 0.050 |
+| Safety Gym color AUC | 0.805 | 0.884 | 0.952 | 0.880 ± 0.074 |
+| Safety Gym rotation AUC | 0.826 | 0.928 | 0.839 | 0.865 ± 0.056 |
+| Safety Gym color / rotation sign accuracy | 0.864 / 0.907 | 0.919 / 0.916 | 0.167 / 0.167 | 0.650 ± 0.419 / 0.663 ± 0.430 |
+| final train pred_loss (Dubins / Safety Gym) | 0.198 / 0.207 | 0.126 / 0.248 | 0.320 / 0.019 | |
+
+For comparison, over 3 WM seeds: L∞ safety reg w/ h gets Dubins color 0.643 ± 0.247 and Safety Gym 0.985 / 0.851; jac+pull + L∞ safety reg gets 0.957 ± 0.021 and 1.000 / 0.981; global λ with projected scale (adversarial) gets Dubins color 0.612 ± 0.373. Adversarial runs end at pred_loss ≈ 0.01–0.04.
+
+- **The first-order penalty does not reproduce the adversarial result.** On Safety Gym it is clearly worse than any adversarial L∞ model: color 0.880 vs 0.985–1.000, rotation 0.865 vs 0.851–0.981, and the thresholds are not kept. On Dubins its color AUC (0.729 ± 0.164) is less seed-variable than the adversarial λ variants but still below jac+pull + L∞ safety reg.
+- **Driving the gradient norm down directly wrecks prediction.** Final pred_loss is 0.13–0.32 in five of six runs, 10–30× the adversarial versions. The one cheap run (Safety Gym seed 2, 0.019) is degenerate: its in-dist AUC drops to 0.904 and its zero-shot head calls everything unsafe under both shifts.
+- **Together with the random-noise result, the finite-step search matters.** A small worst-case step in pixel space is not well summarized by the local gradient. Penalizing the realized shift at the PGD point gives better robustness at far lower prediction cost than penalizing the gradient everywhere.
+
 ## Planning: raw CEM on Dubins
 
 Does the safety reg change how well the world model plans? Raw CEM, with no safety filter, on the model-differentiating sg25clean protocol:
@@ -818,7 +851,7 @@ Fix (`c6e93c6`): capture clean-batch BN stats once, apply them to every perturbe
 - **Code:** `le-wm/module.py` (`SafetyAdvInvarianceReg`, `_CleanStatBN`), config key `safety_adv` (kwargs `attack: linf | hue`, `eps_pix`, `min_steps`, `auc_gate`, `ramp_steps`, `n_sub`, `pgd_steps`), data config `data=dubins_safety`.
 - **Checkpoints** (under `/data/seongbin/lewm/checkpoints/`): `lewm_dubins_safeadv_linf50/` (L∞), `lewm_dubins_jacpull_safeadv_linf50/` (jac+pull + L∞), `lewm_dubins_linf_latent50/` (no h; code `dab24f2`, `target: latent`), `lewm_dubins_lz_{rand,det,enc,pred}50/` (no-h ablations; code `9dfca47`), `lewm_dubins_lam_{batch,global}50/`, `sg_lam_{batch,global}50/` (λ-projected, code `32263e1`), `lewm_dubins_lam_gproj50/`, `sg_lam_gproj50/`, `lewm_dubins_safeadv_rand50/`, `sg_safeadv_rand50_g0/`, `sg_lz_rand50_g0/` (projected-scale λ and random-noise controls, code `cfa5e52`; evals in `lambda_eval/`), `lewm_dubins_safeadv_{eps4,eps16,pgd5}/` (attack sweep, code `cfa5e52`), `sg_safeadv_linf50_g0/` and `sg_linf_latent50_g0/` (Safety Gym, code `b9d34e2`, launchers `/data/seongbin/lewm/code_safeadv_b9d34e2/run_sg{L,LZ}g0.sh`). Dreamer: `/data/seongbin/dreamer/dreamer/safeadv/{dubins,sg}_sa_{head,latent}/rssm_ckpt.pt` (code snapshot `/data/seongbin/dreamer/code_safeadv_e99b14c/`, logs `safeadv/*.log`), `lewm_dubins_safeadv2_50/` and `lewm_dubins_jacpull_safeadv2_50/` (hue), `lewm_dubins_safeadv50/` (v1). The in-training margin head is only in the Lightning checkpoints (`~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/`).
 - **Training logs and code snapshots:** `/data/seongbin/lewm/code_safeadv_77856fd/` (L∞, `.run_L/`; jac+pull + L∞, `.run_JL/`), `code_safeadv_dab24f2/` (no h, `.run_LZ/`), `code_safeadv_9dfca47/` (ablations, `run_<k>.sh`, `.run_<k>/`), `code_safeadv_c6e93c6/` (hue), `code_safeadv_ca9ec21/` (v1). W&B project `seongbin/lewm`.
-- **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `sg_eval/` (Safety Gym eval script, logs, `tables.py` for the Safety Gym and Dreamer tables), `dreamer/` (Dubins Dreamer eval logs, Safety Gym label fix `fix_sg_labels.py`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`). Tables are generated by `make_tables.py`.
+- **Eval logs** (under `/data/seongbin/lewm/safeadv_results/`): `linf_ood_eval/`, `jacpull_linf_ood_eval/`, `linf_latent_ood_eval/` (no h), `ablation_eval/` (no-h ablations, incl. `jac_ablation.out`), `sg_eval/` (Safety Gym eval script, logs, `tables.py` for the Safety Gym and Dreamer tables), `dreamer/` (Dubins Dreamer eval logs, Safety Gym label fix `fix_sg_labels.py`), `v2_ood_eval/` (hue), `v1_ood_eval/`, `predsafe_check/`, `balanced_eval/` (50/50); diagnostic scripts in `diagnostics/` (Jacobian comparison: `jac_compare.py` / `.out` / `.npy`); targeted Jacobian reg runs `lewm_dubins_jaclam50_s*`, `sg_jaclam50_s*` (code `f38454c`). Tables are generated by `make_tables.py`.
 - **Baseline numbers:** `/home/seongbin/latent/run_logs/ood_gp_jepa_*_s*.log` (same eval script, `le-wm/scripts/ood_margin_gp_jepa.py`).
 
 ## Appendix E: full CEM table
