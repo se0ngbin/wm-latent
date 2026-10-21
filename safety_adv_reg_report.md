@@ -646,32 +646,34 @@ spread is the RMS radius of the clean latent cloud, so every factor is comparabl
 - **gap** = (gap / spread)(model) / (gap / spread)(sigreg only). ×2 means safe and unsafe are twice as far apart.
 
 A value below ×1 means worse than sigreg only on that route. Measured on 2000 held-out states per benchmark (training seed 3072), with λ from those states, for three shifts:
-- **PGD:** the worst ε = 8/255 L∞ perturbation along the model's own λ_n (2 PGD steps, as in training). It's the same attack for every model, including those trained without one. It matches the λ-projected training objective, not the head (w/ h) or whole-latent (w/o h) ones.
+- **PGD, common:** the worst ε = 8/255 L∞ perturbation along the model's own λ_n (2 PGD steps, as in training). It's the same attack for every model, including those trained without one. It matches the λ-projected training objective, not the head (w/ h) or whole-latent (w/o h) ones.
+- **PGD, own objective:** each model attacked with the perturbation it was trained against. w/ h models (L∞ w/ h, jac+pull + L∞): maximize the shift in a margin head's score; the in-training head isn't stored with the weights, so a fresh margin_gp probe trained on the clean eval frames stands in. w/o h: maximize ‖Δz‖. λ variants and models trained without an attack: same as the common attack.
 - **color** and **rotation:** the real shifts, from paired renders of the same states.
 
 Script `safeadv_results/diagnostics/three_routes.py`; full output for all 12 models in `safeadv_results/routes/`.
 
 Dubins:
 
-| model | PGD: ortho / invar / gap | color: ortho / invar / gap | rotation: ortho / invar / gap |
-|---|---|---|---|
-| jac+pull | ×1.37 / ×4.09 / ×0.44 | ×4.12 / ×1.92 / ×0.44 | ×1.42 / ×1.16 / ×0.44 |
-| L∞ w/ h | ×1.59 / ×5.31 / ×1.26 | ×1.19 / ×1.70 / ×1.26 | ×1.04 / ×1.13 / ×1.26 |
-| L∞ w/o h | ×0.89 / ×9.12 / ×1.91 | ×1.23 / ×2.13 / ×1.91 | ×0.62 / ×1.40 / ×1.91 |
-| jac+pull + L∞ | ×1.37 / ×6.93 / ×0.56 | ×4.97 / ×1.85 / ×0.56 | ×2.76 / ×1.14 / ×0.56 |
-| batch λ detached | ×1.62 / ×4.59 / ×1.61 | ×1.04 / ×1.34 / ×1.61 | ×0.95 / ×1.06 / ×1.61 |
+| model | PGD, common: ortho / invar / gap | PGD, own objective: ortho / invar / gap | color: ortho / invar / gap | rotation: ortho / invar / gap |
+|---|---|---|---|---|
+| jac+pull | ×1.39 / ×4.09 / ×0.44 | ×1.39 / ×4.09 / ×0.44 | ×4.12 / ×1.92 / ×0.44 | ×1.42 / ×1.16 / ×0.44 |
+| L∞ w/ h | ×1.61 / ×5.29 / ×1.26 | ×3.03 / ×5.88 / ×1.26 | ×1.19 / ×1.70 / ×1.26 | ×1.04 / ×1.13 / ×1.26 |
+| L∞ w/o h | ×0.90 / ×9.09 / ×1.91 | ×1.65 / ×7.66 / ×1.91 | ×1.23 / ×2.13 / ×1.91 | ×0.62 / ×1.40 / ×1.91 |
+| jac+pull + L∞ | ×1.38 / ×6.91 / ×0.56 | ×1.94 / ×7.10 / ×0.56 | ×4.97 / ×1.85 / ×0.56 | ×2.76 / ×1.14 / ×0.56 |
+| batch λ detached | ×1.62 / ×4.58 / ×1.61 | ×1.62 / ×4.58 / ×1.61 | ×1.04 / ×1.34 / ×1.61 | ×0.95 / ×1.06 / ×1.61 |
 
 Safety Gym:
 
-| model | PGD: ortho / invar / gap | color: ortho / invar / gap | rotation: ortho / invar / gap |
-|---|---|---|---|
-| jac+pull | ×0.87 / ×2.11 / ×1.89 | ×1.11 / ×2.25 / ×1.89 | ×1.40 / ×0.97 / ×1.89 |
-| L∞ w/ h | ×1.08 / ×2.35 / ×2.98 | ×1.08 / ×1.39 / ×2.98 | ×1.90 / ×1.01 / ×2.98 |
-| L∞ w/o h | ×0.55 / ×1.53 / ×6.34 | ×0.42 / ×2.38 / ×6.34 | ×0.63 / ×1.12 / ×6.34 |
-| jac+pull + L∞ | ×0.90 / ×4.23 / ×2.97 | ×0.90 / ×2.01 / ×2.97 | ×1.53 / ×1.01 / ×2.97 |
-| batch λ detached | ×4.02 / ×2.40 / ×5.40 | ×3.38 / ×1.07 / ×5.40 | ×3.40 / ×1.06 / ×5.40 |
+| model | PGD, common: ortho / invar / gap | PGD, own objective: ortho / invar / gap | color: ortho / invar / gap | rotation: ortho / invar / gap |
+|---|---|---|---|---|
+| jac+pull | ×0.87 / ×2.10 / ×1.89 | ×0.87 / ×2.10 / ×1.89 | ×1.11 / ×2.25 / ×1.89 | ×1.40 / ×0.97 / ×1.89 |
+| L∞ w/ h | ×1.08 / ×2.32 / ×2.98 | ×1.64 / ×2.28 / ×2.98 | ×1.08 / ×1.39 / ×2.98 | ×1.90 / ×1.01 / ×2.98 |
+| L∞ w/o h | ×0.55 / ×1.54 / ×6.34 | ×0.59 / ×1.54 / ×6.34 | ×0.42 / ×2.38 / ×6.34 | ×0.63 / ×1.12 / ×6.34 |
+| jac+pull + L∞ | ×0.91 / ×4.18 / ×2.97 | ×1.42 / ×4.32 / ×2.97 | ×0.90 / ×2.01 / ×2.97 | ×1.53 / ×1.01 / ×2.97 |
+| batch λ detached | ×4.10 / ×2.40 / ×5.40 | ×4.10 / ×2.40 / ×5.40 | ×3.38 / ×1.07 / ×5.40 | ×3.40 / ×1.06 / ×5.40 |
 
 - **Against the PGD perturbation it trains on, the regularizer mostly buys invariance.** On Dubins the L∞ models move ×4.6–×9.1 less than sigreg only. On Safety Gym they also widen the gap ×3.0–×6.3.
+- **Attacked with their own objective, the w/ h models look more orthogonal** (L∞ w/ h ortho ×3.03 on Dubins and ×1.64 on Safety Gym, vs ×1.61 / ×1.08 for the common attack), with about the same invariance. This is partly by construction: the head attack pushes along the head's gradient rather than λ_n, so less of its shift lands on λ_n. Invariance and gap tell the same story under either attack.
 - **That invariance largely does not transfer to the real shifts.** Against the real rotation, invariance is only ×1.0–×1.4, and against color ×1.1–×2.4. The latent still moves almost as much as for sigreg only.
 - **What transfers is gap widening and, on Dubins color, orthogonality.**
   - On Safety Gym, most of the L∞ models' gain on the real shifts is the wider class gap (×3.0–×6.3): the latent still moves under purple or the rotated camera, but it matters less because safe and unsafe are further apart.
