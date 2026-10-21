@@ -634,6 +634,50 @@ For comparison, over 3 WM seeds: L∞ safety reg w/ h gets Dubins color 0.643 ±
 - **Driving the gradient norm down directly wrecks prediction.** Final pred_loss is 0.13–0.32 in five of six runs, 10–30× the adversarial versions. The one cheap run (Safety Gym seed 2, 0.019) is degenerate: its in-dist AUC drops to 0.904 and its zero-shot head calls everything unsafe under both shifts.
 - **Together with the random-noise result, the finite-step search matters.** A small worst-case step in pixel space is not well summarized by the local gradient. Penalizing the realized shift at the PGD point gives better robustness at far lower prediction cost than penalizing the gradient everywhere.
 
+## Which route does the regularizer take?
+
+#oct-18 The penalty measures the shift along the safety direction relative to the class gap, and a model can lower it in three ways. For a shift Δz and the safety direction λ (safe-minus-unsafe latent centroid difference):
+
+    (|Δz · λ_n|) / gap  =  cos(Δz, λ_n)  ×  (‖Δz‖ / spread)  /  (gap / spread)
+
+- **cos(Δz, λ_n):** orthogonality; lower = the shift points less along safety.
+- **‖Δz‖ / spread:** invariance; lower = the shift moves the latent less. spread is the RMS radius of the clean latent cloud.
+- **gap / spread:** gap widening; higher = safe and unsafe further apart.
+
+#oct-18 On a log10 scale the three add up exactly to the change in |Δz · λ_n| / gap, so each model's change relative to sigreg only splits into an orthogonality, an invariance and a gap term. Negative is good: −1 is 10× less movement along safety, in class-gap units. Measured on 2000 held-out states per benchmark (training seed 3072), with λ from those states, for three shifts:
+- **PGD:** the worst ε = 8/255 L∞ perturbation along the model's own λ_n, i.e. what training targets.
+- **color** and **rotation:** the real shifts, from paired renders of the same states.
+
+Script `safeadv_results/diagnostics/three_routes.py`; full output for all 12 models in `safeadv_results/routes/`.
+
+#oct-18 Dubins, log10 change vs sigreg only (orthogonality / invariance / gap):
+
+| model | PGD (ortho / invar / gap) | color (ortho / invar / gap) | rotation (ortho / invar / gap) |
+|---|---|---|---|
+| sigreg only | +0.00 / +0.00 / -0.00 | +0.00 / +0.00 / -0.00 | +0.00 / +0.00 / -0.00 |
+| jac+pull | -0.14 / -0.61 / +0.35 | -0.62 / -0.28 / +0.35 | -0.15 / -0.06 / +0.35 |
+| L∞ w/ h | -0.20 / -0.72 / -0.10 | -0.07 / -0.23 / -0.10 | -0.02 / -0.05 / -0.10 |
+| L∞ w/o h | +0.05 / -0.96 / -0.28 | -0.09 / -0.33 / -0.28 | +0.21 / -0.15 / -0.28 |
+| jac+pull + L∞ | -0.14 / -0.84 / +0.25 | -0.70 / -0.27 / +0.25 | -0.44 / -0.06 / +0.25 |
+| batch λ detached | -0.21 / -0.66 / -0.21 | -0.02 / -0.13 / -0.21 | +0.02 / -0.03 / -0.21 |
+
+#oct-18 Safety Gym, log10 change vs sigreg only (orthogonality / invariance / gap):
+
+| model | PGD (ortho / invar / gap) | color (ortho / invar / gap) | rotation (ortho / invar / gap) |
+|---|---|---|---|
+| sigreg only | +0.00 / +0.00 / -0.00 | +0.00 / +0.00 / -0.00 | +0.00 / +0.00 / -0.00 |
+| jac+pull | +0.06 / -0.32 / -0.28 | -0.05 / -0.35 / -0.28 | -0.14 / +0.01 / -0.28 |
+| L∞ w/ h | -0.03 / -0.37 / -0.47 | -0.03 / -0.14 / -0.47 | -0.28 / -0.00 / -0.47 |
+| L∞ w/o h | +0.26 / -0.19 / -0.80 | +0.38 / -0.38 / -0.80 | +0.20 / -0.05 / -0.80 |
+| jac+pull + L∞ | +0.04 / -0.63 / -0.47 | +0.04 / -0.30 / -0.47 | -0.18 / -0.00 / -0.47 |
+| batch λ detached | -0.60 / -0.38 / -0.73 | -0.53 / -0.03 / -0.73 | -0.53 / -0.03 / -0.73 |
+
+- #oct-18 **Against the PGD perturbation it trains on, the regularizer mostly buys invariance.** Dubins invariance terms are −0.7 to −1.0. On Safety Gym, gap widening adds −0.5 to −0.8 on top.
+- #oct-18 **That invariance largely does not transfer to the real shifts.** Against the real rotation the invariance terms are about 0 everywhere, and against color they are small (about −0.1 to −0.4).
+- #oct-18 **What transfers is gap widening and, on Dubins color, orthogonality.** On Safety Gym nearly all of the L∞ models' gain on the real shifts is the wider class gap (−0.47 to −0.80). The latent still moves under purple or the rotated camera, but it matters less because safe and unsafe are further apart. On Dubins color, the jac+pull family rotates the color shift off the safety axis (orthogonality −0.62 for jac+pull, −0.70 with the L∞ reg), and the L∞ reg adds a little gap. Detached batch λ, the strongest Safety Gym λ variant, gets both gap (−0.73) and orthogonality (−0.53) on the real shifts.
+- #oct-18 **jac and jac+pull shrink the class gap** (gap term +0.31 / +0.35 on Dubins): the Jacobian penalty compresses the whole latent, the safe/unsafe distance included. Adding the L∞ reg partly undoes this (+0.25).
+- #oct-18 **Caveat:** one training seed per model. Dubins color in particular varies a lot across seeds (see [Training-seed variability](#training-seed-variability)).
+
 ## Planning: raw CEM on Dubins
 
 Does the safety reg change how well the world model plans? Raw CEM, with no safety filter, on the model-differentiating sg25clean protocol:
