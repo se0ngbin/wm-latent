@@ -678,6 +678,28 @@ Script `safeadv_results/diagnostics/three_routes.py`; full output for all 12 mod
 - #oct-18 **jac and jac+pull shrink the class gap** (gap term +0.31 / +0.35 on Dubins): the Jacobian penalty compresses the whole latent, the safe/unsafe distance included. Adding the L∞ reg partly undoes this (+0.25).
 - #oct-18 **Caveat:** one training seed per model. Dubins color in particular varies a lot across seeds (see [Training-seed variability](#training-seed-variability)).
 
+## Is safety ordered beyond the binary label?
+
+#oct-18 The margin heads are trained on binary failure labels only (margin_gp: zero-sum term, hinges at 0, gradient penalty), so nothing asks a state far from an obstacle to score higher than one just outside it. To check, for Dubins we compute each state's true signed distance to the nearest obstacle boundary (‖p − c‖ − r, negative inside). Then we take the Spearman rank correlation between the zero-shot head's score and that distance, *within* safe states and *within* unsafe states, where the binary label carries no information. The head is the usual margin_gp probe, trained on 4000 red frames and tested on 2000 others. Near boundary = safe states within 0.3 of an obstacle edge; training seed 3072. Script `safeadv_results/diagnostics/safety_ordering.py`; full output, including the latent coordinate z · λ_n and all 12 models, in `safeadv_results/routes/safety_ordering.out`.
+
+| model | in-dist: safe, whole map | in-dist: safe, near boundary | in-dist: unsafe | color: safe, near boundary | rotation: safe, near boundary |
+|---|---|---|---|---|---|
+| sigreg only | 0.221 | 0.534 | 0.688 | -0.259 | 0.369 |
+| jac | 0.173 | 0.536 | 0.703 | 0.176 | 0.478 |
+| jac+pull | 0.111 | 0.463 | 0.632 | 0.222 | 0.369 |
+| L∞ w/ h | 0.264 | 0.733 | 0.761 | 0.467 | 0.478 |
+| L∞ w/o h | 0.272 | 0.714 | 0.639 | 0.431 | 0.710 |
+| jac+pull + L∞ | 0.201 | 0.640 | 0.699 | 0.442 | 0.561 |
+| batch λ detached | 0.251 | 0.655 | 0.802 | 0.250 | 0.622 |
+| global λ proj. scale | 0.306 | 0.692 | 0.755 | 0.488 | 0.634 |
+| detached, orthogonal | 0.111 | 0.470 | 0.821 | 0.328 | -0.070 |
+
+- #oct-18 **Far from obstacles the readout is essentially binary.** Across the whole safe region the correlation with distance is weak for every model (0.03–0.34): "safe" and "very safe" look alike.
+- #oct-18 **Near and inside obstacles it is graded.** Unsafe states are ordered by depth (0.63–0.82), and safe states near the boundary are moderately ordered (0.28–0.73).
+- #oct-18 **The L∞ safety reg improves that near-boundary ordering and keeps it under shift.** In-distribution, L∞ w/ h scores 0.733 and w/o h 0.714, against 0.534 for sigreg only and 0.463 for jac+pull. Under the color shift the baselines lose it (sigreg only −0.259, jac 0.176, jac+pull 0.222), while the L∞ models keep 0.43–0.47. Under rotation, w/o h keeps the most (0.710).
+- #oct-18 **The orthogonal variants order safe states worst** (0.47 in-distribution; −0.07 under rotation), consistent with their weaker results above.
+- #oct-18 **Safety Gym is not included.** Its eval set stores only binary labels; the collector computes the margin but doesn't save it, so it needs a re-collection with margins saved.
+
 ## Planning: raw CEM on Dubins
 
 Does the safety reg change how well the world model plans? Raw CEM, with no safety filter, on the model-differentiating sg25clean protocol:
