@@ -529,7 +529,7 @@ Raw CEM (sg25clean), baseline + L∞ safety reg, success % / collision %, mean �
 - s: the projected scale (the batch gap along λ_n, with gradient), as in global λ with projected scale.
 - ε = 8/255, so d is on the same scale as the adversarial penalty; weight 1, opens at step 2000, ramps over 10k steps.
 - The prediction term uses one gradient over all three context frames, since δ is shared across frames.
-#oct-18 - Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
+- #oct-18 Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
 
 | metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
 |---|---|---|---|---|
