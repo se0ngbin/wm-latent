@@ -515,6 +515,38 @@ Safety Gym, LeWM jac+pull (the 3-seed baseline for the table above):
 
 - **On Safety Gym, adding the L∞ safety reg to jac+pull fixes camera rotation on every seed.** Rotation AUC goes from 0.623 ± 0.048 to 0.981 ± 0.018, and rotation sign accuracy from 0.835 (calling everything safe) to 0.962 ± 0.021. Color is already high for jac+pull (AUC 0.993); the safety reg raises its sign accuracy from 0.946 to 0.979. jac+pull's final prediction loss is 0.009–0.011, against 0.032–0.037 with the safety reg.
 
+#oct-18 λ-projected variants with 3 WM training seeds, mean ± std across seeds. Dubins:
+
+**AUC (uniform eval)**
+
+| model (3 WM seeds) | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| L∞ safety reg, λ-projected, global λ, projected scale | 0.997 ± 0.001 | 0.612 ± 0.373 | 0.996 ± 0.001 | 0.988 ± 0.009 |
+| L∞ safety reg, λ-projected, batch λ, detached direction | 0.997 ± 0.001 | 0.721 ± 0.434 | 0.996 ± 0.000 | 0.993 ± 0.003 |
+
+**Sign accuracy (50/50 eval: .500 = threshold gone)**
+
+| model (3 WM seeds) | in-dist | color (red → purple) | shape (circle → diamond) | rotation (90°) |
+|---|---|---|---|---|
+| L∞ safety reg, λ-projected, global λ, projected scale | 0.976 ± 0.002 | 0.564 ± 0.109 | 0.964 ± 0.004 | 0.842 ± 0.170 |
+| L∞ safety reg, λ-projected, batch λ, detached direction | 0.978 ± 0.002 | 0.501 ± 0.001 | 0.968 ± 0.002 | 0.908 ± 0.060 |
+
+Safety Gym (global λ with projected scale was not reseeded there; seed 3072 alone gives color 0.775 / rotation 0.413 AUC):
+
+**AUC**
+
+| model (3 WM seeds) | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| L∞ safety reg, λ-projected, batch λ, detached direction | 0.998 ± 0.001 | 0.993 ± 0.007 | 0.945 ± 0.023 |
+
+**Sign accuracy (calling everything safe scores .833)**
+
+| model (3 WM seeds) | in-dist | color (blue → purple) | rotation (real 90° camera) |
+|---|---|---|---|
+| L∞ safety reg, λ-projected, batch λ, detached direction | 0.991 ± 0.006 | 0.992 ± 0.005 | 0.968 ± 0.013 |
+
+Per training seed, batch λ with detached direction:
+
 #oct-18 L∞ safety reg, λ-projected, batch λ with detached direction, both benchmarks:
 
 | metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
@@ -555,7 +587,7 @@ To first order, the worst ε-perturbation in an L∞ ball moves the safety coord
 - s: the projected scale (the batch gap along λ_n, with gradient), as in global λ with projected scale.
 - ε = 8/255, so d is on the same scale as the adversarial penalty; weight 1, opens at step 2000, ramps over 10k steps.
 - The prediction term uses one gradient over all three context frames, since δ is shared across frames.
-- #oct-18 Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
+- Baseline (sigreg only), Dubins and Safety Gym, training seeds 3072 / 1 / 2. Code `attack: jac` (commit `f38454c`; the double backward runs on the math attention backend).
 
 | metric | seed 3072 | seed 1 | seed 2 | 3 WM seeds |
 |---|---|---|---|---|
@@ -571,11 +603,11 @@ To first order, the worst ε-perturbation in an L∞ ball moves the safety coord
 | Safety Gym color / rotation sign accuracy | 0.864 / 0.907 | 0.919 / 0.916 | 0.167 / 0.167 | 0.650 ± 0.419 / 0.663 ± 0.430 |
 | final train pred_loss (Dubins / Safety Gym) | 0.198 / 0.207 | 0.126 / 0.248 | 0.320 / 0.019 | |
 
-#oct-18 For comparison, over 3 WM seeds: L∞ safety reg w/ h gets Dubins color 0.643 ± 0.247 and Safety Gym 0.985 / 0.851; jac+pull + L∞ safety reg gets 0.957 ± 0.021 and 1.000 / 0.981; global λ with projected scale (adversarial) gets Dubins color 0.612 ± 0.373. Adversarial runs end at pred_loss ≈ 0.01–0.04.
+For comparison, over 3 WM seeds: L∞ safety reg w/ h gets Dubins color 0.643 ± 0.247 and Safety Gym 0.985 / 0.851; jac+pull + L∞ safety reg gets 0.957 ± 0.021 and 1.000 / 0.981; global λ with projected scale (adversarial) gets Dubins color 0.612 ± 0.373. Adversarial runs end at pred_loss ≈ 0.01–0.04.
 
-- #oct-18 **The first-order penalty does not reproduce the adversarial result.** On Safety Gym it is clearly worse than any adversarial L∞ model: color 0.880 vs 0.985–1.000, rotation 0.865 vs 0.851–0.981, and the thresholds are not kept. On Dubins its color AUC (0.729 ± 0.164) is less seed-variable than the adversarial λ variants but still below jac+pull + L∞ safety reg.
-- #oct-18 **Driving the gradient norm down directly wrecks prediction.** Final pred_loss is 0.13–0.32 in five of six runs, 10–30× the adversarial versions. The one cheap run (Safety Gym seed 2, 0.019) is degenerate: its in-dist AUC drops to 0.904 and its zero-shot head calls everything unsafe under both shifts.
-- #oct-18 **Together with the random-noise result, the finite-step search matters.** A small worst-case step in pixel space is not well summarized by the local gradient. Penalizing the realized shift at the PGD point gives better robustness at far lower prediction cost than penalizing the gradient everywhere.
+- **The first-order penalty does not reproduce the adversarial result.** On Safety Gym it is clearly worse than any adversarial L∞ model: color 0.880 vs 0.985–1.000, rotation 0.865 vs 0.851–0.981, and the thresholds are not kept. On Dubins its color AUC (0.729 ± 0.164) is less seed-variable than the adversarial λ variants but still below jac+pull + L∞ safety reg.
+- **Driving the gradient norm down directly wrecks prediction.** Final pred_loss is 0.13–0.32 in five of six runs, 10–30× the adversarial versions. The one cheap run (Safety Gym seed 2, 0.019) is degenerate: its in-dist AUC drops to 0.904 and its zero-shot head calls everything unsafe under both shifts.
+- **Together with the random-noise result, the finite-step search matters.** A small worst-case step in pixel space is not well summarized by the local gradient. Penalizing the realized shift at the PGD point gives better robustness at far lower prediction cost than penalizing the gradient everywhere.
 
 ## Planning: raw CEM on Dubins
 
