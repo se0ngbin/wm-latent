@@ -288,25 +288,30 @@ In `latent_cbf/src/latent_cbf/scripts/dreamer_offline.py`, flags `--sa_*` (code 
 **Idea.** The head variant penalizes a perturbation's effect through the learned margin head h, which in effect reads the latent along a direction that differs per sample. This variant uses one shared **safety direction**, λ = mean(z of safe frames) − mean(z of unsafe frames). It only penalizes the component of the perturbation-induced shift along λ, i.e. it asks the shift to be **orthogonal** to the safety direction:
 
     d = mean_t [((f(x_t + δ) − f(x_t)) · λ_n) / ‖λ‖]² + [((P(f(x + δ), a) − P(f(x), a)) · λ_n) / ‖λ‖]²  where
-    λ = mean(z of safe frames) − mean(z of unsafe frames),  λ_n = λ / ‖λ‖ (unit vector along λ)
 
 - Each term is the move along λ in units of the safe/unsafe distance, and is zero exactly when the move is orthogonal to λ.
 - The adversary is unchanged (L∞, 8/255, PGD maximizing this d).
 - There is no head in the penalty and so no AUC gate: the penalty opens at step 2000 and ramps up over 10k steps.
 - Code: `target: lambda`, commit `32263e1`.
 
-#oct-18 Four ways to get the direction λ_n and the scale (‖λ‖ in d). Notation: λ_batch = mean(z of safe frames) − mean(z of unsafe frames) in the current batch; λ_run = the same difference from running averages over all batches (decay 0.99). Every scale comes from the current batch with gradient, so the encoder can lower d by separating the classes.
+### Aside
+Four ways to get the direction λ_n and the scale (‖λ‖ in d). 
 
-| variant | direction λ_n | scale (‖λ‖ in d) | gradient through the direction | `lambda_mode` |
-|---|---|---|---|---|
-| batch λ | λ_batch / ‖λ_batch‖ | ‖λ_batch‖ | yes | `batch` |
-| batch λ, detached direction | λ_batch / ‖λ_batch‖ | ‖λ_batch‖ | no | `batch_detached` |
-| global λ | λ_run / ‖λ_run‖ | ‖λ_batch‖ | no | `global` |
-| global λ, projected scale | λ_run / ‖λ_run‖ | λ_batch · λ_n (floored at 0.1 × ‖λ_run‖) | no | `global_proj` |
+
+    λ_batch = mean(z of safe frames) − mean(z of unsafe frames) in the current batch
+    λ_run   = mean(z of safe frames) − mean(z of unsafe frames) from running averages over all batches. 
+
+| variant | direction λ_n | scale (‖λ‖ in d) | gradient through the direction |
+|---|---|---|---|
+| batch λ | λ_batch / ‖λ_batch‖ | ‖λ_batch‖ | yes | 
+| batch λ, detached direction | λ_batch / ‖λ_batch‖ | ‖λ_batch‖ | no | 
+| global λ | λ_run / ‖λ_run‖ | ‖λ_batch‖ | no | 
+| global λ, projected scale | λ_run / ‖λ_run‖ | λ_batch · λ_n (floored at 0.1 × ‖λ_run‖) | no | 
 
 - With gradient through the direction (batch λ), the encoder can also rotate the protected axis to lower d; detaching it removes that route.
 - With the full batch gap as the scale (global λ), separating the classes in any direction counts; projected scale only counts separation along the protected direction.
 
+### Results
 Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 
 | model | Dubins color | Dubins shape | Dubins rotation | Safety Gym color | Safety Gym rotation |
@@ -325,9 +330,9 @@ Zero-shot sign accuracy (h ≥ 0 = safe), mean ± std over 3 eval seeds. Dubins 
 | sigreg only | 0.940 ± 0.003 | 0.500 ± 0.000 | 0.585 ± 0.010 | 0.500 ± 0.000 | 0.970 ± 0.007 | 0.833 ± 0.000 | 0.833 ± 0.000 |
 | L∞ safety reg w/ h (per-sample direction) | 0.980 ± 0.004 | 0.501 ± 0.001 | 0.974 ± 0.003 | 0.959 ± 0.008 | 0.997 ± 0.002 | 0.987 ± 0.003 | 0.977 ± 0.005 |
 | L∞ safety reg, λ-projected, batch λ | 0.976 ± 0.003 | 0.501 ± 0.004 | 0.959 ± 0.003 | 0.627 ± 0.049 | 0.990 ± 0.005 | 0.856 ± 0.007 | 0.836 ± 0.001 |
-| L∞ safety reg, λ-projected, batch λ, detached direction | 0.977 ± 0.007 | 0.500 ± 0.000 | 0.968 ± 0.005 | 0.951 ± 0.017 | 0.997 ± 0.002 | 0.992 ± 0.001 | 0.983 ± 0.001 |
+| L∞ safety reg, λ-projected, batch λ, detached | 0.977 ± 0.007 | 0.500 ± 0.000 | 0.968 ± 0.005 | 0.951 ± 0.017 | 0.997 ± 0.002 | 0.992 ± 0.001 | 0.983 ± 0.001 |
 | L∞ safety reg, λ-projected, global λ | 0.977 ± 0.002 | 0.500 ± 0.000 | 0.963 ± 0.002 | 0.941 ± 0.015 | 0.892 ± 0.006 | 0.844 ± 0.007 | 0.802 ± 0.008 |
-| L∞ safety reg, λ-projected, global λ, projected scale | 0.974 ± 0.003 | 0.690 ± 0.172 | 0.960 ± 0.007 | 0.920 ± 0.018 | 0.950 ± 0.003 | 0.843 ± 0.004 | 0.829 ± 0.003 |
+| L∞ safety reg, λ-projected, global λ, projected | 0.974 ± 0.003 | 0.690 ± 0.172 | 0.960 ± 0.007 | 0.920 ± 0.018 | 0.950 ± 0.003 | 0.843 ± 0.004 | 0.829 ± 0.003 |
 
 - **Dubins:** every λ variant loses the color threshold except global λ with projected scale, which partly keeps it (0.690). Its spread across eval seeds is large and it has one training seed. Batch λ also loses the rotation threshold (0.627).
 - **Safety Gym:** all λ variants collapse toward calling everything safe (0.80–0.86, near the 0.833 all-safe rate). Only the L∞ safety reg w/ h keeps its thresholds (0.987 / 0.977).
