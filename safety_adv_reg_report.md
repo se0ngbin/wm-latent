@@ -324,8 +324,8 @@ Zero-shot AUC; Dubins from the uniform eval, mean ± std over 3 eval seeds:
 | L∞ safety reg, λ-projected, batch λ, detached direction | 0.948 ± 0.013 | 0.996 ± 0.001 | 0.996 ± 0.001 | 0.992 ± 0.004 | 0.962 ± 0.001 |
 | L∞ safety reg, λ-projected, global λ | 0.936 ± 0.041 | 0.995 ± 0.002 | 0.995 ± 0.002 | 0.841 ± 0.001 | 0.445 ± 0.008 |
 | L∞ safety reg, λ-projected, global λ, projected scale | 0.950 ± 0.046 | 0.996 ± 0.002 | 0.992 ± 0.003 | 0.775 ± 0.021 | 0.413 ± 0.001 |
-| L∞ safety reg, λ-projected, batch λ, detached direction, orthogonal penalty #oct-18 | 0.957 ± 0.014 | 0.993 ± 0.001 | 0.360 ± 0.332 | 0.677 ± 0.006 | 0.540 ± 0.012 |
-| L∞ safety reg, λ-projected, batch λ, detached direction, orthogonal + projection penalty #oct-18 | 0.934 ± 0.016 | 0.986 ± 0.002 | 0.930 ± 0.008 | 0.718 ± 0.008 | 0.579 ± 0.003 |
+| L∞ safety reg, λ-projected, batch λ, detached direction, orthogonal penalty | 0.957 ± 0.014 | 0.993 ± 0.001 | 0.360 ± 0.332 | 0.677 ± 0.006 | 0.540 ± 0.012 |
+| L∞ safety reg, λ-projected, batch λ, detached direction, orthogonal + projection penalty | 0.934 ± 0.016 | 0.986 ± 0.002 | 0.930 ± 0.008 | 0.718 ± 0.008 | 0.579 ± 0.003 |
 
 Zero-shot sign accuracy (h ≥ 0 = safe), mean ± std over 3 eval seeds. Dubins from the 50/50 eval, where 0.500 means the threshold is gone; Safety Gym, where calling every state safe scores 0.833:
 
