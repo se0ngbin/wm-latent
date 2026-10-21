@@ -5,6 +5,8 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 SURF, INK, INK2, BLUE = "#fcfcfb", "#0b0b0b", "#52514e", "#2a78d6"
 def short(label):   # match by keyword so slightly different row labels map to the same name
     l = re.sub(r"\s*#oct-18\s*", "", label)
+    if "orthogonal + projection" in l: return "batch λ detached, orthogonal + projection"
+    if "orthogonal" in l: return "batch λ detached, orthogonal"
     if "detached" in l: return "batch λ\ndetached"
     if "global λ, projected" in l: return "global λ\nproj. scale"
     if "global λ" in l: return "global λ"
