@@ -9,7 +9,7 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import numpy as np, h5py
 import safety_gymnasium as sg
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from policy import goal_seek_action, loiter_action, _wrap
+from policy import goal_seek_action, loiter_action, _wrap, point_goal_action, point_dash_action
 
 
 def full_goal(t, rng):
@@ -40,11 +40,19 @@ def main():
     ap.add_argument("--size", type=int, default=128)
     ap.add_argument("--color", default="blue")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--agent", default="Car", choices=["Car", "Point"])
+    ap.add_argument("--clean", action="store_true", help="no cost-indicator sphere / lidar ring in renders (label leak)")
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
-    env = sg.make("SafetyCarGoal1-v0", render_mode="rgb_array", camera_name="fixedfar",
+    env = sg.make(f"Safety{a.agent}Goal1-v0", render_mode="rgb_array", camera_name="fixedfar",
                   width=a.size, height=a.size)
     t = env.unwrapped.task
+    if a.clean: t.render_conf.lidar_markers = False
+    def render():   # --clean: hide the red sphere safety-gym draws when last-step cost>0 (== our failure label)
+        u = env.unwrapped; c = u.cost
+        if a.clean: u.cost = {}
+        img = u.render().astype(np.uint8); u.cost = c
+        return img
     import safety_gymnasium.assets.color as C
     from sg_env import PALETTE
     col = np.array(PALETTE[a.color], float)
@@ -62,22 +70,23 @@ def main():
         t.hazards.color = col; C.COLOR["hazard"] = col
         env.reset(seed=int(rng.integers(1 << 30)))
         t.hazards.color = col
-        loit = rng.random() < a.p_loiter
-        P, A, S, F = [], [], [], []
+        loit = rng.random() < a.p_loiter; brake_at = rng.uniform(0, 0.4)
+        P, A, S, F, V = [], [], [], [], []
         for _ in range(a.ep_steps):
             st = env.state() if hasattr(env, "state") else None
             m = np.asarray(t.agent.mat).reshape(3, 3)
             st = np.array([t.agent.pos[0], t.agent.pos[1], np.arctan2(m[1, 0], m[0, 0])], np.float32)
-            img = env.unwrapped.render().astype(np.uint8)
-            act = (full_loiter(t, rng) if loit else full_goal(t, rng)).astype(np.float32)
-            P.append(img); A.append(act); S.append(st); F.append(int(margin(t) < 0))
+            img = render()
+            if a.agent == "Point": act = (point_dash_action(t, rng, brake_at) if loit else point_goal_action(t, rng)).astype(np.float32)
+            else: act = (full_loiter(t, rng) if loit else full_goal(t, rng)).astype(np.float32)
+            P.append(img); A.append(act); S.append(st); F.append(int(margin(t) < 0)); V.append(np.asarray(t.agent.vel[:2], np.float32))
             env.step(act)
         # split into non-overlapping chunks
         W = a.chunk
         for i in range(0, len(P) - W + 1, W):
             f = np.array(F[i:i + W])
             chunk = (np.array(P[i:i + W], np.uint8), np.array(A[i:i + W], np.float32),
-                     np.array(S[i:i + W], np.float32), f.astype(np.uint8))
+                     np.array(S[i:i + W], np.float32), f.astype(np.uint8), np.array(V[i:i + W], np.float32))
             if f.any():
                 unsafe_chunks.append(chunk); n_unsafe_f += int(f.sum()); n_safe_in_unsafe += int((1 - f).sum())
             else:
@@ -95,7 +104,7 @@ def main():
     rng.shuffle(kept)
 
     PIX = np.concatenate([c[0] for c in kept]); ACT = np.concatenate([c[1] for c in kept])
-    STA = np.concatenate([c[2] for c in kept]); FAIL = np.concatenate([c[3] for c in kept])
+    STA = np.concatenate([c[2] for c in kept]); FAIL = np.concatenate([c[3] for c in kept]); VEL = np.concatenate([c[4] for c in kept])
     PRO = np.stack([np.cos(STA[:, 2]), np.sin(STA[:, 2])], 1).astype(np.float32)
     W = a.chunk; nchunk = len(kept)
     EPI = np.repeat(np.arange(nchunk), W); STP = np.tile(np.arange(W), nchunk)
@@ -105,7 +114,7 @@ def main():
     with h5py.File(a.out, "w") as f:
         f.create_dataset("pixels", data=PIX, )
         f.create_dataset("action", data=ACT); f.create_dataset("proprio", data=PRO)
-        f.create_dataset("state", data=STA); f.create_dataset("failures", data=FAIL)
+        f.create_dataset("state", data=STA); f.create_dataset("failures", data=FAIL); f.create_dataset("velocity", data=VEL)
         f.create_dataset("episode_idx", data=EPI); f.create_dataset("step_idx", data=STP)
         f.create_dataset("ep_len", data=ep_len); f.create_dataset("ep_offset", data=ep_off)
     print(f"WROTE {a.out} frames={len(PIX)} chunks={nchunk} unsafe_frac={FAIL.mean():.3f} "

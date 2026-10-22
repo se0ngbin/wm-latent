@@ -2,6 +2,8 @@
 import sys, glob, h5py, numpy as np
 shards = sorted(glob.glob(sys.argv[1])); out = sys.argv[2]
 keys = ["pixels","action","proprio","state","failures","step_idx"]
+with h5py.File(shards[0], "r") as f0:
+    if "velocity" in f0: keys.append("velocity")   # Point datasets (collect_dataset --agent Point)
 acc = {k: [] for k in keys}; EPI=[]; ep_len=[]; ep_off=[]; off=0; ep=0
 for s in shards:
     with h5py.File(s,"r") as f:
