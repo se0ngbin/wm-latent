@@ -6,7 +6,7 @@ import os, sys, argparse
 os.environ.setdefault("MUJOCO_GL", "egl")
 import numpy as np, safety_gymnasium as sg, mujoco
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from collect_dataset import full_goal, full_loiter, margin
+from collect_dataset import make_env, render, act, margin
 
 def qmul(a, b):
     w1,x1,y1,z1=a; w2,x2,y2,z2=b
@@ -18,24 +18,26 @@ def main():
     ap.add_argument("--out", required=True); ap.add_argument("--n", type=int, default=8000)
     ap.add_argument("--size", type=int, default=128); ap.add_argument("--target_unsafe", type=float, default=0.17)
     ap.add_argument("--p_loiter", type=float, default=0.4); ap.add_argument("--seed", type=int, default=200)
+    ap.add_argument("--agent", default="Car", choices=["Car", "Point"]); ap.add_argument("--clean", action="store_true")
+    ap.add_argument("--ep_steps", type=int, default=100)
     a = ap.parse_args()
-    env = sg.make("SafetyCarGoal1-v0", render_mode="rgb_array", camera_name="fixedfar", width=a.size, height=a.size)
+    env = make_env(a.agent, a.size, a.clean)
     u = env.unwrapped; t = u.task; rng = np.random.default_rng(a.seed)
     th = np.pi/2; Rz = np.array([[0,-1,0],[1,0,0],[0,0,1]], float); qz = np.array([np.cos(th/2),0,0,np.sin(th/2)])
     def paired():
         model, data = t.model, t.data
         cid = [i for i in range(model.ncam) if model.camera(i).name=="fixedfar"][0]
-        base = u.render().copy()
+        base = render(u, a.clean)
         op, oq = model.cam_pos[cid].copy(), model.cam_quat[cid].copy()
         model.cam_pos[cid] = Rz@op; model.cam_quat[cid] = qmul(qz, oq); mujoco.mj_forward(model, data)
-        rot = u.render().copy()
+        rot = render(u, a.clean)
         model.cam_pos[cid] = op; model.cam_quat[cid] = oq; mujoco.mj_forward(model, data)
         return base.astype(np.uint8), rot.astype(np.uint8)
     US_B, US_R, US_S, SF_B, SF_R, SF_S = [], [], [], [], [], []
     n_us = int(a.n*a.target_unsafe); n_sf = a.n - n_us
     while len(US_B) < n_us or len(SF_B) < n_sf:
-        env.reset(seed=int(rng.integers(1<<30))); loit = rng.random() < a.p_loiter
-        for _ in range(100):
+        env.reset(seed=int(rng.integers(1<<30))); loit = rng.random() < a.p_loiter; brake_at = rng.uniform(0, 0.4)
+        for _ in range(a.ep_steps):
             m = np.asarray(t.agent.mat).reshape(3,3)
             st = np.array([t.agent.pos[0], t.agent.pos[1], np.arctan2(m[1,0], m[0,0])], np.float32)
             fail = int(margin(t) < 0)
@@ -43,7 +45,7 @@ def main():
                 b, r = paired(); US_B.append(b); US_R.append(r); US_S.append(st)
             elif (not fail) and len(SF_B) < n_sf and rng.random() < 0.15:
                 b, r = paired(); SF_B.append(b); SF_R.append(r); SF_S.append(st)
-            env.step(full_loiter(t, rng) if loit else full_goal(t, rng))
+            env.step(act(t, rng, a.agent, loit, brake_at))
         if (len(US_B)+len(SF_B)) % 1000 < 100: print(f"  us={len(US_B)}/{n_us} sf={len(SF_B)}/{n_sf}", flush=True)
     env.close()
     base = np.array(US_B+SF_B, np.uint8); rot = np.array(US_R+SF_R, np.uint8)

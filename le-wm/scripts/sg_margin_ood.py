@@ -46,7 +46,7 @@ def main():
     ag = "/data/seongbin/lewm/datasets/sg_agent_eval.npz"   # Car vs Point (paired); base/point have NO cost-indicator sphere
     if os.path.exists(ag):
         da = np.load(ag); fa = da["failure"].astype(int)
-        AXES += [("indicator", da["base_ind"], da["base"], fa), ("agent", da["base"], da["point"], fa)]
+        AXES += [("indicator", da["base_ind"], da["base"], fa), ("agent", da["base"], da["other" if "other" in da.files else "point"], fa)]
     if os.environ.get("SG_AXES"): AXES = [x for x in AXES if x[0] in os.environ["SG_AXES"].split(",")]
     for ename, ck in ENCODERS.items():
         m = swm.wm.utils.load_pretrained(f"{ck}/weights_epoch_50.pt").to(DEV).eval()

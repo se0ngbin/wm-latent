@@ -24,6 +24,27 @@ def full_loiter(t, rng):
     return np.clip(np.array([1.0 + k, 1.0 - k]) + rng.normal(0, 0.3, 2), -1, 1)
 
 
+def make_env(agent, size, clean):
+    """fixedfar top-down env; clean=True also drops the lidar ring (cost sphere is handled in render())."""
+    env = sg.make(f"Safety{agent}Goal1-v0", render_mode="rgb_array", camera_name="fixedfar", width=size, height=size)
+    if clean: env.unwrapped.task.render_conf.lidar_markers = False
+    return env
+
+
+def render(u, clean):
+    """clean=True hides the red sphere safety-gym draws at the agent when last-step cost>0 (== failure label)."""
+    c = u.cost
+    if clean: u.cost = {}
+    img = u.render().astype(np.uint8); u.cost = c
+    return img
+
+
+def act(t, rng, agent, loit, brake_at=0.2):
+    """Collection policy mix: Car goal/loiter; Point goal-seek (overshoots) / hazard dash-then-brake."""
+    if agent == "Point": return point_dash_action(t, rng, brake_at) if loit else point_goal_action(t, rng)
+    return full_loiter(t, rng) if loit else full_goal(t, rng)
+
+
 def margin(t):
     r = float(t.hazards.size)
     return min(np.linalg.norm(np.asarray(t.agent.pos[:2]) - np.asarray(h[:2])) - r for h in t.hazards.pos)
@@ -44,15 +65,8 @@ def main():
     ap.add_argument("--clean", action="store_true", help="no cost-indicator sphere / lidar ring in renders (label leak)")
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
-    env = sg.make(f"Safety{a.agent}Goal1-v0", render_mode="rgb_array", camera_name="fixedfar",
-                  width=a.size, height=a.size)
+    env = make_env(a.agent, a.size, a.clean)
     t = env.unwrapped.task
-    if a.clean: t.render_conf.lidar_markers = False
-    def render():   # --clean: hide the red sphere safety-gym draws when last-step cost>0 (== our failure label)
-        u = env.unwrapped; c = u.cost
-        if a.clean: u.cost = {}
-        img = u.render().astype(np.uint8); u.cost = c
-        return img
     import safety_gymnasium.assets.color as C
     from sg_env import PALETTE
     col = np.array(PALETTE[a.color], float)
@@ -76,11 +90,10 @@ def main():
             st = env.state() if hasattr(env, "state") else None
             m = np.asarray(t.agent.mat).reshape(3, 3)
             st = np.array([t.agent.pos[0], t.agent.pos[1], np.arctan2(m[1, 0], m[0, 0])], np.float32)
-            img = render()
-            if a.agent == "Point": act = (point_dash_action(t, rng, brake_at) if loit else point_goal_action(t, rng)).astype(np.float32)
-            else: act = (full_loiter(t, rng) if loit else full_goal(t, rng)).astype(np.float32)
-            P.append(img); A.append(act); S.append(st); F.append(int(margin(t) < 0)); V.append(np.asarray(t.agent.vel[:2], np.float32))
-            env.step(act)
+            img = render(env.unwrapped, a.clean)
+            ac = act(t, rng, a.agent, loit, brake_at).astype(np.float32)
+            P.append(img); A.append(ac); S.append(st); F.append(int(margin(t) < 0)); V.append(np.asarray(t.agent.vel[:2], np.float32))
+            env.step(ac)
         # split into non-overlapping chunks
         W = a.chunk
         for i in range(0, len(P) - W + 1, W):

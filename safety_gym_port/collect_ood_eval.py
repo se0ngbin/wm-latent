@@ -8,7 +8,7 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import numpy as np, safety_gymnasium as sg
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sg_env import PALETTE
-from collect_dataset import full_goal, full_loiter, margin
+from collect_dataset import make_env, render, act, margin
 
 def main():
     ap = argparse.ArgumentParser()
@@ -16,8 +16,10 @@ def main():
     ap.add_argument("--size", type=int, default=128); ap.add_argument("--ood_color", default="purple")
     ap.add_argument("--target_unsafe", type=float, default=0.17)
     ap.add_argument("--p_loiter", type=float, default=0.4); ap.add_argument("--seed", type=int, default=123)
+    ap.add_argument("--agent", default="Car", choices=["Car", "Point"]); ap.add_argument("--clean", action="store_true")
+    ap.add_argument("--ep_steps", type=int, default=100)
     a = ap.parse_args()
-    env = sg.make("SafetyCarGoal1-v0", render_mode="rgb_array", camera_name="fixedfar", width=a.size, height=a.size)
+    env = make_env(a.agent, a.size, a.clean)
     u = env.unwrapped; t = u.task
     ood = np.array(PALETTE[a.ood_color], float); blue = np.array(PALETTE["blue"], float)
     rng = np.random.default_rng(a.seed)
@@ -25,15 +27,17 @@ def main():
     n_us_keep = int(a.n * a.target_unsafe); n_sf_keep = a.n - n_us_keep
     def paired():
         model = u.task.model; haz = [i for i in range(model.ngeom) if (model.geom(i).name or "").startswith("hazard")]
-        for i in haz: model.geom_rgba[i] = blue
-        ib = u.render().copy()
+        orig = model.geom_rgba[haz].copy()
+        if not a.clean:   # legacy Car sets recoloured the in-dist view to PALETTE blue (training frames are the default lavender)
+            for i in haz: model.geom_rgba[i] = blue
+        ib = render(u, a.clean)   # --clean: in-dist = the untouched default hazard colour, as in the training data
         for i in haz: model.geom_rgba[i] = ood
-        io = u.render().copy()
-        for i in haz: model.geom_rgba[i] = blue
+        io = render(u, a.clean)
+        model.geom_rgba[haz] = orig
         return ib.astype(np.uint8), io.astype(np.uint8)
     while len(US_B) < n_us_keep or len(SF_B) < n_sf_keep:
-        env.reset(seed=int(rng.integers(1 << 30))); loit = rng.random() < a.p_loiter
-        for _ in range(100):
+        env.reset(seed=int(rng.integers(1 << 30))); loit = rng.random() < a.p_loiter; brake_at = rng.uniform(0, 0.4)
+        for _ in range(a.ep_steps):
             m = np.asarray(t.agent.mat).reshape(3, 3)
             st = np.array([t.agent.pos[0], t.agent.pos[1], np.arctan2(m[1, 0], m[0, 0])], np.float32)
             fail = int(margin(t) < 0)
@@ -41,7 +45,7 @@ def main():
                 ib, io = paired(); US_B.append(ib); US_O.append(io); US_S.append(st)
             elif (not fail) and len(SF_B) < n_sf_keep and rng.random() < 0.15:
                 ib, io = paired(); SF_B.append(ib); SF_O.append(io); SF_S.append(st)
-            env.step((full_loiter(t, rng) if loit else full_goal(t, rng)))
+            env.step(act(t, rng, a.agent, loit, brake_at))
         if (len(US_B) + len(SF_B)) % 1000 < 100:
             print(f"  unsafe={len(US_B)}/{n_us_keep} safe={len(SF_B)}/{n_sf_keep}", flush=True)
     env.close()
