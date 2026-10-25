@@ -43,4 +43,5 @@ for name in "${@:-${!RUN[@]}}"; do
   train_one "$name" "$gpu" ${RUN[$name]} &
   sleep 180
 done
+[ -n "${NOWAIT:-}" ] && exit 0   # NOWAIT=1: return once everything is launched (chain seed queues in one process)
 wait; echo "POINT_WM_DONE"

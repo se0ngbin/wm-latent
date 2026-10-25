@@ -17,7 +17,8 @@ DEV = "cuda:0"
 DATA = os.environ.get("SG_DATA", "/data/seongbin/lewm/datasets/sg_point_multi_eval.npz")
 NAMES = ["pt_baseline", "pt_jacobian", "pt_jacpull", "pt_safeadv_linf_g0", "pt_jac_safeadv_linf", "pt_jacpull_safeadv_linf",
          "pt_lam_bdet", "pt_jac_lam_bdet", "pt_jacpull_lam_bdet"]
-ENCODERS = dict(kv.split(":", 1) for kv in os.environ["SG_ENCODERS"].split(",")) if os.environ.get("SG_ENCODERS") else {n: n for n in NAMES}
+SFX = os.environ.get("SG_SFX", "")   # training-seed suffix, e.g. _s1
+ENCODERS = dict(kv.split(":", 1) for kv in os.environ["SG_ENCODERS"].split(",")) if os.environ.get("SG_ENCODERS") else {n + SFX: n + SFX for n in NAMES}
 AXES = ["color", "rotate", "shape", "agent"]
 SEED = int(os.environ.get("SG_SEED", "0"))
 STEPS, LR, BS = 5000, 3e-4, 256
