@@ -6,7 +6,7 @@ keep every chunk containing an unsafe frame, subsample all-safe chunks to the ta
 Runs in the safety-gym venv; le-wm trains offline on the h5."""
 import os, sys, argparse
 os.environ.setdefault("MUJOCO_GL", "egl")
-import numpy as np, h5py
+import numpy as np, h5py, mujoco
 import safety_gymnasium as sg
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from policy import goal_seek_action, loiter_action, _wrap, point_goal_action, point_dash_action
@@ -24,15 +24,25 @@ def full_loiter(t, rng):
     return np.clip(np.array([1.0 + k, 1.0 - k]) + rng.normal(0, 0.3, 2), -1, 1)
 
 
-def make_env(agent, size, clean):
-    """fixedfar top-down env; clean=True also drops the lidar ring (cost sphere is handled in render())."""
+OVERHEAD = (4.0, 2 * np.degrees(np.arctan(1.8 / 4.0)))   # height, fovy: straight down, frames [-1.8, 1.8]^2 (hazards reach 1.7)
+
+
+def make_env(agent, size, clean, cam="fixedfar"):
+    """Top-down env; clean=True also drops the lidar ring (cost sphere is handled in render()).
+    cam='fixedfar' = safety-gym's 45deg-angled far camera; 'overhead' = that camera moved straight above the arena
+    (agent ~2x larger, and a 90deg camera turn about z is an exact image rotation)."""
     env = sg.make(f"Safety{agent}Goal1-v0", render_mode="rgb_array", camera_name="fixedfar", width=size, height=size)
     if clean: env.unwrapped.task.render_conf.lidar_markers = False
+    env.unwrapped._cam = cam
     return env
 
 
 def render(u, clean):
     """clean=True hides the red sphere safety-gym draws at the agent when last-step cost>0 (== failure label)."""
+    if getattr(u, "_cam", "fixedfar") == "overhead":   # re-applied every call: the model is rebuilt on reset
+        m = u.task.model; cid = m.camera("fixedfar").id
+        m.cam_pos[cid] = [0, 0, OVERHEAD[0]]; m.cam_quat[cid] = [1, 0, 0, 0]; m.cam_fovy[cid] = OVERHEAD[1]
+        mujoco.mj_forward(m, u.task.data)
     c = u.cost
     if clean: u.cost = {}
     img = u.render().astype(np.uint8); u.cost = c
@@ -63,9 +73,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--agent", default="Car", choices=["Car", "Point"])
     ap.add_argument("--clean", action="store_true", help="no cost-indicator sphere / lidar ring in renders (label leak)")
+    ap.add_argument("--cam", default="fixedfar", choices=["fixedfar", "overhead"])
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
-    env = make_env(a.agent, a.size, a.clean)
+    env = make_env(a.agent, a.size, a.clean, a.cam)
     t = env.unwrapped.task
     import safety_gymnasium.assets.color as C
     from sg_env import PALETTE
