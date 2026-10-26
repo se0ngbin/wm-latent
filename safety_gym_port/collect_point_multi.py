@@ -29,8 +29,9 @@ def main():
     ap.add_argument("--size", type=int, default=128); ap.add_argument("--target_unsafe", type=float, default=0.17)
     ap.add_argument("--p_loiter", type=float, default=0.6); ap.add_argument("--ep_steps", type=int, default=200)
     ap.add_argument("--seed", type=int, default=321)
+    ap.add_argument("--cam", default="fixedfar", choices=["fixedfar", "overhead"])
     a = ap.parse_args()
-    env, benv, cenv = make_env("Point", a.size, True), make_env("Point", a.size, True), make_env("Car", a.size, True)
+    env, benv, cenv = (make_env(ag, a.size, True, a.cam) for ag in ("Point", "Point", "Car"))
     benv.unwrapped.task.hazards.box = True
     u, t = env.unwrapped, env.unwrapped.task
     purp = np.array(PALETTE["purple"], float)
@@ -51,11 +52,14 @@ def main():
         base = render(u, True)
         orig = model.geom_rgba[haz].copy(); model.geom_rgba[haz] = purp
         color = render(u, True); model.geom_rgba[haz] = orig
-        cid = [i for i in range(model.ncam) if model.camera(i).name == "fixedfar"][0]
-        op, oq = model.cam_pos[cid].copy(), model.cam_quat[cid].copy()
-        model.cam_pos[cid] = Rz @ op; model.cam_quat[cid] = qmul(qz, oq); mujoco.mj_forward(model, data)
-        rot = render(u, True)
-        model.cam_pos[cid] = op; model.cam_quat[cid] = oq; mujoco.mj_forward(model, data)
+        if a.cam == "overhead":   # centred straight-down square view: a 90deg camera yaw IS a 90deg image rotation
+            rot = np.ascontiguousarray(np.rot90(base))
+        else:
+            cid = [i for i in range(model.ncam) if model.camera(i).name == "fixedfar"][0]
+            op, oq = model.cam_pos[cid].copy(), model.cam_quat[cid].copy()
+            model.cam_pos[cid] = Rz @ op; model.cam_quat[cid] = qmul(qz, oq); mujoco.mj_forward(model, data)
+            rot = render(u, True)
+            model.cam_pos[cid] = op; model.cam_quat[cid] = oq; mujoco.mj_forward(model, data)
         return base, color, rot, copy_scene(benv.unwrapped), copy_scene(cenv.unwrapped)
 
     US, SF = [], []

@@ -16,7 +16,7 @@ SA='+loss.regularizers.safety_adv.kwargs={min_steps:2000,ramp_steps:10000,n_sub:
 train_one(){ local name=$1$SFX gpu=$2; shift 2
   [ -f "$STABLEWM_HOME/checkpoints/$name/weights_epoch_50.pt" ] && { echo "  cached $name"; return; }
   mkdir -p .run_$name; echo "[$(date +%H:%M:%S)] train $name (gpu $gpu)"
-  ( cd .run_$name && CUDA_VISIBLE_DEVICES=$gpu $PY ../train.py data=sg_point_safety trainer.max_epochs=50 seed=$SEED \
+  ( cd .run_$name && CUDA_VISIBLE_DEVICES=$gpu $PY ../train.py data=${DATA:-sg_point_safety} trainer.max_epochs=50 seed=$SEED \
       wandb.enabled=false output_model_name=$name subdir=$name "$@" ) > "$LOG/train_$name.log" 2>&1 \
     && echo "  done $name" || echo "  FAILED $name (see $LOG/train_$name.log)"; }
 LAM="${SA},auc_gate:0.0,target:lambda,lambda_mode:batch_detached}"

@@ -8,7 +8,8 @@ import sg_point_eval as E
 
 N_TR = int(os.environ.get("N_TR", "50000")); STEPS = int(os.environ.get("STEPS", "20000")); SEED = int(os.environ.get("SG_SEED", "0"))
 names = os.environ.get("DIAG_ENCODERS", "pt_baseline,pt_jacobian,pt_jacpull,pt_jacpull_safeadv_linf").split(",")
-with h5py.File("/data/seongbin/lewm/datasets/sg_point_clean.h5", "r") as f:
+TRAIN_H5 = os.environ.get("TRAIN_H5", "/data/seongbin/lewm/datasets/sg_point_clean.h5")   # eval set = SG_DATA (sg_point_eval.DATA)
+with h5py.File(TRAIN_H5, "r") as f:
     idx = np.sort(np.random.default_rng(SEED).choice(f["pixels"].shape[0], N_TR, replace=False))
     Xtr, ytr = f["pixels"][idx], f["failures"][idx].astype(int)
 d = np.load(E.DATA); y = d["failure"].astype(int)
@@ -30,6 +31,7 @@ for name in names:
         si, ui = rng.choice(s_idx, E.BS), rng.choice(u_idx, E.BS)
         loss = E.gp_loss(head, Z[si], Z[ui]); opt.zero_grad(); loss.backward(); opt.step()
     head.eval()
+    sub = rng.choice(len(ytr), 5000, replace=False); fit_auc = E.score(head, Z[sub].cpu(), ytr[sub])[1]   # does it fit the training layouts?
     res = {ax: E.score(head, enc(d[ax]), y) for ax in ["base"] + E.AXES}
-    print(f"BIG {name} " + " ".join(f"{ax}: auc={r[1]:.3f} acc={r[0]:.3f} predsafe={r[2]:.3f} |" for ax, r in res.items()), flush=True)
+    print(f"BIG {name} train_fit_auc={fit_auc:.3f} | " + " ".join(f"{ax}: auc={r[1]:.3f} acc={r[0]:.3f} predsafe={r[2]:.3f} |" for ax, r in res.items()), flush=True)
     del m, Z; torch.cuda.empty_cache()
