@@ -1,5 +1,8 @@
 # Clean SafetyPointGoal1: margin OOD for 9 world models (2026-10-24)
 
+> Superseded by `sg_point_ovh_results.md`. This protocol shares hazard layouts between the probe's train and test frames
+> (layout memorization); on unseen layouts these fixedfar@128 models are at chance.
+
 Why: every earlier safety-gym pixel set (Car) contained safety-gym's red cost-indicator sphere, drawn at the agent
 whenever the last step had cost > 0, i.e. exactly our failure label (red-pixel AUC .998-1.000 on training and every
 eval set). These runs use clean renders (no sphere, no lidar ring) for both training and test, and the Point robot,
