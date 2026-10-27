@@ -7,7 +7,7 @@
 # usage: SFXS="_s1 _s2" ./run_point_eval_when_ready.sh
 cd "$(dirname "${BASH_SOURCE[0]}")"
 CODE=/data/seongbin/lewm/code_point_92e7589; CK=/data/seongbin/lewm/checkpoints; L=/home/seongbin/latent/run_logs/sg_point
-LOGS="/home/seongbin/latent/run_logs/sg_point_launcher.log /home/seongbin/latent/run_logs/sg_point_queue.log /home/seongbin/latent/run_logs/sg_point_queue_seeds.log /home/seongbin/latent/run_logs/sg_point_queue_ovh.log /home/seongbin/latent/run_logs/sg_point_ovh_pilot.log $L/retry.log"
+LOGS="/home/seongbin/latent/run_logs/sg_point_launcher.log /home/seongbin/latent/run_logs/sg_point_queue.log /home/seongbin/latent/run_logs/sg_point_queue_seeds.log /home/seongbin/latent/run_logs/sg_point_queue_ovh.log /home/seongbin/latent/run_logs/sg_point_ovh_pilot.log /home/seongbin/latent/run_logs/sg_point_queue_ovh_seeds.log $L/retry.log"
 BASES="pt_baseline pt_jacobian pt_jacpull pt_safeadv_linf_g0 pt_jac_safeadv_linf pt_jacpull_safeadv_linf pt_lam_bdet pt_jac_lam_bdet pt_jacpull_lam_bdet"
 read -ra SFXL <<< "${SFXS:-}"; [ ${#SFXL[@]} = 0 ] && SFXL=("")   # "" = the seed-3072 runs
 seed_of(){ case $1 in *_s[0-9]*) echo "${1##*_s}";; *) echo 3072;; esac; }   # "", _ovh -> 3072; _s1, _ovh_s1 -> 1
