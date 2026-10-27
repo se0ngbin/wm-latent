@@ -7,10 +7,11 @@
 # usage: SFXS="_s1 _s2" ./run_point_eval_when_ready.sh
 cd "$(dirname "${BASH_SOURCE[0]}")"
 CODE=/data/seongbin/lewm/code_point_92e7589; CK=/data/seongbin/lewm/checkpoints; L=/home/seongbin/latent/run_logs/sg_point
-LOGS="/home/seongbin/latent/run_logs/sg_point_launcher.log /home/seongbin/latent/run_logs/sg_point_queue.log /home/seongbin/latent/run_logs/sg_point_queue_seeds.log $L/retry.log"
+LOGS="/home/seongbin/latent/run_logs/sg_point_launcher.log /home/seongbin/latent/run_logs/sg_point_queue.log /home/seongbin/latent/run_logs/sg_point_queue_seeds.log /home/seongbin/latent/run_logs/sg_point_queue_ovh.log /home/seongbin/latent/run_logs/sg_point_ovh_pilot.log $L/retry.log"
 BASES="pt_baseline pt_jacobian pt_jacpull pt_safeadv_linf_g0 pt_jac_safeadv_linf pt_jacpull_safeadv_linf pt_lam_bdet pt_jac_lam_bdet pt_jacpull_lam_bdet"
 read -ra SFXL <<< "${SFXS:-}"; [ ${#SFXL[@]} = 0 ] && SFXL=("")   # "" = the seed-3072 runs
-seed_of(){ case $1 in "") echo 3072;; _s*) echo "${1#_s}";; esac; }
+seed_of(){ case $1 in *_s[0-9]*) echo "${1##*_s}";; *) echo 3072;; esac; }   # "", _ovh -> 3072; _s1, _ovh_s1 -> 1
+# DATA (training data config) is inherited by retries from this script's environment.
 declare -A TRIES
 while :; do
   missing=0
@@ -27,10 +28,16 @@ while :; do
     SEED=$(seed_of "$sfx") SFX=$sfx nohup "$CODE/run_point.sh" "$b" >> "$L/retry.log" 2>&1 &
     echo $! > "$L/retry_$n.pid"
   done; done
-  [ $missing = 0 ] && [ -f /data/seongbin/lewm/datasets/sg_point_multi_eval.npz ] && break
+  [ $missing = 0 ] && [ -f "${SG_DATA:-/data/seongbin/lewm/datasets/sg_point_multi_eval.npz}" ] && break
   sleep 300
 done
 gpu=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits | sort -t, -k2 -nr | head -1 | cut -d, -f1)
+if [ -n "${TRAIN_H5:-}" ]; then   # layout-disjoint protocol: probe on TRAIN_H5 frames, scored on SG_DATA (unseen layouts)
+  for sfx in "${SFXL[@]}"; do enc=$(for b in $BASES; do printf "%s," "$b$sfx"; done); for s in 0 1 2; do
+    CUDA_VISIBLE_DEVICES=$gpu SG_SEED=$s DIAG_ENCODERS=${enc%,} /home/seongbin/latent/le-wm/.venv/bin/python sg_point_bigprobe.py > "$L/bigprobe${sfx}_seed$s.log" 2>&1
+  done; done
+  grep -h "^BIG" "$L"/bigprobe*_seed*.log; exit 0
+fi
 for sfx in "${SFXL[@]}"; do for s in 0 1 2; do
   CUDA_VISIBLE_DEVICES=$gpu SG_SFX=$sfx SG_SEED=$s /home/seongbin/latent/le-wm/.venv/bin/python sg_point_eval.py > "$L/eval${sfx}_seed$s.log" 2>&1
 done; done
