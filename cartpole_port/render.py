@@ -16,15 +16,20 @@ POLE_PALETTE = dict(tan=(202, 152, 101), red=(220, 40, 40), green=(40, 170, 60),
                     orange=(240, 140, 20), teal=(20, 160, 160), purple=(140, 50, 190))
 
 
-def _px(x, y):
-    return ((x - XV[0]) / (XV[1] - XV[0]) * S, (1 - (y - YV[0]) / (YV[1] - YV[0])) * S)
+# OOD viewpoints (camera pan / zoom). The native view only just fits a drawn pole leaning out at the wall, so
+# zooming in or panning sideways at native scale crops the pole in near-wall states (24-40% of failed test
+# frames): x-pans are done at the zoomed-out scale, and the y-pan can't crop (the cart moves only in x).
+_YOUT = (1.25 - 1.75 / 0.8, 1.25 + 1.75 / 0.8)
+VIEWS = dict(zoom_out=((-3.75, 3.75), _YOUT), pan_x=((-3.25, 4.25), _YOUT), pan_y=(XV, (-0.2, 3.3)))
 
 
-def render(state, colors=None):
+def render(state, colors=None, view=None):
     c = {**DEFAULT, **(colors or {})}
+    xv, yv = view or (XV, YV)
+    _px = lambda x, y: ((x - xv[0]) / (xv[1] - xv[0]) * S, (1 - (y - yv[0]) / (yv[1] - yv[0])) * S)
     x, _, th, _ = (float(v) for v in state)
     im = Image.new("RGB", (S, S), c["bg"]); d = ImageDraw.Draw(im)
-    d.line([_px(XV[0], 0), _px(XV[1], 0)], fill=c["track"], width=4)
+    d.line([_px(xv[0], 0), _px(xv[1], 0)], fill=c["track"], width=4)
     for w in (-2.4, 2.4):
         d.line([_px(w, -0.25), _px(w, 0.6)], fill=c["wall"], width=8)
     cw, ch = 0.4, 0.24

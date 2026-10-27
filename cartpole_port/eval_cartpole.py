@@ -8,7 +8,8 @@ Per model (WM frozen; heads trained on train episodes, scored on held-out test e
           No value/doomed labels used in training.
   probe   supervised regression h_t -> oracle V (is the information in the latent at all?).
 Scored: failed AUC (margin), unsafe AUC (V<0) and doomed-vs-safe AUC (among l>=0) for critic/probe/margin,
-in-dist (tan pole) and zero-shot on the SAME test states re-rendered with a held-out purple pole.
+in-dist (tan pole) and zero-shot on the SAME test states re-rendered under OOD conditions
+(held-out purple pole; camera viewpoints zoom_out / pan_x / pan_y).
 `--state_ceiling` runs the same critic on true 4D state history with the true margin (method ceiling).
 Usage: eval_cartpole.py MODEL [MODEL...]   |   eval_cartpole.py --state_ceiling
 """
@@ -20,11 +21,12 @@ from sklearn.metrics import roc_auc_score
 import stable_worldmodel as swm
 from utils import get_img_preprocessor
 from ood_margin_gp_jepa import train_margin, DEV
-from render import render, POLE_PALETTE
+from render import render, POLE_PALETTE, VIEWS
 
 H5 = "/data/seongbin/lewm/datasets/cartpole_expert.h5"
 OUT = "/data/seongbin/lewm/cartpole_eval"
-PURPLE = f"{OUT}/test_purple_pixels.npy"
+# OOD conditions: the SAME test states re-rendered (labels unchanged)
+CONDS = dict(purple=dict(colors=dict(pole=POLE_PALETTE["purple"])), **{k: dict(view=v) for k, v in VIEWS.items()})
 GAMMA, Q_STEPS, SEEDS = 0.98, 20000, (0, 1, 2)
 
 
@@ -39,13 +41,12 @@ def load_data():
     return d
 
 
-def purple_pixels(d):
-    if not os.path.exists(PURPLE):
+def cond_pixels(d, cond):
+    path = f"{OUT}/test_{cond}_pixels.npy"
+    if not os.path.exists(path):
         os.makedirs(OUT, exist_ok=True)
-        idx = np.where(d["test"])[0]
-        col = dict(pole=POLE_PALETTE["purple"])
-        np.save(PURPLE, np.stack([render(s, col) for s in d["state"][idx]]))
-    return np.load(PURPLE, mmap_mode="r")
+        np.save(path, np.stack([render(s, **CONDS[cond]) for s in d["state"][d["test"]]]))
+    return np.load(path, mmap_mode="r")
 
 
 def encode_pixels(m, pix, tf, bs=256):
@@ -110,13 +111,13 @@ def apply(net, X, bs=8192):
         return torch.cat([net(X[i:i + bs].to(DEV)) for i in range(0, len(X), bs)]).cpu()
 
 
-def run(name, d, Z, Zp):
-    """Z: latents for all frames (in-dist); Zp: latents for test frames re-rendered purple (test order)."""
+def run(name, d, Z, Zc, tag):
+    """Z: latents for all frames (in-dist); Zc: {cond: latents of the test frames re-rendered (test order)}."""
     tr, te = ~d["test"], d["test"]
     hist = torch.as_tensor(d["hist"])
     Hall = Z[hist].flatten(1)                                                     # (N, 3*192)
     te_idx = np.where(te)[0]; pos = np.full(len(te), -1); pos[te_idx] = np.arange(len(te_idx))
-    Hp = Zp[torch.as_tensor(pos[d["hist"][te_idx]])].flatten(1)                  # purple history (test order)
+    hte = torch.as_tensor(pos[d["hist"][te_idx]])                                # test history in test order
     mar, val = d["margin"][te], d["value"][te]
     trn = tr & d["has_next"]; ti = np.where(trn)[0]
     a = torch.as_tensor((d["action"][:, 0] > 0).astype(np.int64))
@@ -126,13 +127,13 @@ def run(name, d, Z, Zp):
         l_all = apply(m, Z).flatten()
         q = fqi(Hall[ti], Hall[ti + 1], l_all[ti], a[ti], seed)
         pr = probe(Hall[tr], d["value"][tr], seed)
-        for cond, Zc, Hc in (("tan", Z[te], Hall[te]), ("purple", Zp, Hp)):
-            res.setdefault(cond, {}).setdefault("margin", []).append(metrics(apply(m, Zc).flatten().numpy(), mar, val))
+        for cond, Zx, Hc in (("tan", Z[te], Hall[te]), *((c, z, z[hte].flatten(1)) for c, z in Zc.items())):
+            res.setdefault(cond, {}).setdefault("margin", []).append(metrics(apply(m, Zx).flatten().numpy(), mar, val))
             res[cond].setdefault("critic", []).append(metrics(apply(q, Hc).max(1).values.numpy(), mar, val))
             res[cond].setdefault("probe", []).append(metrics(apply(pr, Hc)[:, 0].numpy(), mar, val))
     summ = {c: {h: {k: (float(np.mean([r[k] for r in rs])), float(np.std([r[k] for r in rs]))) for k in rs[0]}
                 for h, rs in hs.items()} for c, hs in res.items()}
-    json.dump(dict(model=name, seeds=list(SEEDS), runs=res, summary=summ), open(f"{OUT}/{name}.json", "w"), indent=1)
+    json.dump(dict(model=name, seeds=list(SEEDS), runs=res, summary=summ), open(f"{OUT}/{name}{tag}.json", "w"), indent=1)
     for c, hs in summ.items():
         for h, ks in hs.items():
             print(f"KEY {name} {c:6s} {h:6s} " + " ".join(f"{k}={m:.3f}±{s:.3f}" for k, (m, s) in ks.items()), flush=True)
@@ -152,20 +153,22 @@ def state_ceiling(d):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("models", nargs="*"); ap.add_argument("--state_ceiling", action="store_true")
+    ap.add_argument("--conds", default="purple", help=f"comma list of {list(CONDS)}; non-default writes MODEL_<conds>.json")
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     d = load_data()
     if a.state_ceiling: state_ceiling(d)
     if not a.models: return
-    pp = purple_pixels(d)
+    conds = a.conds.split(","); tag = "" if conds == ["purple"] else "_" + "+".join(conds)
+    cp = {c: cond_pixels(d, c) for c in conds}
     tf = get_img_preprocessor(source="pixels", target="pixels", img_size=224)
     with h5py.File(H5) as f:
         pix = f["pixels"]
         for name in a.models:
             m = swm.wm.utils.load_pretrained(f"{name}/weights_epoch_50.pt").to(DEV).eval()
-            Z, Zp = encode_pixels(m, pix, tf), encode_pixels(m, pp, tf)
+            Z, Zc = encode_pixels(m, pix, tf), {c: encode_pixels(m, p, tf) for c, p in cp.items()}
             del m; torch.cuda.empty_cache()
-            run(name, d, Z, Zp)
+            run(name, d, Z, Zc, tag)
 
 
 if __name__ == "__main__":
