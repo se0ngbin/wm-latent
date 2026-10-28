@@ -13,16 +13,25 @@ with h5py.File(TRAIN_H5, "r") as f:
     idx = np.sort(np.random.default_rng(SEED).choice(f["pixels"].shape[0], N_TR, replace=False))
     Xtr, ytr = f["pixels"][idx], f["failures"][idx].astype(int)
 d = np.load(E.DATA); y = d["failure"].astype(int)
+d = {k: d[k] for k in ["base"] + E.AXES}   # decompress each view once (npz access re-decompresses on every read)
 print(f"train frames={N_TR} unsafe={ytr.mean():.3f} | eval poses={len(y)} unsafe={y.mean():.3f} safe frac={1 - y.mean():.3f}", flush=True)
 tf = E.get_img_preprocessor(source="pixels", target="pixels", img_size=224)
 for name in names:
     m = E.swm.wm.utils.load_pretrained(f"{name}/weights_epoch_50.pt").to(E.DEV).eval()
+    MEAN = torch.tensor([0.485, 0.456, 0.406], device=E.DEV).view(1, 3, 1, 1); STD = torch.tensor([0.229, 0.224, 0.225], device=E.DEV).view(1, 3, 1, 1)
+    def prep(a):   # == get_img_preprocessor (ImageNet ToImage + Resize 224) for frames already at 224: batched on GPU
+        if a.shape[1] != 224: return torch.stack([tf({"pixels": x})["pixels"] for x in a]).to(E.DEV)   # per-frame CPU path
+        # (0,3,2,1), not (0,3,1,2): the training ToImage yields W/H transposed relative to the HWC frame (checked: 7e-7 vs 4.1)
+        return (torch.as_tensor(a, device=E.DEV).permute(0, 3, 2, 1).float() / 255. - MEAN) / STD
     def enc(imgs, bs=256):
         out = []
         for i in range(0, len(imgs), bs):
-            b = torch.stack([tf({"pixels": imgs[j]})["pixels"] for j in range(i, min(i + bs, len(imgs)))]).to(E.DEV)
-            with torch.no_grad(): out.append(m.projector(m.encoder(b, interpolate_pos_encoding=True).last_hidden_state[:, 0]).cpu())
+            with torch.no_grad(): out.append(m.projector(m.encoder(prep(imgs[i:i + bs]), interpolate_pos_encoding=True).last_hidden_state[:, 0]).cpu())
         return torch.cat(out)
+    if not getattr(E, "_prep_checked", False):   # exactness check vs the training preprocessor
+        chk = d["base"][:8]; ref = torch.stack([tf({"pixels": x})["pixels"] for x in chk]).to(E.DEV)
+        err = (prep(chk) - ref).abs().max().item(); print(f"prep check: max|gpu - training preprocessor| = {err:.2e}", flush=True)
+        assert err < 1e-4, "fast preprocessing does not match the training preprocessor"; E._prep_checked = True
     Z = enc(Xtr).to(E.DEV)
     torch.manual_seed(SEED); rng = np.random.default_rng(SEED)
     s_idx, u_idx = np.where(ytr == 0)[0], np.where(ytr == 1)[0]
