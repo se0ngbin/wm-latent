@@ -218,46 +218,42 @@ track with the pole upright and still be lost, because it is moving too fast to 
 le-wm, 50 epochs, seed 3072, same recipes and code snapshots as the Dubins runs (the adv_h gate opened: in-training head AUC
 0.991). ± = std over 3 margin-function seeds (init only; the episode split is fixed) on one WM per model.
 
+Frames are fed in the training orientation (fixed 2026-10-28). The earlier cartpole numbers came from `eval_cartpole.encode_pixels`, which passes numpy HWC frames to `ToImage` and so transposes them (the cart lying on its side); a rerun of that path reproduces the old table (AUC within 0.001, sign accuracy within 0.004). Scripts `cp_bal/margin_ood_bal_fixed.py`, outputs `/data/seongbin/lewm/cartpole_eval_balanced/fixed_orient/`.
+
 AUC
 
 | Model | base | color | zoom_out | pan_x | pan_y |
 |---|---|---|---|---|---|
-| sigreg | 0.991 ± 0.001 | 0.656 ± 0.003 | 0.619 ± 0.010 | 0.620 ± 0.010 | 0.746 ± 0.014 |
-| jac | 0.992 ± 0.002 | 0.737 ± 0.006 | 0.727 ± 0.007 | 0.754 ± 0.013 | 0.758 ± 0.016 |
-| jac+pull | 0.992 ± 0.002 | 0.789 ± 0.010 | 0.708 ± 0.014 | 0.700 ± 0.014 | 0.796 ± 0.011 |
-| adv_h | 0.981 ± 0.002 | 0.665 ± 0.002 | 0.800 ± 0.006 | 0.601 ± 0.020 | 0.769 ± 0.007 |
-| jac+adv_h | 0.993 ± 0.002 | 0.753 ± 0.014 | 0.592 ± 0.013 | 0.636 ± 0.002 | 0.777 ± 0.012 |
-| jac+pull+adv_h | 0.991 ± 0.000 | 0.750 ± 0.023 | 0.642 ± 0.015 | 0.723 ± 0.016 | 0.801 ± 0.003 |
-| adv_λ | 0.984 ± 0.001 | 0.836 ± 0.008 | 0.707 ± 0.011 | 0.668 ± 0.004 | 0.699 ± 0.008 |
-| jac+adv_λ | 0.980 ± 0.005 | 0.891 ± 0.009 | 0.530 ± 0.018 | 0.539 ± 0.011 | 0.690 ± 0.009 |
-| jac+pull+adv_λ | 0.986 ± 0.001 | 0.894 ± 0.011 | 0.596 ± 0.007 | 0.569 ± 0.006 | 0.551 ± 0.010 |
+| sigreg | 1.000 ± 0.000 | 0.853 ± 0.006 | 0.984 ± 0.000 | 0.978 ± 0.001 | 0.971 ± 0.001 |
+| jac | 1.000 ± 0.000 | 0.978 ± 0.001 | 0.977 ± 0.002 | 0.971 ± 0.002 | 0.928 ± 0.000 |
+| jac+pull | 1.000 ± 0.000 | 0.971 ± 0.001 | 0.994 ± 0.000 | 0.986 ± 0.000 | 0.938 ± 0.001 |
+| adv_h | 1.000 ± 0.000 | 0.983 ± 0.001 | 0.970 ± 0.000 | 0.964 ± 0.001 | 0.865 ± 0.006 |
+| jac+adv_h | 1.000 ± 0.000 | 0.944 ± 0.001 | 0.991 ± 0.001 | 0.993 ± 0.000 | 0.939 ± 0.001 |
+| jac+pull+adv_h | 1.000 ± 0.000 | 0.855 ± 0.001 | 0.989 ± 0.001 | 0.991 ± 0.000 | 0.950 ± 0.003 |
+| adv_λ | 1.000 ± 0.000 | 0.983 ± 0.000 | 0.985 ± 0.000 | 0.977 ± 0.001 | 0.874 ± 0.006 |
+| jac+adv_λ | 1.000 ± 0.000 | 0.973 ± 0.000 | 0.979 ± 0.001 | 0.988 ± 0.000 | 0.953 ± 0.001 |
+| jac+pull+adv_λ | 0.999 ± 0.000 | 0.967 ± 0.001 | 0.980 ± 0.000 | 0.985 ± 0.001 | 0.944 ± 0.002 |
 
-Sign accuracy (h >= 0 = safe; the test set is 0.832 not failed, so 0.832 = everything called safe, 0.168 = everything unsafe)
+Sign accuracy, balanced: (TPR_safe + TPR_unsafe) / 2 on the full test set, i.e. the expected accuracy on a 50/50 safe/failed split (0.500 = everything called one class). The margin function is trained on the natural split.
 
 | Model | base | color | zoom_out | pan_x | pan_y |
 |---|---|---|---|---|---|
-| sigreg | 0.953 ± 0.005 | 0.629 ± 0.031 | 0.311 ± 0.019 | 0.334 ± 0.018 | 0.292 ± 0.092 |
-| jac | 0.949 ± 0.003 | 0.494 ± 0.027 | 0.427 ± 0.026 | 0.452 ± 0.029 | 0.633 ± 0.029 |
-| jac+pull | 0.955 ± 0.010 | 0.726 ± 0.026 | 0.466 ± 0.013 | 0.499 ± 0.014 | 0.611 ± 0.033 |
-| adv_h | 0.939 ± 0.019 | 0.739 ± 0.037 | 0.718 ± 0.013 | 0.427 ± 0.044 | 0.713 ± 0.001 |
-| jac+adv_h | 0.953 ± 0.010 | 0.844 ± 0.017 | 0.440 ± 0.026 | 0.608 ± 0.008 | 0.696 ± 0.022 |
-| jac+pull+adv_h | 0.950 ± 0.008 | 0.819 ± 0.010 | 0.605 ± 0.056 | 0.671 ± 0.048 | 0.512 ± 0.002 |
-| adv_λ | 0.923 ± 0.003 | 0.744 ± 0.008 | 0.613 ± 0.017 | 0.590 ± 0.028 | 0.697 ± 0.012 |
-| jac+adv_λ | 0.930 ± 0.009 | 0.858 ± 0.004 | 0.227 ± 0.046 | 0.236 ± 0.059 | 0.591 ± 0.034 |
-| jac+pull+adv_λ | 0.924 ± 0.024 | 0.856 ± 0.014 | 0.192 ± 0.011 | 0.170 ± 0.006 | 0.224 ± 0.019 |
+| sigreg | 0.992 ± 0.001 | 0.658 ± 0.001 | 0.877 ± 0.009 | 0.873 ± 0.009 | 0.880 ± 0.002 |
+| jac | 0.990 ± 0.001 | 0.914 ± 0.003 | 0.864 ± 0.009 | 0.847 ± 0.011 | 0.679 ± 0.008 |
+| jac+pull | 0.992 ± 0.001 | 0.780 ± 0.006 | 0.894 ± 0.006 | 0.905 ± 0.005 | 0.801 ± 0.007 |
+| adv_h | 0.992 ± 0.001 | 0.802 ± 0.003 | 0.889 ± 0.001 | 0.894 ± 0.001 | 0.747 ± 0.003 |
+| jac+adv_h | 0.992 ± 0.001 | 0.650 ± 0.002 | 0.846 ± 0.005 | 0.820 ± 0.005 | 0.768 ± 0.003 |
+| jac+pull+adv_h | 0.992 ± 0.002 | 0.648 ± 0.001 | 0.827 ± 0.004 | 0.829 ± 0.003 | 0.821 ± 0.002 |
+| adv_λ | 0.993 ± 0.000 | 0.724 ± 0.010 | 0.872 ± 0.003 | 0.894 ± 0.006 | 0.748 ± 0.001 |
+| jac+adv_λ | 0.989 ± 0.001 | 0.651 ± 0.001 | 0.827 ± 0.009 | 0.819 ± 0.010 | 0.808 ± 0.008 |
+| jac+pull+adv_λ | 0.988 ± 0.001 | 0.669 ± 0.010 | 0.830 ± 0.002 | 0.842 ± 0.003 | 0.829 ± 0.007 |
 
 Reading:
 
-- Base is easy for every model (AUC 0.980-0.993).
-- Color: adv_λ is the best safety reg on every base (0.836 / 0.891 / 0.894). The Jacobian term helps on its own
-  (sigreg 0.656 -> jac 0.737, jac+pull 0.789). adv_h barely moves the margin (0.665 / 0.753 / 0.750). The thresholds of
-  jac+adv_λ, jac+pull+adv_λ and jac+adv_h roughly hold (sign accuracy 0.844-0.858 against 0.832 for calling
-  everything safe); the others don't.
-- Viewpoint breaks every model (0.530-0.801), and the ranking flips: jac+adv_λ and jac+pull+adv_λ, best on color, are the
-  worst on zoom_out and pan_x (0.530-0.596) and call nearly everything unsafe (sign accuracy 0.170-0.236).
-- No model is good on all three views. The best per view are adv_h on zoom_out (0.800), jac on pan_x (0.754) and
-  jac+pull+adv_h on pan_y (0.801). The Jacobian term helps a little without a safety reg (jac 0.727 / 0.754 / 0.758 vs
-  sigreg 0.619 / 0.620 / 0.746).
+- Viewpoint is mostly easy for every model (AUC 0.865-0.994). The earlier "viewpoint breaks every model" came from the transpose.
+- Color: sigreg is the weakest (0.853); jac, adv_h and adv_λ reach 0.978-0.983; jac+pull+adv_h is low (0.855).
+- Thresholds: OOD sign errors almost all lean toward calling states safe (balanced predicted-safe fraction > 0.5). On color only jac keeps its threshold (0.914); sigreg calls 83% of frames safe despite AUC 0.853. adv_h is the only model calibrated (predicted-safe about 0.50) on all three viewpoint shifts.
+- The sections below (why viewpoint fails, value functions, support vs aliasing) still use the transposed frames and need rerunning.
 
 ## Why viewpoint fails: the latent moves, the information stays
 
@@ -577,7 +573,7 @@ Unsafe states whose nearest training latents are mostly safe
 
 CEM with the margin function's unsafe region as an extra cost on the imagined rollout: $\text{cost} = \text{goal MSE} + w \sum_t \mathrm{relu}(-h(\hat z_t)) + C\,\mathbb{1}[\min_t h(\hat z_t) < 0]$. Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). The graded version has $C = 0$; the lexicographic version adds $C = 10^4$ (larger than any goal cost, about 130), so every candidate $h$ calls safe beats every unsafe one, while the hinge still ranks the unsafe ones. Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>[_c<C>]_<condition>.log`.
 
-- $h$ here is an HJ-value regression margin function (MSE onto $V^*$, no GP; `margin_hj_color_red_rk0_s0.pt`), trained on red frames in the training orientation, so the eval transpose bug does not affect these numbers.
+- $h$ here is a supervised value function, not a margin function: MSE regression onto the oracle HJ value $V^*$ (computed offline by a grid solver on the true dynamics, `hj_truth.npz`) at random states rendered red and encoded by the frozen WM (`train_margin_hj_lewm.py`, `margin_hj_color_red_rk0_s0.pt`; no GP, no RL). The labels are privileged; a GP margin function on failure labels (the one behind the OOD tables) is the label-free variant, queued. Frames are in the training orientation, so the eval transpose bug does not affect these numbers.
 - Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50. N = 200 episodes per cell, one run per cell. Success % / collision %.
 
 Weight sweep (red)
