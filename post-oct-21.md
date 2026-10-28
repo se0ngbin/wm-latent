@@ -578,7 +578,7 @@ CEM with the margin function's unsafe region as an extra cost on the imagined ro
 
 Weight sweep (red)
 
-| model | raw CEM | w = 100 | w = 1000 | w = 10000 | lexicographic (w = 1000, C = 10⁴) |
+| model | raw CEM | w = 100 | w = 1000 | w = 10000 | safety-first |
 |---|---|---|---|---|---|
 | sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 | 39.0 / 60.5 |
 | jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 | 72.0 / 11.0 |
