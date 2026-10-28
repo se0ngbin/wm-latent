@@ -7,6 +7,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export STABLEWM_HOME=/data/seongbin/lewm LOCAL_DATASET_DIR=/data/seongbin/lewm
+# Cap CPU threads: with default (=all cores) threads, 6 concurrent evals on a loaded box spin in futex waits and
+# never get through setup (observed: 0 progress in 60 min at load ~80 on 24 cores).
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4} MKL_NUM_THREADS=${OMP_NUM_THREADS:-4} OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS:-4}
 LOG=/home/seongbin/latent/run_logs; PY=/home/seongbin/latent/le-wm/.venv/bin/python
 GPU=$1 WM=$2 HEAD=$3 TAG=$4 W=$5; shift 5
 C=${CONST:-0}; SUF=w${W}; [ "$C" != 0 ] && SUF=${SUF}_c${C}   # CONST env: lexicographic flat cost
