@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Soft-cost CEM: goal + w * sum_t relu(-h(z_t)) on imagined latents (HJ margin head), sg25clean protocol
 # (same eval.py overrides as raw_cem_ood.sh). Usage: soft_cem.sh <gpu> <wm_dir> <head.pt> <tag> <w> [scen ...]
-# Optional env CONST=<c> adds c * 1[any violation]. scen in red purple diamond fullrot90 (default red).
+# Optional env CONST=<c> adds c * 1[any violation]; BS = envs per CEM batch (16; 1 is launch-bound when CPU is shared). scen in red purple diamond fullrot90 (default red).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export STABLEWM_HOME=/data/seongbin/lewm LOCAL_DATASET_DIR=/data/seongbin/lewm
@@ -13,7 +13,7 @@ for scen in "${@:-red}"; do
   lg="$LOG/softcem_${TAG}_${SUF}_${scen}.log"
   grep -q "'collision_rate'" "$lg" 2>/dev/null && continue
   env ${ENVS[$scen]} CUDA_VISIBLE_DEVICES=$GPU $PY eval.py --config-name=dubins solver=soft_cem \
-    solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C policy="$WM/weights_epoch_50.pt" \
+    solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C solver.batch_size=${BS:-16} policy="$WM/weights_epoch_50.pt" \
     eval.num_eval=200 eval.goal_offset_steps=25 eval.goal_at_episode_end=false eval.eval_budget=50 \
     plan_config.horizon=25 plan_config.action_block=1 plan_config.receding_horizon=25 \
     '+eval.goal_avoid_obstacles=[[0.25,0.65,0.5],[0.25,-0.65,0.5]]' +eval.goal_avoid_margin=0.05 \
