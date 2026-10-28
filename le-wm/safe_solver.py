@@ -260,8 +260,9 @@ class _SoftCostJEPA:
     """Model proxy: goal cost + w * sum_t relu(m - h(z_t)) over the imagined
     rollout. Unsafe-looking candidates just rank badly; no action map."""
 
-    def __init__(self, jepa, head, weight, margin):
+    def __init__(self, jepa, head, weight, margin, const):
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
+        self.const = const  # flat cost for ANY violation: safe beats unsafe lexicographically
 
     def parameters(self):
         return self.jepa.parameters()
@@ -272,19 +273,20 @@ class _SoftCostJEPA:
         z = info_dict["predicted_emb"][:, :, H:]                  # imagined only
         h = self.head(z.float())                                  # (B, S, T')
         pen = torch.relu(self.margin - h).sum(-1)
-        self.last = (cost.mean().item(), pen.mean().item(), (h < 0).any(-1).float().mean().item())
-        return cost + self.weight * pen.to(cost.dtype)
+        viol = (h < self.margin).any(-1)
+        self.last = (cost.mean().item(), pen.mean().item(), viol.float().mean().item())
+        return cost + (self.weight * pen + self.const * viol).to(cost.dtype)
 
 
 class SoftSafeCEMSolver(CEMSolver):
     """Plain CEM with the learned margin's unsafe region as a soft cost."""
 
     def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
-                 unsafe_margin: float = 0.0, **kwargs):
+                 unsafe_margin: float = 0.0, unsafe_const: float = 0.0, **kwargs):
         device = kwargs.get("device", "cuda")
         head = _MarginHead().to(device)
         head.load_state_dict(torch.load(margin_ckpt, map_location=device)["margin_gp"])
-        super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin), **kwargs)
+        super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const), **kwargs)
 
     @torch.inference_mode()
     def solve(self, info_dict, init_action=None):
