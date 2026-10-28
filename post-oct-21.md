@@ -30,6 +30,8 @@ Both safety regs use the same L∞ attack (ε = 8/255); the names say which read
 
 # Dubins
 
+![Dubins base vs OOD frames](figs/ood_frames_dubins.png)
+
 The same 3×3 grid on Dubins for reference: base {sigreg, jac, jac+pull} × safety reg {none, adv_h,
 adv_λ}. Zero-shot margin_gp: the head is trained on red-obstacle frames and scored on the same states
 re-rendered with purple obstacles (color), a 90° rotation (rotate) or diamond obstacles (shape); labels are exact under
@@ -76,6 +78,8 @@ Reading:
   adv_λ 0.721 ± 0.434. Only jac+pull+adv_h is stable (0.957 ± 0.021).
 
 # Safety Gym
+
+![Safety Gym Point base vs OOD frames](figs/ood_frames_sg_point.png)
 
 Goal: a second benchmark where safety is coupled to dynamics (unlike a "teleportable" agent whose safe set is just the
 obstacle geometry), to re-test the appearance-shift findings from Dubins. Code and logs: branch `point-dynamics-probe`
@@ -197,6 +201,8 @@ Reading:
 - No Point Dreamer has been trained.
 
 # Cartpole
+
+![Cartpole base vs OOD frames](figs/ood_frames_cartpole.png)
 
 Goal: a benchmark where safety is coupled to dynamics and the safe set can be computed exactly. A cart can be inside the
 track with the pole upright and still be lost, because it is moving too fast to stop. Classic Gym CartPole-v1 (Euler step,
