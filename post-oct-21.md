@@ -135,45 +135,43 @@ Pilot, same margin function on unseen layouts (AUC, base view): sigreg 0.362 (fi
 le-wm, 50 epochs, seed 3072. Safety-reg recipes copied from the earlier safety-gym reference runs. ± = std over 3 margin-function seeds
 (training subsample and init) on one WM per model (training seed 3072). "train fit" = the margin function's AUC on its own training frames.
 
-AUC
+Frames are fed in the training orientation (fixed 2026-10-28). The earlier tables came from `sg_point_bigprobe.py`, which preprocessed the h5 and npz frames as numpy HWC (directly through `ToImage`, or with the equivalent `permute(0, 3, 2, 1)`), so every frame was transposed and "rotate" was a mirror flip, not the 90° camera turn. A rerun of that path reproduces the old tables exactly (AUC within 0.0005). Fixed outputs: `/data/seongbin/lewm/sg_point_balanced/fixed/` (`tables.md`, per-sample margins in `<model>_seed<s>.npz`). The old "train fit" column was also on transposed frames and is dropped.
 
-| Model | train fit | base | color | rotate | shape | agent |
-|---|---|---|---|---|---|---|
-| sigreg | 0.989 ± 0.001 | 0.581 ± 0.023 | 0.464 ± 0.013 | 0.447 ± 0.020 | 0.514 ± 0.043 | 0.554 ± 0.020 |
-| jac | 1.000 ± 0.000 | 0.954 ± 0.006 | 0.725 ± 0.014 | 0.932 ± 0.009 | 0.952 ± 0.007 | 0.824 ± 0.010 |
-| jac+pull | 0.999 ± 0.000 | 0.836 ± 0.015 | 0.660 ± 0.035 | 0.740 ± 0.022 | 0.865 ± 0.010 | 0.673 ± 0.045 |
-| adv_h | 0.996 ± 0.000 | 0.948 ± 0.003 | 0.746 ± 0.008 | 0.909 ± 0.009 | 0.619 ± 0.015 | 0.873 ± 0.008 |
-| jac+adv_h | 0.998 ± 0.000 | 0.985 ± 0.001 | 0.937 ± 0.006 | 0.972 ± 0.003 | 0.984 ± 0.001 | 0.917 ± 0.000 |
-| jac+pull+adv_h | 0.999 ± 0.000 | 0.939 ± 0.007 | 0.753 ± 0.032 | 0.821 ± 0.012 | 0.951 ± 0.004 | 0.852 ± 0.007 |
-| adv_λ | 0.989 ± 0.001 | 0.885 ± 0.010 | 0.501 ± 0.009 | 0.899 ± 0.003 | 0.895 ± 0.009 | 0.757 ± 0.016 |
-| jac+adv_λ | 0.994 ± 0.001 | 0.969 ± 0.003 | 0.898 ± 0.024 | 0.961 ± 0.003 | 0.972 ± 0.001 | 0.892 ± 0.007 |
-| jac+pull+adv_λ | 0.995 ± 0.001 | 0.971 ± 0.003 | 0.894 ± 0.013 | 0.955 ± 0.004 | 0.974 ± 0.002 | 0.867 ± 0.005 |
-
-Sign accuracy (h >= 0 = safe; the test set is 0.830 safe, so 0.830 = everything called safe, 0.170 = everything unsafe)
+AUC (base = unseen layouts)
 
 | Model | base | color | rotate | shape | agent |
 |---|---|---|---|---|---|
-| sigreg | 0.776 ± 0.009 | 0.820 ± 0.003 | 0.794 ± 0.019 | 0.808 ± 0.008 | 0.777 ± 0.007 |
-| jac | 0.896 ± 0.001 | 0.468 ± 0.037 | 0.866 ± 0.001 | 0.890 ± 0.005 | 0.814 ± 0.009 |
-| jac+pull | 0.847 ± 0.011 | 0.757 ± 0.012 | 0.839 ± 0.010 | 0.861 ± 0.013 | 0.813 ± 0.002 |
-| adv_h | 0.931 ± 0.004 | 0.170 ± 0.000 | 0.918 ± 0.004 | 0.835 ± 0.003 | 0.884 ± 0.004 |
-| jac+adv_h | 0.956 ± 0.001 | 0.879 ± 0.005 | 0.907 ± 0.003 | 0.949 ± 0.002 | 0.866 ± 0.002 |
-| jac+pull+adv_h | 0.852 ± 0.007 | 0.809 ± 0.004 | 0.852 ± 0.008 | 0.879 ± 0.013 | 0.812 ± 0.011 |
-| adv_λ | 0.879 ± 0.000 | 0.710 ± 0.010 | 0.888 ± 0.012 | 0.889 ± 0.005 | 0.841 ± 0.004 |
-| jac+adv_λ | 0.934 ± 0.009 | 0.618 ± 0.023 | 0.907 ± 0.013 | 0.937 ± 0.004 | 0.815 ± 0.006 |
-| jac+pull+adv_λ | 0.940 ± 0.005 | 0.752 ± 0.022 | 0.905 ± 0.007 | 0.937 ± 0.003 | 0.808 ± 0.004 |
+| sigreg | 0.560 ± 0.013 | 0.501 ± 0.005 | 0.526 ± 0.014 | 0.406 ± 0.016 | 0.559 ± 0.013 |
+| jac | 0.953 ± 0.007 | 0.733 ± 0.032 | 0.948 ± 0.003 | 0.957 ± 0.008 | 0.863 ± 0.002 |
+| jac+pull | 0.804 ± 0.015 | 0.644 ± 0.029 | 0.813 ± 0.011 | 0.845 ± 0.014 | 0.618 ± 0.016 |
+| adv_h | 0.960 ± 0.002 | 0.609 ± 0.003 | 0.940 ± 0.011 | 0.899 ± 0.003 | 0.937 ± 0.006 |
+| jac+adv_h | 0.980 ± 0.001 | 0.920 ± 0.006 | 0.976 ± 0.002 | 0.979 ± 0.001 | 0.891 ± 0.003 |
+| jac+pull+adv_h | 0.914 ± 0.009 | 0.776 ± 0.038 | 0.889 ± 0.014 | 0.935 ± 0.006 | 0.782 ± 0.028 |
+| adv_λ | 0.919 ± 0.009 | 0.691 ± 0.028 | 0.937 ± 0.008 | 0.927 ± 0.008 | 0.847 ± 0.022 |
+| jac+adv_λ | 0.971 ± 0.000 | 0.884 ± 0.008 | 0.966 ± 0.004 | 0.971 ± 0.001 | 0.877 ± 0.002 |
+| jac+pull+adv_λ | 0.968 ± 0.000 | 0.858 ± 0.009 | 0.965 ± 0.004 | 0.969 ± 0.001 | 0.897 ± 0.005 |
+
+Sign accuracy, balanced: (TPR_safe + TPR_unsafe) / 2 on the full test set, i.e. the expected accuracy on a 50/50 safe/unsafe split (0.500 = everything called one class). The margin function is trained on the natural split.
+
+| Model | base | color | rotate | shape | agent |
+|---|---|---|---|---|---|
+| sigreg | 0.475 ± 0.004 | 0.492 ± 0.007 | 0.483 ± 0.004 | 0.481 ± 0.005 | 0.473 ± 0.006 |
+| jac | 0.782 ± 0.006 | 0.597 ± 0.032 | 0.704 ± 0.002 | 0.757 ± 0.014 | 0.764 ± 0.006 |
+| jac+pull | 0.550 ± 0.002 | 0.544 ± 0.102 | 0.574 ± 0.006 | 0.644 ± 0.004 | 0.546 ± 0.004 |
+| adv_h | 0.908 ± 0.007 | 0.500 ± 0.000 | 0.836 ± 0.014 | 0.826 ± 0.001 | 0.849 ± 0.001 |
+| jac+adv_h | 0.911 ± 0.003 | 0.639 ± 0.028 | 0.839 ± 0.042 | 0.953 ± 0.003 | 0.736 ± 0.003 |
+| jac+pull+adv_h | 0.574 ± 0.027 | 0.639 ± 0.080 | 0.688 ± 0.016 | 0.695 ± 0.032 | 0.575 ± 0.041 |
+| adv_λ | 0.779 ± 0.002 | 0.674 ± 0.026 | 0.794 ± 0.010 | 0.783 ± 0.001 | 0.654 ± 0.001 |
+| jac+adv_λ | 0.946 ± 0.004 | 0.765 ± 0.016 | 0.858 ± 0.040 | 0.948 ± 0.002 | 0.809 ± 0.017 |
+| jac+pull+adv_λ | 0.931 ± 0.012 | 0.758 ± 0.006 | 0.834 ± 0.031 | 0.946 ± 0.001 | 0.841 ± 0.009 |
 
 Reading:
 
-- jac+adv_h is best on every axis (AUC 0.917-0.985) and the only model whose threshold holds on all five
-  views (predicted-safe fraction 0.79-0.86 against a true 0.83).
-- The safety regularizers help on this benchmark: sigreg 0.581 base -> 0.948 with adv_h and 0.885 with adv_λ. Combined with the
-  Jacobian term they form the top group (jac+adv_λ and jac+pull+adv_λ: about 0.97 base, 0.90 color).
-- Color is the hardest shift and breaks thresholds even when the ranking holds: adv_h alone calls everything unsafe on purple
-  hazards, and jac alone calls 70% unsafe.
-- The action-separation pull hurts here (jac+pull 0.836 vs jac 0.954 base).
-- sigreg stays near chance; the camera change does not rescue an unregularized latent.
-- All margin functions fit their own training frames (0.989-1.000), so the gaps above are generalization to new layouts, not under-fitting.
+- sigreg is at chance on unseen layouts and every shift (AUC 0.41-0.56, sign accuracy below 0.5); its earlier 0.78-0.82 unbalanced sign accuracy came from calling almost everything safe.
+- jac+adv_h has the best ranking on base, color, rotate and shape (0.920-0.980); on the agent shift adv_h (0.937), jac+pull+adv_λ (0.897) and jac+adv_λ (0.877) do better.
+- jac+adv_λ has the best thresholds (sign accuracy 0.946 base, 0.765 color); jac+adv_λ and jac+pull+adv_λ are the only models close to calibrated on every view.
+- Color is still the hardest shift; adv_h ranks it poorly (0.609) and calls every purple frame unsafe.
+- The action-separation pull hurts wherever it is added (jac+pull 0.804 vs jac 0.953 base; jac+pull+adv_h below jac+adv_h on every view).
 
 ## Caveats and next steps
 
