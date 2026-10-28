@@ -2,31 +2,36 @@
 
 # Regularizers
 
-Every model is the same le-wm world model (ViT-tiny encoder f, transformer predictor P, 50 epochs, seed 3072) with one or
-more terms added to its training loss. The 9-model grid is base {sigreg, jac, jac+pull} × safety reg {none, adv_h,
-adv_λ}.
+Every model is the same le-wm world model (ViT-tiny encoder $f$, transformer predictor $P$, 50 epochs, seed 3072) with
+one or more terms added to its training loss. The 9-model grid is base $\{$sigreg, jac, jac+pull$\}$ × safety reg
+$\{$none, adv_h, adv_λ$\}$.
 
-- sigreg (every model has it): prediction MSE on the next frames plus 0.09 · SIGReg, which pushes the latent toward an
-  isotropic Gaussian along random 1-D projections and stops collapse. Side effect on near-static scenes like Dubins: to
-  reach unit variance the encoder amplifies a few pixel directions (‖∂f/∂x‖_F ≈ 29, condition number ≈ 142).
-- jac (encoder, no labels): (‖∂f/∂x‖_F − 1)², with the norm estimated by random vector-Jacobian products, weight 1.0.
-  Caps and evens out the encoder's sensitivity (Dubins: norm 29 -> 1.1, condition number 142 -> 4), which strips appearance
-  the prediction loss doesn't need.
-- pull (predictor, no labels): swap the last context action with another sample's and regress
-  ‖P(z, a) − P(z, a′)‖ toward 1 · ‖a − a′‖, with context latents detached. Keeps imagined successors of different actions
-  apart. Only used together with jac (jac+pull).
-- adv_h (safety labels, adversarial): a margin head h is trained alongside on the failure labels, with its own
-  optimizer. PGD (2 steps, best iterate) finds an image perturbation δ with ‖δ‖∞ ≤ 8/255, shared across a window's 3 context
-  frames, that moves h's readout the most. Penalty: ((h(f(x+δ)) − h(f(x))) / gap)² plus the same term on the predictor's
-  output, with h frozen inside the penalty and gap = the live safe-minus-unsafe gap in h, kept with gradient so squashing
-  the readout raises the penalty. On after step 2000 once the head's AUC reaches 0.95, ramped over 10k steps; BatchNorm uses
-  clean-pass statistics. Called "L∞ safety reg" in `safety_adv_reg_report.md`.
+- sigreg (every model has it): $\mathcal{L} = \mathcal{L}_\text{pred} + 0.09\,\mathcal{L}_\text{SIGReg}$, prediction MSE
+  on the next frames plus SIGReg, which pushes the latent toward an isotropic Gaussian along random 1-D projections and
+  stops collapse. Side effect on near-static scenes like Dubins: to reach unit variance the encoder amplifies a few pixel
+  directions ($\|\partial f/\partial x\|_F \approx 29$, condition number $\approx 142$).
+- jac (encoder, no labels): $\mathcal{L}_\text{jac} = \big(\|\partial f/\partial x\|_F - 1\big)^2$, with the norm
+  estimated by random vector-Jacobian products, weight 1.0. Caps and evens out the encoder's sensitivity (Dubins: norm
+  $29 \to 1.1$, condition number $142 \to 4$), which strips appearance the prediction loss doesn't need.
+- pull (predictor, no labels): swap the last context action $a$ with another sample's $a'$ and regress
+  $\mathcal{L}_\text{pull} = \big(\|P(z, a) - P(z, a')\| - \|a - a'\|\big)^2$, with the context latents $z$ detached.
+  Keeps imagined successors of different actions apart. Only used together with jac (jac+pull).
+- adv_h (safety labels, adversarial): a margin head $h$ is trained alongside on the failure labels, with its own
+  optimizer. PGD (2 steps, best iterate) finds an image perturbation $\delta$ with $\|\delta\|_\infty \le 8/255$, shared
+  across a window's 3 context frames, that moves $h$'s readout the most. Penalty:
+  $$\mathcal{L}_\text{adv\_h} = \Big(\tfrac{h(f(x+\delta)) - h(f(x))}{g}\Big)^2 + \Big(\tfrac{h(P(f(x+\delta), a)) - h(P(f(x), a))}{g}\Big)^2,$$
+  with $h$ frozen inside the penalty and $g = \bar h_\text{safe} - \bar h_\text{unsafe}$ the live in-batch gap, kept with
+  gradient so squashing the readout raises the penalty. On after step 2000 once the head's AUC reaches 0.95, ramped over
+  10k steps; BatchNorm uses clean-pass statistics. Called "L∞ safety reg" in `safety_adv_reg_report.md`.
 - adv_λ (safety labels, adversarial): the same adversary and the same encoder and predictor terms, but the protected
-  readout is the latent shift projected onto λ = mean(z safe) − mean(z unsafe) from the current batch, in units of ‖λ‖. λ's
-  direction is detached; its length keeps its gradient. No head and no AUC gate. Called "λ batch-detached" in the report.
+  readout is the latent shift projected onto $\lambda = \bar z_\text{safe} - \bar z_\text{unsafe}$ from the current
+  batch, in units of $\|\lambda\|$:
+  $$\mathcal{L}_\text{adv\_λ} = \Big(\tfrac{(f(x+\delta) - f(x)) \cdot \hat\lambda}{\|\lambda\|}\Big)^2 + \Big(\tfrac{(P(f(x+\delta), a) - P(f(x), a)) \cdot \hat\lambda}{\|\lambda\|}\Big)^2,$$
+  with the direction $\hat\lambda = \lambda/\|\lambda\|$ detached and the length $\|\lambda\|$ keeping its gradient. No
+  head and no AUC gate. Called "λ batch-detached" in the report.
 
-Both safety regs use the same L∞ attack (ε = 8/255); the names say which readout the attack is aimed at. The report's
-"w/o h" model, which protects the whole latent, would be adv_latent.
+Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the names say which readout the attack is aimed
+at. The report's "w/o h" model, which protects the whole latent, would be adv_latent.
 
 # Dubins
 
