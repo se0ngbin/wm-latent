@@ -2,31 +2,19 @@
 
 # Regularizers
 
-Every model is the same le-wm world model (ViT-tiny encoder f, transformer predictor P, 50 epochs, seed 3072) with one or
-more terms added to its training loss. The 9-model grid is base {sigreg, jac, jac+pull} × safety reg {none, adv_h,
-adv_λ}.
+Every model is the same le-wm world model (ViT-tiny encoder $f$, transformer predictor $P$, 50 epochs, seed 3072) with one or more terms added to its training loss. The 9-model grid is base $\{$sigreg, jac, jac+pull$\}$ × safety reg $\{$none, adv_h, adv_λ$\}$.
 
-- sigreg (every model has it): prediction MSE on the next frames plus 0.09 · SIGReg, which pushes the latent toward an
-  isotropic Gaussian along random 1-D projections and stops collapse. Side effect on near-static scenes like Dubins: to
-  reach unit variance the encoder amplifies a few pixel directions (‖∂f/∂x‖_F ≈ 29, condition number ≈ 142).
-- jac (encoder, no labels): (‖∂f/∂x‖_F − 1)², with the norm estimated by random vector-Jacobian products, weight 1.0.
-  Caps and evens out the encoder's sensitivity (Dubins: norm 29 -> 1.1, condition number 142 -> 4), which strips appearance
-  the prediction loss doesn't need.
-- pull (predictor, no labels): swap the last context action with another sample's and regress
-  ‖P(z, a) − P(z, a′)‖ toward 1 · ‖a − a′‖, with context latents detached. Keeps imagined successors of different actions
-  apart. Only used together with jac (jac+pull).
-- adv_h (safety labels, adversarial): a margin head h is trained alongside on the failure labels, with its own
-  optimizer. PGD (2 steps, best iterate) finds an image perturbation δ with ‖δ‖∞ ≤ 8/255, shared across a window's 3 context
-  frames, that moves h's readout the most. Penalty: ((h(f(x+δ)) − h(f(x))) / gap)² plus the same term on the predictor's
-  output, with h frozen inside the penalty and gap = the live safe-minus-unsafe gap in h, kept with gradient so squashing
-  the readout raises the penalty. On after step 2000 once the head's AUC reaches 0.95, ramped over 10k steps; BatchNorm uses
-  clean-pass statistics. Called "L∞ safety reg" in `safety_adv_reg_report.md`.
-- adv_λ (safety labels, adversarial): the same adversary and the same encoder and predictor terms, but the protected
-  readout is the latent shift projected onto λ = mean(z safe) − mean(z unsafe) from the current batch, in units of ‖λ‖. λ's
-  direction is detached; its length keeps its gradient. No head and no AUC gate. Called "λ batch-detached" in the report.
+- sigreg (every model has it): $\mathcal{L} = \mathcal{L}_\text{pred} + 0.09\,\mathcal{L}_\text{SIGReg}$, prediction MSE on the next frames plus SIGReg, which pushes the latent toward an isotropic Gaussian along random 1-D projections and stops collapse. Side effect on near-static scenes like Dubins: to reach unit variance the encoder amplifies a few pixel directions ($\|\partial f/\partial x\|_F \approx 29$, condition number $\approx 142$).
+- jac (encoder, no labels): $\mathcal{L}_\text{jac} = \big(\|\partial f/\partial x\|_F - 1\big)^2$, with the norm estimated by random vector-Jacobian products, weight 1.0. Caps and evens out the encoder's sensitivity (Dubins: norm $29 \to 1.1$, condition number $142 \to 4$), which strips appearance the prediction loss doesn't need.
+- pull (predictor, no labels): swap the last context action $a$ with another sample's $a'$ and regress $\mathcal{L}_\text{pull} = \big(\|P(z, a) - P(z, a')\| - \|a - a'\|\big)^2$, with the context latents $z$ detached. Keeps imagined successors of different actions apart. Only used together with jac (jac+pull).
+- adv_h (safety labels, adversarial): a margin head $h$ is trained alongside on the failure labels, with its own optimizer. PGD (2 steps, best iterate) finds an image perturbation $\delta$ with $\|\delta\|_\infty \le 8/255$, shared across a window's 3 context frames, that moves $h$'s readout the most. Penalty:
+  $$\mathcal{L}_\text{adv\_h} = \Big(\tfrac{h(f(x+\delta)) - h(f(x))}{g}\Big)^2 + \Big(\tfrac{h(P(f(x+\delta), a)) - h(P(f(x), a))}{g}\Big)^2,$$
+  with $h$ frozen inside the penalty and $g = \bar h_\text{safe} - \bar h_\text{unsafe}$ the live in-batch gap, kept with gradient so squashing the readout raises the penalty. On after step 2000 once the head's AUC reaches 0.95, ramped over 10k steps; BatchNorm uses clean-pass statistics. Called "L∞ safety reg" in `safety_adv_reg_report.md`.
+- adv_λ (safety labels, adversarial): the same adversary and the same encoder and predictor terms, but the protected readout is the latent shift projected onto $\lambda = \bar z_\text{safe} - \bar z_\text{unsafe}$ from the current batch, in units of $\|\lambda\|$:
+  $$\mathcal{L}_\text{adv\_λ} = \Big(\tfrac{(f(x+\delta) - f(x)) \cdot \hat\lambda}{\|\lambda\|}\Big)^2 + \Big(\tfrac{(P(f(x+\delta), a) - P(f(x), a)) \cdot \hat\lambda}{\|\lambda\|}\Big)^2,$$
+  with the direction $\hat\lambda = \lambda/\|\lambda\|$ detached and the length $\|\lambda\|$ keeping its gradient. No head and no AUC gate. Called "λ batch-detached" in the report.
 
-Both safety regs use the same L∞ attack (ε = 8/255); the names say which readout the attack is aimed at. The report's
-"w/o h" model, which protects the whole latent, would be adv_latent.
+Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the names say which readout the attack is aimed at. The report's "w/o h" model, which protects the whole latent, would be adv_latent.
 
 # Dubins
 
@@ -52,9 +40,7 @@ AUC
 | jac+adv_λ | | | | |
 | jac+pull+adv_λ | | | | |
 
-Sign accuracy, 50/50 safe/unsafe (h >= 0 = safe; 0.500 = everything called one class). From the report's balanced eval
-(`safeadv_results/balanced_eval/ood_gp_balanced.py`): head trained on 6000 frames and tested on 2000, both 50/50. "base" is
-the in-distribution accuracy over all 9 runs (3 axes × 3 eval seeds), the shift columns are zero-shot over 3 eval seeds.
+Sign accuracy, 50/50 safe/unsafe (h >= 0 = safe; 0.500 = everything called one class). From the report's balanced eval (`safeadv_results/balanced_eval/ood_gp_balanced.py`): head trained on 6000 frames and tested on 2000, both 50/50. "base" is the in-distribution accuracy over all 9 runs (3 axes × 3 eval seeds), the shift columns are zero-shot over 3 eval seeds.
 
 | Model | base | color | rotate | shape |
 |---|---|---|---|---|
@@ -71,9 +57,7 @@ the in-distribution accuracy over all 9 runs (3 axes × 3 eval seeds), the shift
 Reading:
 
 - Color is the only hard shift on Dubins. Shape and rotation stay at 0.91-0.997 AUC for every model.
-- No threshold survives color: every model sits at 0.500. The predicted-safe fraction on purple is 0.00 for every model
-  except jac+pull+adv_h, which calls everything safe (1.00). sigreg also loses its threshold under rotation (all safe)
-  and shape (0.08 predicted safe); every other model keeps both (0.46-0.53 predicted safe).
+- No threshold survives color: every model sits at 0.500. The predicted-safe fraction on purple is 0.00 for every model except jac+pull+adv_h, which calls everything safe (1.00). sigreg also loses its threshold under rotation (all safe) and shape (0.08 predicted safe); every other model keeps both (0.46-0.53 predicted safe).
 - Over 3 WM seeds the single-seed color AUCs above don't hold: jac+pull 0.498 ± 0.234, adv_h 0.643 ± 0.247,
   adv_λ 0.721 ± 0.434. Only jac+pull+adv_h is stable (0.957 ± 0.021).
 
@@ -591,15 +575,10 @@ Unsafe states whose nearest training latents are mostly safe
 
 # Planning: soft-cost CEM (Dubins)
 
-CEM with the margin function's unsafe region as an extra cost on the imagined rollout:
-cost = goal MSE + w · Σ_t relu(−h(ẑ_t)). Unsafe-looking candidates rank badly instead of being removed (the earlier hard
-filter, `safe_solver.py` gauge map, collided more than plain CEM). Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py`
-(`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>_<condition>.log`.
+CEM with the margin function's unsafe region as an extra cost on the imagined rollout: cost = goal MSE + w · Σ_t relu(−h(ẑ_t)). Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>_<condition>.log`.
 
-- h here is an HJ-value regression margin function (MSE onto V*, no GP; `margin_hj_color_red_rk0_s0.pt`), trained on red
-  frames in the training orientation, so the eval transpose bug does not affect these numbers.
-- Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50. N = 200 episodes,
-  red obstacles, one run per cell.
+- h here is an HJ-value regression margin function (MSE onto V*, no GP; `margin_hj_color_red_rk0_s0.pt`), trained on red frames in the training orientation, so the eval transpose bug does not affect these numbers.
+- Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50. N = 200 episodes, red obstacles, one run per cell.
 
 Success % / collision %
 
@@ -608,9 +587,6 @@ Success % / collision %
 | sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 |
 | jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 |
 
-- jac: the soft cost cuts collision from 22.5% to 9-10% at every weight. Success holds through w = 1000 (80-82.5%) and
-  drops at w = 10000 (71.5%).
-- sigreg: worse than raw CEM at every weight, more so as w grows. Its imagined rollouts drift, so h scores the wrong
-  futures (the same reason the hard filter hurt).
-- Pending: a lexicographic version (flat 10⁴ cost for any h < 0 on top of w = 1000) and all 6 trained Dubins models ×
-  4 conditions.
+- jac: the soft cost cuts collision from 22.5% to 9-10% at every weight. Success holds through w = 1000 (80-82.5%) and drops at w = 10000 (71.5%).
+- sigreg: worse than raw CEM at every weight, more so as w grows. Its imagined rollouts drift, so h scores the wrong futures (the same reason the hard filter hurt).
+- Pending: a lexicographic version (flat 10⁴ cost for any h < 0 on top of w = 1000) and all 6 trained Dubins models × 4 conditions.
