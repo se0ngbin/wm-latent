@@ -588,3 +588,29 @@ Unsafe states whose nearest training latents are mostly safe
   describe neighbourhoods in the latent's own geometry, not pose retrieval.
 - Point layout distance ratios (up to 325×) partly reflect that training layouts recur across episodes, so held-out
   training frames have same-layout neighbours.
+
+# Planning: soft-cost CEM (Dubins)
+
+CEM with the margin function's unsafe region as an extra cost on the imagined rollout:
+cost = goal MSE + w · Σ_t relu(−h(ẑ_t)). Unsafe-looking candidates rank badly instead of being removed (the earlier hard
+filter, `safe_solver.py` gauge map, collided more than plain CEM). Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py`
+(`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>_<condition>.log`.
+
+- h here is an HJ-value regression margin function (MSE onto V*, no GP; `margin_hj_color_red_rk0_s0.pt`), trained on red
+  frames in the training orientation, so the eval transpose bug does not affect these numbers.
+- Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50. N = 200 episodes,
+  red obstacles, one run per cell.
+
+Success % / collision %
+
+| model | raw CEM | w = 100 | w = 1000 | w = 10000 |
+|---|---|---|---|---|
+| sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 |
+| jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 |
+
+- jac: the soft cost cuts collision from 22.5% to 9-10% at every weight. Success holds through w = 1000 (80-82.5%) and
+  drops at w = 10000 (71.5%).
+- sigreg: worse than raw CEM at every weight, more so as w grows. Its imagined rollouts drift, so h scores the wrong
+  futures (the same reason the hard filter hurt).
+- Pending: a lexicographic version (flat 10⁴ cost for any h < 0 on top of w = 1000) and all 6 trained Dubins models ×
+  4 conditions.
