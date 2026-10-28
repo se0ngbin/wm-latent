@@ -15,6 +15,7 @@ Usage: support_alias.py dubins|cartpole|point   -> /data/seongbin/lewm/support_a
 """
 import os, sys, json
 import numpy as np, torch
+from sklearn.metrics import roc_auc_score
 
 K, Q, OUT = 10, 0.99, "/data/seongbin/lewm/support_alias"
 DEV = "cuda:0"
@@ -39,10 +40,17 @@ def analyze(ref, y_ref, s_ref, Zog, Zsh, y, s, h_og, h_sh):
     off, flip = d_sh > thr, (h_sh >= 0) != (h_og >= 0)
     lab = lambda I: (y_ref[I].mean(1) > 0.5).astype(int)
     a_og, a_sh = lab(i_og) != y, lab(i_sh) != y
+    u = y == 1
+    # kNN score = fraction of safe neighbours; its AUC asks whether the shifted latent sits among same-class training
+    # latents at all (a head-free read of the neighbourhood), unlike the raw mismatch rate it ignores the base rate
+    ks = lambda I: 1 - y_ref[I].mean(1)
+    au = lambda sc: float(roc_auc_score(1 - y, sc))
     r = dict(off=off.mean(), dist_ratio=np.median(d_sh) / np.median(d_og), flip=flip.mean(),
              in_kept=(~off & ~flip).mean(), in_flip=(~off & flip).mean(),
              off_kept=(off & ~flip).mean(), off_flip=(off & flip).mean(),
-             alias_og=a_og.mean(), alias_sh=a_sh[~off].mean() if (~off).any() else float("nan"))
+             alias_og=a_og.mean(), alias_sh=a_sh[~off].mean() if (~off).any() else float("nan"),
+             alias_unsafe_og=a_og[u].mean(), alias_unsafe_sh=a_sh[u].mean(),
+             knn_auc_og=au(ks(i_og)), knn_auc_sh=au(ks(i_sh)), head_auc_og=au(h_og), head_auc_sh=au(h_sh))
     if s_ref is not None:
         e = lambda I: np.median(np.linalg.norm(s_ref[I[:, 0]] - s, axis=1))
         r.update(nn_err_og=e(i_og), nn_err_sh=e(i_sh))
@@ -129,8 +137,10 @@ def point():
     N_TR, N_HO, STEPS = 30000, 5000, 20000
     with h5py.File("/data/seongbin/lewm/datasets/sg_point_ovh224.h5", "r") as f:
         idx = np.sort(np.random.default_rng(0).choice(f["pixels"].shape[0], N_TR + N_HO, replace=False))
-        X, yX = f["pixels"][idx], f["failures"][idx].astype(int)
-    perm = np.random.default_rng(1).permutation(len(idx)); itr, iho = perm[:N_TR], perm[N_TR:]
+        X, yX, ep = f["pixels"][idx], f["failures"][idx].astype(int), f["episode_idx"][idx]
+    # hold out whole episodes: within-episode neighbours are near-duplicates and would shrink the in-dist kNN distance
+    ho = np.isin(ep, np.random.default_rng(1).choice(np.unique(ep), int(len(np.unique(ep)) * N_HO / len(idx)), replace=False))
+    itr, iho = np.where(~ho)[0], np.where(ho)[0]
     d = np.load(E.DATA); y = d["failure"].astype(int)
     tf = E.get_img_preprocessor(source="pixels", target="pixels", img_size=224)
     res = {}
