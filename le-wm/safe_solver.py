@@ -254,3 +254,41 @@ class SafeCEMSolver(CEMSolver):
         if self.model.safe_map is not None:
             print(f"[safe_cem] fallback_rate={self.model.safe_map.fallback_rate:.4f}")
         return out
+
+
+class _SoftCostJEPA:
+    """Model proxy: goal cost + w * sum_t relu(m - h(z_t)) over the imagined
+    rollout. Unsafe-looking candidates just rank badly; no action map."""
+
+    def __init__(self, jepa, head, weight, margin):
+        self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
+
+    def parameters(self):
+        return self.jepa.parameters()
+
+    def get_cost(self, info_dict, action_candidates):
+        cost = self.jepa.get_cost(info_dict, action_candidates)   # (B, S)
+        H = info_dict["pixels"].size(2)
+        z = info_dict["predicted_emb"][:, :, H:]                  # imagined only
+        h = self.head(z.float())                                  # (B, S, T')
+        pen = torch.relu(self.margin - h).sum(-1)
+        self.last = (cost.mean().item(), pen.mean().item(), (h < 0).any(-1).float().mean().item())
+        return cost + self.weight * pen.to(cost.dtype)
+
+
+class SoftSafeCEMSolver(CEMSolver):
+    """Plain CEM with the learned margin's unsafe region as a soft cost."""
+
+    def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
+                 unsafe_margin: float = 0.0, **kwargs):
+        device = kwargs.get("device", "cuda")
+        head = _MarginHead().to(device)
+        head.load_state_dict(torch.load(margin_ckpt, map_location=device)["margin_gp"])
+        super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin), **kwargs)
+
+    @torch.inference_mode()
+    def solve(self, info_dict, init_action=None):
+        out = super().solve(info_dict, init_action)
+        g, p, f = self.model.last
+        print(f"[soft_cem] goal={g:.3f} pen={p:.3f} frac_cand_unsafe={f:.3f}")
+        return out
