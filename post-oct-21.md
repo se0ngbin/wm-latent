@@ -20,46 +20,46 @@ Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the nam
 
 ![Dubins base vs OOD frames](figs/ood_frames_dubins.png)
 
-The same 3×3 grid on Dubins for reference: base {sigreg, jac, jac+pull} × safety reg {none, adv_h,
-adv_λ}. Zero-shot margin_gp: the head is trained on red-obstacle frames and scored on the same states
-re-rendered with purple obstacles (color), a 90° rotation (rotate) or diamond obstacles (shape); labels are exact under
-every shift. One WM (training seed 3072); ± = std over 3 margin-function seeds, each resampling the rendered states (train and test) and the init. Numbers are from `safety_adv_reg_report.md` (logs under
-`/data/seongbin/lewm/safeadv_results/`). Blank rows: those WMs have not been trained on Dubins.
+The same 3×3 grid on Dubins: base {sigreg, jac, jac+pull} × safety reg {none, adv_h, adv_λ}. Zero-shot margin function (margin_gp loss on the failure label): trained on red-obstacle frames and scored on the same states re-rendered with purple obstacles (color), the whole world rotated 90° (rotate) or diamond obstacles (shape); labels are exact under every shift. One WM per model (training seed 3072); ± = std over 3 margin-function seeds, each resampling the rendered states (train and test) and the init. Blank rows: those WMs have not been trained on Dubins.
+
+Frames are fed in the training orientation (fixed 2026-10-28). The earlier numbers, here and in `safety_adv_reg_report.md`, came from evals that passed numpy HWC renders to `ToImage`, which transposes them, so every frame was mirrored across the diagonal and "rotate" was really a flip. They are superseded by the tables below (script `dub_fixed.py`, logs `/data/seongbin/lewm/safeadv_results/fixed_orient/`).
 
 AUC
 
 | Model | base | color | rotate | shape |
 |---|---|---|---|---|
-| sigreg | 0.979 ± 0.002 | 0.144 ± 0.032 | 0.956 ± 0.023 | 0.913 ± 0.024 |
-| jac | 0.992 ± 0.001 | 0.673 ± 0.076 | 0.989 ± 0.002 | 0.992 ± 0.003 |
-| jac+pull | 0.983 ± 0.001 | 0.753 ± 0.049 | 0.978 ± 0.003 | 0.977 ± 0.007 |
-| adv_h | 0.998 ± 0.001 | 0.910 ± 0.098 | 0.996 ± 0.002 | 0.997 ± 0.001 |
+| sigreg | 0.984 ± 0.000 | 0.110 ± 0.019 | 0.082 ± 0.003 | 0.487 ± 0.067 |
+| jac | 0.998 ± 0.000 | 0.591 ± 0.019 | 0.988 ± 0.001 | 0.995 ± 0.001 |
+| jac+pull | 0.998 ± 0.000 | 0.787 ± 0.084 | 0.976 ± 0.002 | 0.995 ± 0.001 |
+| adv_h | 0.999 ± 0.001 | 0.789 ± 0.074 | 0.993 ± 0.001 | 0.998 ± 0.000 |
 | jac+adv_h | | | | |
-| jac+pull+adv_h | 0.996 ± 0.001 | 0.965 ± 0.013 | 0.994 ± 0.002 | 0.994 ± 0.002 |
-| adv_λ | 0.997 ± 0.001 | 0.948 ± 0.013 | 0.996 ± 0.001 | 0.996 ± 0.001 |
+| jac+pull+adv_h | 0.999 ± 0.000 | 0.782 ± 0.068 | 0.995 ± 0.001 | 0.997 ± 0.001 |
+| adv_λ | 0.999 ± 0.000 | 0.982 ± 0.001 | 0.995 ± 0.003 | 0.998 ± 0.000 |
 | jac+adv_λ | | | | |
 | jac+pull+adv_λ | | | | |
 
-Sign accuracy, 50/50 safe/unsafe (h >= 0 = safe; 0.500 = everything called one class). From the report's balanced eval (`safeadv_results/balanced_eval/ood_gp_balanced.py`): head trained on 6000 frames and tested on 2000, both 50/50. "base" is the in-distribution accuracy over all 9 runs (3 axes × 3 eval seeds), the shift columns are zero-shot over 3 eval seeds.
+Sign accuracy, balanced: (TPR_safe + TPR_unsafe) / 2 on the full test set, i.e. the expected accuracy on a 50/50 safe/unsafe split (h ≥ 0 = safe; 0.500 = everything called one class). The margin function itself is trained on the natural split. "base" is the in-distribution value over all 9 runs (3 axes × 3 seeds).
 
 | Model | base | color | rotate | shape |
 |---|---|---|---|---|
-| sigreg | 0.939 ± 0.002 | 0.500 ± 0.000 | 0.500 ± 0.000 | 0.585 ± 0.008 |
-| jac | 0.962 ± 0.003 | 0.500 ± 0.000 | 0.946 ± 0.007 | 0.952 ± 0.002 |
-| jac+pull | 0.940 ± 0.004 | 0.503 ± 0.004 | 0.919 ± 0.010 | 0.919 ± 0.004 |
-| adv_h | 0.979 ± 0.004 | 0.501 ± 0.001 | 0.959 ± 0.006 | 0.974 ± 0.002 |
+| sigreg | 0.939 ± 0.004 | 0.502 ± 0.002 | 0.473 ± 0.018 | 0.549 ± 0.072 |
+| jac | 0.956 ± 0.010 | 0.500 ± 0.000 | 0.842 ± 0.017 | 0.911 ± 0.007 |
+| jac+pull | 0.956 ± 0.008 | 0.500 ± 0.000 | 0.822 ± 0.019 | 0.909 ± 0.011 |
+| adv_h | 0.977 ± 0.003 | 0.502 ± 0.001 | 0.578 ± 0.036 | 0.969 ± 0.009 |
 | jac+adv_h | | | | |
-| jac+pull+adv_h | 0.972 ± 0.004 | 0.505 ± 0.004 | 0.958 ± 0.009 | 0.961 ± 0.002 |
-| adv_λ | 0.976 ± 0.005 | 0.500 ± 0.000 | 0.951 ± 0.014 | 0.968 ± 0.004 |
+| jac+pull+adv_h | 0.975 ± 0.009 | 0.500 ± 0.000 | 0.886 ± 0.014 | 0.941 ± 0.003 |
+| adv_λ | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.944 ± 0.027 | 0.973 ± 0.007 |
 | jac+adv_λ | | | | |
 | jac+pull+adv_λ | | | | |
 
 Reading:
 
-- Color is the only hard shift on Dubins. Shape and rotation stay at 0.91-0.997 AUC for every model.
-- No threshold survives color: every model sits at 0.500. The predicted-safe fraction on purple is 0.00 for every model except jac+pull+adv_h, which calls everything safe (1.00). sigreg also loses its threshold under rotation (all safe) and shape (0.08 predicted safe); every other model keeps both (0.46-0.53 predicted safe).
-- Over 3 WM seeds the single-seed color AUCs above don't hold: jac+pull 0.498 ± 0.234, adv_h 0.643 ± 0.247,
-  adv_λ 0.721 ± 0.434. Only jac+pull+adv_h is stable (0.957 ± 0.021).
+- sigreg fails every shift: color 0.110, a real rotation 0.082 (inverted ranking), shape 0.487. Its thresholds collapse too.
+- Every regularized model handles rotation and shape (AUC ≥ 0.976, shape sign accuracy 0.909-0.973).
+- Color is the hard shift. adv_λ is the only model that keeps the ranking (0.982); jac drops to 0.591 and the others sit at 0.78-0.79 with large seed spread.
+- No threshold survives color: every model is at 0.500. Predicted-safe fraction on purple: jac, jac+pull and jac+pull+adv_h call everything safe; adv_h and adv_λ call everything unsafe.
+- Under rotation adv_h ranks well (0.993) but drifts to calling 92% of frames safe (sign accuracy 0.578); adv_λ keeps both (0.995 / 0.944).
+- One WM seed. The earlier 3-WM-seed comparison was also run on transposed frames and needs redoing.
 
 # Safety Gym
 
