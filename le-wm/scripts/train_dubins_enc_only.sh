@@ -4,7 +4,7 @@
 # (lewm_dubins_sa_enc50). Waits for train_dubins_jacadv.sh to finish, then launches each run once a GPU has >= 30 GB free.
 # Same recipes / code snapshot as train_dubins_jacadv.sh plus pred_weight:0.0.
 set -uo pipefail
-while pgrep -f train_dubins_jacadv.sh >/dev/null; do sleep 300; done
+[ "${WAIT_JACADV:-1}" = 1 ] && while pgrep -f train_dubins_jacadv.sh >/dev/null; do sleep 300; done   # WAIT_JACADV=0: start as soon as a GPU has room
 C=/data/seongbin/lewm/code_safeadv_92e7589; cd "$C"
 PY=/home/seongbin/latent/le-wm/.venv/bin/python
 export STABLEWM_HOME=/data/seongbin/lewm LOCAL_DATASET_DIR=/data/seongbin/lewm WANDB_MODE=disabled
