@@ -5,6 +5,9 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 export REC=5
+# wait for the last two grid trainings to free GPU memory (4 CEM lanes on top of them ran out of memory)
+until [ -f /data/seongbin/lewm/checkpoints/lewm_dubins_jac_safeadv_linf50/weights_epoch_50.pt ] &&
+      [ -f /data/seongbin/lewm/checkpoints/lewm_dubins_jacpull_lam_bdet50/weights_epoch_50.pt ]; do sleep 300; done
 H=/data/seongbin/dreamer/lewm; CK=/data/seongbin/lewm/checkpoints
 declare -A WM=([sigreg]=sigreg_only_dubins [jacobian]=jacobian_w1_dubins [jacpull]=lewm_dubins_jacpull50
   [linf]=lewm_dubins_safeadv_linf50 [jacpull_linf]=lewm_dubins_jacpull_safeadv_linf50 [lam_bdet]=lewm_dubins_lam_bdet50
