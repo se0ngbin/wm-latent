@@ -571,7 +571,7 @@ Unsafe states whose nearest training latents are mostly safe
 
 CEM with the margin function's unsafe region as an extra cost on the imagined rollout: $\text{cost} = \text{goal MSE} + w \sum_t \mathrm{relu}(-h(\hat z_t)) + C\,\mathbb{1}[\min_t h(\hat z_t) < 0]$. Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). The graded version has $C = 0$; the lexicographic version adds $C = 10^4$ (larger than any goal cost, about 130), so every candidate $h$ calls safe beats every unsafe one, while the hinge still ranks the unsafe ones. Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>[_c<C>]_<condition>.log`.
 
-- $h$ here is a supervised value function, not a margin function: MSE regression onto the oracle HJ value $V^*$ (computed offline by a grid solver on the true dynamics, `hj_truth.npz`) at random states rendered red and encoded by the frozen WM (`train_margin_hj_lewm.py`, `margin_hj_color_red_rk0_s0.pt`; no GP, no RL). The labels are privileged; a GP margin function on failure labels (the one behind the OOD tables) is the label-free variant, queued. Frames are in the training orientation, so the eval transpose bug does not affect these numbers.
+- $h$ here is a supervised value function, not a margin function: MSE regression onto the oracle HJ value $V^*$ (computed offline by a grid solver on the true dynamics, `hj_truth.npz`) at random states rendered red and encoded by the frozen WM (`train_margin_hj_lewm.py`, `margin_hj_color_red_rk0_s0.pt`; no GP, no RL). The labels are privileged; a GP margin function on failure labels (the one behind the OOD tables) is the label-free variant; both are compared below. Frames are in the training orientation, so the eval transpose bug does not affect these numbers.
 - Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50. N = 200 episodes per cell, one run per cell. Success % / collision %.
 
 Weight sweep (red)
@@ -581,18 +581,125 @@ Weight sweep (red)
 | sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 | 39.0 / 60.5 |
 | jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 | 72.0 / 11.0 |
 
-All models, raw CEM vs lexicographic (in progress; blank = pending)
+Raw CEM
 
-| model | red raw | red lex | purple raw | purple lex | diamond raw | diamond lex | rotated raw | rotated lex |
-|---|---|---|---|---|---|---|---|---|
-| sigreg | 62.5 / 50.0 | 39.0 / 60.5 | 62.0 / 50.0 | | 62.5 / 38.5 | | 26.5 / 62.5 | |
-| jac | 81.5 / 22.5 | 72.0 / 11.0 | 81.5 / 22.5 | | 81.5 / 14.5 | | 30.0 / 60.0 | |
-| jac+pull | 81.5 / 29.0 | | 82.0 / 27.5 | | 81.5 / 15.5 | | 41.5 / 54.5 | |
-| adv_h | 57.5 / 57.0 | 41.0 / 59.5 | 57.5 / 57.0 | 41.5 / 59.5 | 57.5 / 46.0 | | 20.5 / 70.5 | |
-| jac+pull+adv_h | 75.5 / 29.0 | | 75.5 / 28.5 | | 75.5 / 16.5 | | 30.0 / 53.0 | |
-| adv_λ | 51.5 / 58.0 | | 51.5 / 58.0 | | | | | |
+| model | red | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
+| jac | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
+| jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
+| adv_h | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
+| jac+pull+adv_h | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
+| adv_λ | 51.5 / 58.0 | 51.5 / 58.0 | 51.5 / 46.0 | 17.5 / 66.0 |
 
-- jac: the soft cost cuts collision from 22.5% to 9-11% at every setting. Success holds through w = 1000 (80-82.5%) and drops at w = 10000 or with the flat lexicographic cost (71.5-72%), which also rejects paths that only graze the boundary. Graded w = 100-1000 is the best setting.
-- sigreg-base models (sigreg, adv_h): worse than raw CEM at every setting, more so as the penalty grows. Their imagined rollouts drift, so $h$ scores the wrong futures (the same reason the hard filter hurt).
-- Recolor does not change CEM outcomes, with or without the soft cost (adv_h lex red 41.0 / 59.5 vs purple 41.5 / 59.5): the goal image is recolored too.
-- adv_λ had no raw CEM result before; its baseline (51.5 / 58.0) sits with the other sigreg-base models.
+Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function (oracle $V^*$)
+
+| model | red | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg | 39.0 / 60.5 | 39.0 / 60.0 | 39.5 / 53.5 | 23.5 / 64.0 |
+| jac | 72.0 / 11.0 | 72.0 / 12.0 | 72.0 / 6.5 | 48.0 / 13.5 |
+| jac+pull | 75.0 / 20.0 | 75.0 / 21.0 | 75.0 / 13.5 | 35.0 / 37.5 |
+| adv_h | 41.0 / 59.5 | 41.5 / 59.5 | 41.0 / 52.0 | 22.5 / 64.0 |
+| jac+pull+adv_h | 66.5 / 25.0 | 66.5 / 27.0 | 66.5 / 14.5 | 33.0 / 31.5 |
+| adv_λ | 49.0 / 59.0 | 48.5 / 58.5 | 48.5 / 50.0 | 20.5 / 63.5 |
+
+Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels; the same recipe as the OOD tables, trained on red frames in the training orientation, `margin_gp_fail_red_s0.pt`)
+
+| model | red | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg | 57.5 / 49.5 | 57.5 / 49.5 | 57.5 / 42.0 | 26.0 / 64.5 |
+| jac | 79.0 / 8.5 | 79.0 / 9.5 | 79.0 / 5.5 | 45.0 / 21.5 |
+| jac+pull | 77.0 / 20.0 | 77.0 / 21.5 | 77.0 / 13.0 | 35.0 / 31.0 |
+| adv_h | 55.5 / 53.0 | 56.0 / 53.0 | 55.5 / 45.0 | 19.0 / 69.5 |
+| jac+pull+adv_h | 70.5 / 25.0 | 70.0 / 26.5 | 70.5 / 18.0 | 34.5 / 41.0 |
+| adv_λ | 48.0 / 59.0 | 48.0 / 58.5 | 48.0 / 47.5 | 16.0 / 66.5 |
+
+- jac gains the most: collision falls from 14.5-60% to 5.5-21.5% on every condition. With the GP margin function it keeps 79% success (vs 81.5% raw); with the value function it drops to 72%. Under rotation both variants improve success and collision together (raw 30.0 / 60.0; value function 48.0 / 13.5; GP 45.0 / 21.5).
+- jac+pull and jac+pull+adv_h gain less: collision falls about 4-9 points in-distribution and substantially only under rotation (54.5 -> 31-37.5, 53.0 -> 31.5-41.0), at a cost of 4-9 points of success.
+- The sigreg-base models (sigreg, adv_h, adv_λ) get no safety from either margin function. With the value function they lose 10-20 points of success; with the GP margin function they stay close to raw CEM. Their imagined rollouts are the likely problem (see below), not $h$.
+- The label-free GP margin function matches or beats the privileged value function on every model in-distribution; the value function is better only for jac under rotation (13.5 vs 21.5% collision).
+- Recolor changes nothing in CEM, with or without the soft cost (red and purple within 1.5 points everywhere): the goal image is recolored too, and $h$ reads imagined latents.
+- Why the safety regs plan worse (hypotheses, untested): (1) they raise prediction loss (adv_h 0.0113, jac+pull+adv_h 0.0165 vs about 0.007), and CEM scores both the goal and the safety cost on 25-step imagined rollouts; (2) the live-gap denominator rewards pushing safe and unsafe apart, which may distort the latent goal cost near obstacles, where sg25clean goals sit; (3) the regs constrain only the encoder and one predictor step, not long rollouts.
+
+
+That changes my recommendation significantly. If your unsafe-state sink is already accurate on real observations, but imagined trajectories don't enter it when they should, I'd focus on the predictor's ability to preserve safety-relevant geometry—not replace the sink or immediately switch world models.
+
+My leading hypothesis is that your predictor minimizes an average latent prediction loss, while safety depends on getting a relatively small set of critical transitions right. The model can look good on ordinary transitions yet systematically underpredict transitions into unsafe states.
+
+## 1. First, identify which failure you have
+
+Let $z_t=E(o_t)$ be the latent embedding of the real observation, and let $\hat z_{t+k}$ be the imagined latent after $k$ predicted transitions. Let $S(z)$ denote your sink's unsafe score, with larger values meaning more unsafe.
+
+Compare these four quantities on the same held-out trajectories:
+
+| Test | What it diagnoses |
+| --- | --- |
+| $S(z_t)$ on real observations | Whether the sink correctly recognizes unsafe states |
+| $S(\hat z_{t+1})$ versus $S(z_{t+1})$ | Whether the predictor misses unsafe transitions immediately |
+| $S(\hat z_{t+k})$ versus $S(z_{t+k})$ | Whether safety errors accumulate over imagined rollouts |
+| Predicted safety score versus actual future violation | Whether the model preserves the safety signal needed for planning |
+
+In particular, separate transitions that enter an unsafe region from transitions that remain inside it. A predictor can learn to represent already-unsafe states correctly but still fail to predict the transition that crosses the boundary.
+
+## 2. My first intervention: safety-aware multi-step training
+
+Keep your existing LeWM architecture and sink fixed for the first experiment. Add a loss that explicitly penalizes discrepancies in safety predictions over multi-step rollouts.
+
+$$
+\begin{aligned}
+\mathcal L ={}& \mathcal L_{\text{LeWM}}\\
+&+\lambda_s\sum_{k=1}^{K}w_k
+\ell_s\big(S(\hat z_{t+k}),S(z_{t+k})\big).
+\end{aligned}
+$$
+
+Here:
+
+- $K$ is your rollout horizon.
+- $w_k$ weights different prediction horizons.
+- $\ell_s$ measures the mismatch between predicted and target safety scores.
+- $\lambda_s$ controls the safety objective's strength.
+
+If the sink is a hard classifier rather than a smooth score, use a classification loss on the sink's unsafe/unsafe-boundary labels, or distill its output into a differentiable safety head. Don't assume that gradients through a hard threshold will be useful.
+
+Importantly, if the sink is frozen, the safety loss must still provide a gradient path through the predicted latent $\hat z$. If the sink is not differentiable, train a differentiable surrogate or supervise a separate safety head.
+
+### A useful refinement: emphasize boundary-crossing transitions
+
+Uniform safety loss may mostly teach the model to predict common safe states. Oversample or upweight transitions that approach or cross the unsafe boundary.
+
+For example, if a trajectory goes from safe to unsafe between $t$ and $t+1$, penalize predictions that remain confidently safe. This directly targets the failure that matters to your planner.
+
+## 3. Change CEM's objective so it cannot exploit predictor errors
+
+Even after improving prediction, use an explicit safety cost in candidate evaluation:
+
+$$
+J(a_{1:H}) =
+J_{\text{task}}(a_{1:H})
++\eta\sum_{k=1}^{H} c_{\text{unsafe}}(\hat z_{t+k}).
+$$
+
+A few important details:
+
+- Penalize predicted unsafe states at every imagined step, not only at the final state.
+- If the sink score is probabilistic, penalize predicted risk rather than only thresholded unsafe labels.
+- Evaluate whether the model underestimates risk near the boundary, where false negatives are especially costly.
+- Keep a safety margin around the sink boundary to account for model uncertainty.
+
+A soft penalty alone does not guarantee safety. If violations are costly, you should also consider a conservative fallback action or a verified safety filter.
+
+## 4. The most informative ablation
+
+I'd run these four variants first:
+
+| Variant | Dynamics model | Safety objective | Purpose |
+| --- | --- | --- | --- |
+| A | Original LeWM | Existing sink penalty | Baseline |
+| B | Original LeWM | Stronger boundary-weighted penalty | Test whether CEM is ignoring the sink |
+| C | Multi-step-trained LeWM | Existing sink penalty | Test whether imagined-state drift is the cause |
+| D | Multi-step + safety-aware training | Boundary-weighted penalty | Test the combined solution |
+
+Measure unsafe-state recall in imagined rollouts, false-negative rate near the boundary, actual constraint violations in the simulator, and task reward. Do not select the best model based only on latent prediction error.
+
+If B helps a lot but C does not, your predictor may already encode enough information and the issue may be the planner's objective. If C helps substantially, the dynamics predictor is likely failing to preserve safety-relevant information. If neither helps, investigate whether the latent space is geometrically suitable for the sink and whether the model sees enough boundary-crossing examples.
