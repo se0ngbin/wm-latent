@@ -581,18 +581,42 @@ Weight sweep (red)
 | sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 | 39.0 / 60.5 |
 | jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 | 72.0 / 11.0 |
 
-All models, raw CEM vs lexicographic (in progress; blank = pending)
+Raw CEM
 
-| model | red raw | red lex | purple raw | purple lex | diamond raw | diamond lex | rotated raw | rotated lex |
-|---|---|---|---|---|---|---|---|---|
-| sigreg | 62.5 / 50.0 | 39.0 / 60.5 | 62.0 / 50.0 | | 62.5 / 38.5 | | 26.5 / 62.5 | |
-| jac | 81.5 / 22.5 | 72.0 / 11.0 | 81.5 / 22.5 | | 81.5 / 14.5 | | 30.0 / 60.0 | |
-| jac+pull | 81.5 / 29.0 | | 82.0 / 27.5 | | 81.5 / 15.5 | | 41.5 / 54.5 | |
-| adv_h | 57.5 / 57.0 | 41.0 / 59.5 | 57.5 / 57.0 | 41.5 / 59.5 | 57.5 / 46.0 | | 20.5 / 70.5 | |
-| jac+pull+adv_h | 75.5 / 29.0 | | 75.5 / 28.5 | | 75.5 / 16.5 | | 30.0 / 53.0 | |
-| adv_λ | 51.5 / 58.0 | | 51.5 / 58.0 | | | | | |
+| model | red | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
+| jac | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
+| jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
+| adv_h | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
+| jac+pull+adv_h | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
+| adv_λ | 51.5 / 58.0 | 51.5 / 58.0 | 51.5 / 46.0 | 17.5 / 66.0 |
 
-- jac: the soft cost cuts collision from 22.5% to 9-11% at every setting. Success holds through w = 1000 (80-82.5%) and drops at w = 10000 or with the flat lexicographic cost (71.5-72%), which also rejects paths that only graze the boundary. Graded w = 100-1000 is the best setting.
-- sigreg-base models (sigreg, adv_h): worse than raw CEM at every setting, more so as the penalty grows. Their imagined rollouts drift, so $h$ scores the wrong futures (the same reason the hard filter hurt).
-- Recolor does not change CEM outcomes, with or without the soft cost (adv_h lex red 41.0 / 59.5 vs purple 41.5 / 59.5): the goal image is recolored too.
-- adv_λ had no raw CEM result before; its baseline (51.5 / 58.0) sits with the other sigreg-base models.
+Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function (oracle $V^*$)
+
+| model | red | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg | 39.0 / 60.5 | 39.0 / 60.0 | 39.5 / 53.5 | 23.5 / 64.0 |
+| jac | 72.0 / 11.0 | 72.0 / 12.0 | 72.0 / 6.5 | 48.0 / 13.5 |
+| jac+pull | 75.0 / 20.0 | 75.0 / 21.0 | 75.0 / 13.5 | 35.0 / 37.5 |
+| adv_h | 41.0 / 59.5 | 41.5 / 59.5 | 41.0 / 52.0 | 22.5 / 64.0 |
+| jac+pull+adv_h | 66.5 / 25.0 | 66.5 / 27.0 | 66.5 / 14.5 | 33.0 / 31.5 |
+| adv_λ | 49.0 / 59.0 | 48.5 / 58.5 | 48.5 / 50.0 | 20.5 / 63.5 |
+
+Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels; the same recipe as the OOD tables, trained on red frames in the training orientation, `margin_gp_fail_red_s0.pt`)
+
+| model | red | purple | diamond | rotated |
+|---|---|---|---|---|
+| sigreg | 57.5 / 49.5 | 57.5 / 49.5 | 57.5 / 42.0 | 26.0 / 64.5 |
+| jac | 79.0 / 8.5 | 79.0 / 9.5 | 79.0 / 5.5 | 45.0 / 21.5 |
+| jac+pull | 77.0 / 20.0 | 77.0 / 21.5 | 77.0 / 13.0 | 35.0 / 31.0 |
+| adv_h | 55.5 / 53.0 | 56.0 / 53.0 | 55.5 / 45.0 | 19.0 / 69.5 |
+| jac+pull+adv_h | 70.5 / 25.0 | 70.0 / 26.5 | 70.5 / 18.0 | 34.5 / 41.0 |
+| adv_λ | 48.0 / 59.0 | 48.0 / 58.5 | 48.0 / 47.5 | 16.0 / 66.5 |
+
+- jac gains the most: collision falls from 14.5-60% to 5.5-21.5% on every condition. With the GP margin function it keeps 79% success (vs 81.5% raw); with the value function it drops to 72%. Under rotation both variants improve success and collision together (raw 30.0 / 60.0; value function 48.0 / 13.5; GP 45.0 / 21.5).
+- jac+pull and jac+pull+adv_h gain less: collision falls about 4-9 points in-distribution and substantially only under rotation (54.5 -> 31-37.5, 53.0 -> 31.5-41.0), at a cost of 4-9 points of success.
+- The sigreg-base models (sigreg, adv_h, adv_λ) get no safety from either margin function. With the value function they lose 10-20 points of success; with the GP margin function they stay close to raw CEM. Their imagined rollouts are the likely problem (see below), not $h$.
+- The label-free GP margin function matches or beats the privileged value function on every model in-distribution; the value function is better only for jac under rotation (13.5 vs 21.5% collision).
+- Recolor changes nothing in CEM, with or without the soft cost (red and purple within 1.5 points everywhere): the goal image is recolored too, and $h$ reads imagined latents.
+- Why the safety regs plan worse (hypotheses, untested): (1) they raise prediction loss (adv_h 0.0113, jac+pull+adv_h 0.0165 vs about 0.007), and CEM scores both the goal and the safety cost on 25-step imagined rollouts; (2) the live-gap denominator rewards pushing safe and unsafe apart, which may distort the latent goal cost near obstacles, where sg25clean goals sit; (3) the regs constrain only the encoder and one predictor step, not long rollouts.
