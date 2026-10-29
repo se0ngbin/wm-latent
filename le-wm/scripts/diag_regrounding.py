@@ -77,5 +77,6 @@ def run(tag, ck):
     del m; torch.cuda.empty_cache()
 
 
-for spec in sys.argv[1:]:
-    t, c = spec.split("=", 1); run(t, c)
+if __name__ == "__main__":
+    for spec in sys.argv[1:]:
+        t, c = spec.split("=", 1); run(t, c)
