@@ -581,45 +581,55 @@ Weight sweep (red)
 | sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 | 39.0 / 60.5 |
 | jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 | 72.0 / 11.0 |
 
+Purple and diamond use a goal frame rendered in the same shifted appearance (`eval.py` re-renders it; fixed 2026-10-29). Before the fix, `World.evaluate` took the goal frame from the dataset, so purple and diamond runs showed a red-circle goal in a purple or diamond world; those numbers, and the earlier claim that recolor does not affect CEM, were artifacts and are replaced below. Control: red through the re-render path reproduces the original red result (jac+pull raw 83.0 / 27.5 vs 81.5 / 29.0, logs `softcem_jacpull_rr_*`). Red and rotated cells are unchanged (no mismatch: red has none, rotation already rotated the goal frame).
+
 Raw CEM
 
 | model | red | purple | diamond | rotated |
 |---|---|---|---|---|
-| sigreg | 62.5 / 50.0 | 62.0 / 50.0 | 62.5 / 38.5 | 26.5 / 62.5 |
-| jac | 81.5 / 22.5 | 81.5 / 22.5 | 81.5 / 14.5 | 30.0 / 60.0 |
-| jac+pull | 81.5 / 29.0 | 82.0 / 27.5 | 81.5 / 15.5 | 41.5 / 54.5 |
-| adv_h | 57.5 / 57.0 | 57.5 / 57.0 | 57.5 / 46.0 | 20.5 / 70.5 |
-| jac+pull+adv_h | 75.5 / 29.0 | 75.5 / 28.5 | 75.5 / 16.5 | 30.0 / 53.0 |
-| adv_λ | 51.5 / 58.0 | 51.5 / 58.0 | 51.5 / 46.0 | 17.5 / 66.0 |
+| sigreg | 62.5 / 50.0 | 33.0 / 65.0 | 42.0 / 49.0 | 26.5 / 62.5 |
+| jac | 81.5 / 22.5 | 16.0 / 75.5 | 79.0 / 15.5 | 30.0 / 60.0 |
+| jac+pull | 81.5 / 29.0 | 25.5 / 59.0 | 82.0 / 14.0 | 41.5 / 54.5 |
+| adv_h | 57.5 / 57.0 | 34.0 / 63.5 | 49.5 / 47.0 | 20.5 / 70.5 |
+| jac+pull+adv_h | 75.5 / 29.0 | 32.0 / 65.0 | 75.5 / 18.5 | 30.0 / 53.0 |
+| adv_λ | 51.5 / 58.0 | 26.5 / 66.5 | 42.0 / 51.0 | 17.5 / 66.0 |
 
 Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function (oracle $V^*$)
 
 | model | red | purple | diamond | rotated |
 |---|---|---|---|---|
-| sigreg | 39.0 / 60.5 | 39.0 / 60.0 | 39.5 / 53.5 | 23.5 / 64.0 |
-| jac | 72.0 / 11.0 | 72.0 / 12.0 | 72.0 / 6.5 | 48.0 / 13.5 |
-| jac+pull | 75.0 / 20.0 | 75.0 / 21.0 | 75.0 / 13.5 | 35.0 / 37.5 |
-| adv_h | 41.0 / 59.5 | 41.5 / 59.5 | 41.0 / 52.0 | 22.5 / 64.0 |
-| jac+pull+adv_h | 66.5 / 25.0 | 66.5 / 27.0 | 66.5 / 14.5 | 33.0 / 31.5 |
-| adv_λ | 49.0 / 59.0 | 48.5 / 58.5 | 48.5 / 50.0 | 20.5 / 63.5 |
+| sigreg | 39.0 / 60.5 | 28.5 / 61.5 | 35.5 / 50.0 | 23.5 / 64.0 |
+| jac | 72.0 / 11.0 | 39.0 / 15.5 | 71.5 / 5.5 | 48.0 / 13.5 |
+| jac+pull | 75.0 / 20.0 | 38.5 / 41.0 | 73.0 / 18.0 | 35.0 / 37.5 |
+| adv_h | 41.0 / 59.5 | 28.0 / 62.5 | 35.0 / 55.5 | 22.5 / 64.0 |
+| jac+pull+adv_h | 66.5 / 25.0 | 33.0 / 33.5 | 62.0 / 15.5 | 33.0 / 31.5 |
+| adv_λ | 49.0 / 59.0 | 24.5 / 68.0 | 44.0 / 51.0 | 20.5 / 63.5 |
 
 Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels; the same recipe as the OOD tables, trained on red frames in the training orientation, `margin_gp_fail_red_s0.pt`)
 
 | model | red | purple | diamond | rotated |
 |---|---|---|---|---|
-| sigreg | 57.5 / 49.5 | 57.5 / 49.5 | 57.5 / 42.0 | 26.0 / 64.5 |
-| jac | 79.0 / 8.5 | 79.0 / 9.5 | 79.0 / 5.5 | 45.0 / 21.5 |
-| jac+pull | 77.0 / 20.0 | 77.0 / 21.5 | 77.0 / 13.0 | 35.0 / 31.0 |
-| adv_h | 55.5 / 53.0 | 56.0 / 53.0 | 55.5 / 45.0 | 19.0 / 69.5 |
-| jac+pull+adv_h | 70.5 / 25.0 | 70.0 / 26.5 | 70.5 / 18.0 | 34.5 / 41.0 |
-| adv_λ | 48.0 / 59.0 | 48.0 / 58.5 | 48.0 / 47.5 | 16.0 / 66.5 |
+| sigreg | 57.5 / 49.5 | 34.0 / 66.0 | 40.5 / 50.5 | 26.0 / 64.5 |
+| jac | 79.0 / 8.5 | 35.0 / 26.5 | 78.0 / 5.0 | 45.0 / 21.5 |
+| jac+pull | 77.0 / 20.0 | 35.5 / 36.5 | 75.5 / 14.0 | 35.0 / 31.0 |
+| adv_h | 55.5 / 53.0 | 34.5 / 63.0 | 50.5 / 46.5 | 19.0 / 69.5 |
+| jac+pull+adv_h | 70.5 / 25.0 | 39.0 / 44.5 | 68.5 / 16.0 | 34.5 / 41.0 |
+| adv_λ | 48.0 / 59.0 | 28.0 / 66.0 | 41.5 / 52.0 | 16.0 / 66.5 |
 
-- jac gains the most: collision falls from 14.5-60% to 5.5-21.5% on every condition. With the GP margin function it keeps 79% success (vs 81.5% raw); with the value function it drops to 72%. Under rotation both variants improve success and collision together (raw 30.0 / 60.0; value function 48.0 / 13.5; GP 45.0 / 21.5).
-- jac+pull and jac+pull+adv_h gain less: collision falls about 4-9 points in-distribution and substantially only under rotation (54.5 -> 31-37.5, 53.0 -> 31.5-41.0), at a cost of 4-9 points of success.
-- The sigreg-base models (sigreg, adv_h, adv_λ) get no safety from either margin function. With the value function they lose 10-20 points of success; with the GP margin function they stay close to raw CEM. Their imagined rollouts are the likely problem (see below), not $h$.
-- The label-free GP margin function matches or beats the privileged value function on every model in-distribution; the value function is better only for jac under rotation (13.5 vs 21.5% collision).
-- Recolor changes nothing in CEM, with or without the soft cost (red and purple within 1.5 points everywhere): the goal image is recolored too, and $h$ reads imagined latents.
-- Why the safety regs plan worse (hypotheses, untested): (1) they raise prediction loss (adv_h 0.0113, jac+pull+adv_h 0.0165 vs about 0.007), and CEM scores both the goal and the safety cost on 25-step imagined rollouts; (2) the live-gap denominator rewards pushing safe and unsafe apart, which may distort the latent goal cost near obstacles, where sg25clean goals sit; (3) the regs constrain only the encoder and one predictor step, not long rollouts.
+- Recolor is the hardest shift for planning: with a consistent purple scene every model collapses under raw CEM (16-34% success, 59-76% collision). Diamond hurts only the sigreg-base models (8-20 points of success); the jac-base models are unaffected.
+- The soft cost rescues the jac-base models under purple even though $h$ was trained on red frames: jac 16.0 / 75.5 -> 39.0 / 15.5 (value function) and 35.0 / 26.5 (GP); jac+pull and jac+pull+adv_h drop to 33.5-44.5% collision. It never helps the sigreg-base models (sigreg, adv_h, adv_λ) on any condition.
+- jac gains the most overall: collision 5-27% on every condition, versus 15.5-75.5% raw. With the GP margin function it keeps 78-79% success on red and diamond.
+- The label-free GP margin function matches the privileged value function in most cells; the value function is better for jac under purple and rotation.
+- Control on red (jac): a margin function with no safety knowledge makes CEM worse, not safer (shuffled labels 63.5 / 39.5, random init 36.5 / 43.0, vs GP 79.0 / 8.5 and raw 81.5 / 22.5), so the safety gain comes from what $h$ knows.
+
+Why the safety regs plan worse (diagnostics `diag_rollout_safety.py`, ablations `ablate_plan_worse.sh`, `seeds_jacpull_vs_adv.sh`):
+
+- Same base, 3 WM seeds: jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull on red (75.5 / 79.0 / 78.0 vs 81.5 / 87.0 / 82.5; pooled paired 52 vs 15 episodes, $p < 10^{-4}$), with no consistent change in collision.
+- Across 22 Dubins WMs, raw-CEM collision tracks goal-distance fidelity, the Spearman correlation between latent distance to the goal and true $(x, y)$ distance near the goal ($\rho = -0.84$); 25-step rollout error does not ($\rho \approx 0$). adv_h lowers that fidelity on imagined latents and raises 5-step rollout error on every seed of the jac+pull pair.
+- Projecting the safety direction $\lambda$ out of the latent leaves goal fidelity unchanged on every model (λ is about 2.5% of the latent variance), so the distortion is not along the safety axis.
+- Part-ablations of adv_h (sigreg base): the adversarial predictor term causes the rollout-error increase (predictor-only 0.084, full 0.082, encoder-only 0.049, no reg 0.014 at 5 steps); detaching the gap denominator restores most of the real-latent goal geometry; random noise instead of the adversary costs almost nothing. Encoder-only versions of all safety-reg WMs are training to test the fix.
+- Training the value function on imagined latents (rollout_k = 8) does not restore $h$ on imagined latents and does not make the soft cost help the sigreg-base models.
+- The goal marker is a nuisance for sigreg's margin function only (AUC 0.985 -> 0.901 when the marker moves; ≤ 0.017 for every other model).
 
 
 That changes my recommendation significantly. If your unsafe-state sink is already accurate on real observations, but imagined trajectories don't enter it when they should, I'd focus on the predictor's ability to preserve safety-relevant geometry—not replace the sink or immediately switch world models.
