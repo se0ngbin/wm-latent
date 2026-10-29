@@ -14,6 +14,44 @@ from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
 import dubins_swm_env  # noqa: F401  (registers swm/Dubins-v0)
+import stable_worldmodel.world.world as _swm_world
+
+# OOD appearance runs (DUBINS_OBST_COLOR / DUBINS_OBST_SHAPE): World.evaluate takes the goal frame from the dataset, so it
+# kept the training appearance (red circles) while the world was recolored/reshaped. Re-render each goal frame through the
+# env instead: agent at the stored goal state, goal marker where the dataset frame shows it (green centroid), so only the
+# obstacle appearance changes. Red runs and DUBINS_ROT_DEG runs (goal rot90'd downstream) are left as before.
+_extract_init_goal_dataset = _swm_world._extract_init_goal
+
+
+def _rerender_goal(env, img, st):
+    h, w = img.shape[:2]
+    g = (img[..., 1] > 150) & (img[..., 0] < 100) & (img[..., 2] < 100)
+    if g.any():
+        r, c = np.argwhere(g).mean(0)
+        env.goal_position = np.array([env.x_min + (c + 0.5) / w * (env.x_max - env.x_min),
+                                      env.y_max - (r + 0.5) / h * (env.y_max - env.y_min)], dtype=np.float32)
+    else:
+        env.goal_position = np.asarray(st[:2], dtype=np.float32)
+    env.state = np.asarray(st, dtype=np.float32).copy()
+    out = env._render_image()
+    assert out.shape == img.shape, (out.shape, img.shape)
+    return out.astype(img.dtype)
+
+
+def _extract_init_goal_rerendered(*args, **kwargs):
+    init_state, goal_state, videos = _extract_init_goal_dataset(*args, **kwargs)
+    shifted = (os.environ.get("DUBINS_OBST_COLOR", "red") != "red"
+               or os.environ.get("DUBINS_OBST_SHAPE", "circle") != "circle"
+               or os.environ.get("DUBINS_GOAL_RERENDER") == "1")   # force the path in-distribution (control)
+    if shifted and "goal" in goal_state and "goal_state" in goal_state:
+        env = dubins_swm_env.DubinsSwmEnv()
+        goal_state["goal"] = np.stack([_rerender_goal(env, im, st)
+                                       for im, st in zip(goal_state["goal"], goal_state["goal_state"])])
+        print(f"[goal] re-rendered {len(goal_state['goal'])} goal frames in the shifted appearance")
+    return init_state, goal_state, videos
+
+
+_swm_world._extract_init_goal = _extract_init_goal_rerendered
 
 def img_transform(cfg):
     transform = transforms.Compose(
