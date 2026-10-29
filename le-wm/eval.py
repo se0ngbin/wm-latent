@@ -41,7 +41,8 @@ def _rerender_goal(env, img, st):
 def _extract_init_goal_rerendered(*args, **kwargs):
     init_state, goal_state, videos = _extract_init_goal_dataset(*args, **kwargs)
     shifted = (os.environ.get("DUBINS_OBST_COLOR", "red") != "red"
-               or os.environ.get("DUBINS_OBST_SHAPE", "circle") != "circle")
+               or os.environ.get("DUBINS_OBST_SHAPE", "circle") != "circle"
+               or os.environ.get("DUBINS_GOAL_RERENDER") == "1")   # force the path in-distribution (control)
     if shifted and "goal" in goal_state and "goal_state" in goal_state:
         env = dubins_swm_env.DubinsSwmEnv()
         goal_state["goal"] = np.stack([_rerender_goal(env, im, st)
