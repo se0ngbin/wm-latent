@@ -68,8 +68,18 @@ def run(tag, ck):
         r[f"goal_spearman_{nm}"] = float(spearmanr(dl, dtrue).correlation)
         near = dtrue < 0.5
         r[f"goal_spearman_near_{nm}"] = float(spearmanr(dl[near], dtrue[near]).correlation)
+    # projection test: remove the safety direction lambda = mean(z safe) - mean(z unsafe) (real window latents) before
+    # measuring goal distance; if the safety axis is what bends the goal geometry, rho should recover
+    zf, ff = Z.flatten(0, 1), torch.from_numpy(fail.ravel()).to(DEV)
+    u = zf[ff == 0].mean(0) - zf[ff == 1].mean(0); u = u / u.norm()
+    proj = lambda X: X - (X @ u).unsqueeze(-1) * u
+    for nm, ZZ in (("real", Zr), ("imag", Zh)):
+        dl = (proj(ZZ) - proj(zg)).pow(2).sum(-1)[:, :-1].cpu().numpy().ravel()
+        r[f"goal_spearman_near_{nm}_projlam"] = float(spearmanr(dl[near], dtrue[near]).correlation)
+    r["lambda_var_frac"] = float(((zf - zf.mean(0)) @ u).pow(2).mean() / (zf - zf.mean(0)).pow(2).sum(-1).mean())
     # h on imagined vs real latents
-    for hn, fn in (("gp", "margin_gp_fail_red_s0.pt"), ("hj", "margin_hj_color_red_rk0_s0.pt")):
+    for hn, fn in (("gp", "margin_gp_fail_red_s0.pt"), ("hj", "margin_hj_color_red_rk0_s0.pt"),
+                   ("hjimag", "margin_hj_red_rk8_s0.pt")):
         p = f"{MDIR}/{ck}/{fn}"
         if not os.path.exists(p): continue
         head = _MarginHead().to(DEV); head.load_state_dict(torch.load(p, map_location=DEV)["margin_gp"]); head.eval()
@@ -82,7 +92,9 @@ def run(tag, ck):
     print(f"DIAG {tag} nerr@1={nerr[0]:.4f} @5={nerr[4]:.4f} @25={nerr[-1]:.4f} "
           f"goal_rho real={r['goal_spearman_real']:.3f} imag={r['goal_spearman_imag']:.3f} "
           + " ".join(f"{hn}_auc real={r[f'{hn}_auc_real_all']:.3f} imag={r[f'{hn}_auc_imag_all']:.3f}"
-                     for hn in ("gp", "hj") if f"{hn}_auc_real_all" in r), flush=True)
+                     for hn in ("gp", "hj", "hjimag") if f"{hn}_auc_real_all" in r)
+          + f" goal_rho_near real={r['goal_spearman_near_real']:.3f} projlam={r['goal_spearman_near_real_projlam']:.3f}"
+          f" lam_var={r['lambda_var_frac']:.3f}", flush=True)
     del m; torch.cuda.empty_cache()
 
 
