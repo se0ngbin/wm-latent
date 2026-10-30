@@ -32,11 +32,11 @@ AUC
 | jac | 0.998 ± 0.000 | 0.591 ± 0.019 | 0.988 ± 0.001 | 0.995 ± 0.001 |
 | jac+pull | 0.998 ± 0.000 | 0.787 ± 0.084 | 0.976 ± 0.002 | 0.995 ± 0.001 |
 | adv_h | 0.999 ± 0.001 | 0.789 ± 0.074 | 0.993 ± 0.001 | 0.998 ± 0.000 |
-| jac+adv_h | | | | |
+| jac+adv_h | 0.999 ± 0.000 | 0.167 ± 0.021 | 0.995 ± 0.001 | 0.997 ± 0.000 |
 | jac+pull+adv_h | 0.999 ± 0.000 | 0.782 ± 0.068 | 0.995 ± 0.001 | 0.997 ± 0.001 |
 | adv_λ | 0.999 ± 0.000 | 0.982 ± 0.001 | 0.995 ± 0.003 | 0.998 ± 0.000 |
-| jac+adv_λ | | | | |
-| jac+pull+adv_λ | | | | |
+| jac+adv_λ | 0.999 ± 0.000 | 0.946 ± 0.031 | 0.994 ± 0.001 | 0.997 ± 0.001 |
+| jac+pull+adv_λ | 0.999 ± 0.000 | 0.911 ± 0.067 | 0.994 ± 0.001 | 0.997 ± 0.001 |
 
 Sign accuracy, balanced: (TPR_safe + TPR_unsafe) / 2 on the full test set, i.e. the expected accuracy on a 50/50 safe/unsafe split (h ≥ 0 = safe; 0.500 = everything called one class). The margin function itself is trained on the natural split. "base" is the in-distribution value over all 9 runs (3 axes × 3 seeds).
 
@@ -46,20 +46,20 @@ Sign accuracy, balanced: (TPR_safe + TPR_unsafe) / 2 on the full test set, i.e. 
 | jac | 0.956 ± 0.010 | 0.500 ± 0.000 | 0.842 ± 0.017 | 0.911 ± 0.007 |
 | jac+pull | 0.956 ± 0.008 | 0.500 ± 0.000 | 0.822 ± 0.019 | 0.909 ± 0.011 |
 | adv_h | 0.977 ± 0.003 | 0.502 ± 0.001 | 0.578 ± 0.036 | 0.969 ± 0.009 |
-| jac+adv_h | | | | |
+| jac+adv_h | 0.974 ± 0.005 | 0.464 ± 0.050 | 0.912 ± 0.009 | 0.943 ± 0.011 |
 | jac+pull+adv_h | 0.975 ± 0.009 | 0.500 ± 0.000 | 0.886 ± 0.014 | 0.941 ± 0.003 |
 | adv_λ | 0.977 ± 0.006 | 0.500 ± 0.000 | 0.944 ± 0.027 | 0.973 ± 0.007 |
-| jac+adv_λ | | | | |
-| jac+pull+adv_λ | | | | |
+| jac+adv_λ | 0.974 ± 0.009 | 0.500 ± 0.000 | 0.929 ± 0.007 | 0.958 ± 0.008 |
+| jac+pull+adv_λ | 0.972 ± 0.009 | 0.500 ± 0.000 | 0.919 ± 0.008 | 0.955 ± 0.009 |
 
 Reading:
 
 - sigreg fails every shift: color 0.110, a real rotation 0.082 (inverted ranking), shape 0.487. Its thresholds collapse too.
-- Every regularized model handles rotation and shape (AUC ≥ 0.976, shape sign accuracy 0.909-0.973).
-- Color is the hard shift. adv_λ is the only model that keeps the ranking (0.982); jac drops to 0.591 and the others sit at 0.78-0.79 with large seed spread.
-- No threshold survives color: every model is at 0.500. Predicted-safe fraction on purple: jac, jac+pull and jac+pull+adv_h call everything safe; adv_h and adv_λ call everything unsafe.
-- Under rotation adv_h ranks well (0.993) but drifts to calling 92% of frames safe (sign accuracy 0.578); adv_λ keeps both (0.995 / 0.944).
-- One WM seed. The earlier 3-WM-seed comparison was also run on transposed frames and needs redoing.
+- Every other model handles rotation and shape (AUC ≥ 0.976, shape sign accuracy 0.909-0.973). Adding jac fixes adv_h's drifting rotation threshold (0.578 -> 0.912).
+- Color is the hard shift. adv_λ keeps the ranking on every base (0.911-0.982); jac drops to 0.591, adv_h and the jac+pull models sit at 0.78-0.79, and jac+adv_h inverts it (0.167).
+- No threshold survives color: every model is near 0.500. Predicted-safe fraction on purple: jac, jac+pull and jac+pull+adv_h call everything safe; adv_h and adv_λ call everything unsafe.
+- Encoder-only ablations (adversarial penalty on the encoder term only): color AUC drops from 0.789 to 0.454 (adv_h) and from 0.982 to 0.440 (adv_λ), so the predictor term is where the color robustness comes from (see the CEM section for its planning cost).
+- One WM seed per model; jac+adv_h's color inversion in particular needs a second seed before it is trusted. The earlier 3-WM-seed comparison was run on transposed frames and needs redoing.
 
 # Safety Gym
 
@@ -591,8 +591,11 @@ Raw CEM
 | jac | 81.5 / 22.5 | 16.0 / 75.5 | 79.0 / 15.5 | 30.0 / 60.0 |
 | jac+pull | 81.5 / 29.0 | 25.5 / 59.0 | 82.0 / 14.0 | 41.5 / 54.5 |
 | adv_h | 57.5 / 57.0 | 34.0 / 63.5 | 49.5 / 47.0 | 20.5 / 70.5 |
+| jac+adv_h | 79.0 / 25.0 | 7.5 / 81.5 | 78.0 / 18.5 | 19.5 / 64.5 |
 | jac+pull+adv_h | 75.5 / 29.0 | 32.0 / 65.0 | 75.5 / 18.5 | 30.0 / 53.0 |
 | adv_λ | 51.5 / 58.0 | 26.5 / 66.5 | 42.0 / 51.0 | 17.5 / 66.0 |
+| jac+adv_λ | 81.0 / 27.5 | 26.0 / 61.0 | 80.5 / 15.0 | 36.5 / 48.5 |
+| jac+pull+adv_λ | 81.0 / 29.0 | 33.0 / 58.0 | 77.5 / 16.5 | 46.5 / 46.0 |
 
 Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function (oracle $V^*$)
 
@@ -602,8 +605,11 @@ Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function (oracle $
 | jac | 72.0 / 11.0 | 39.0 / 15.5 | 71.5 / 5.5 | 48.0 / 13.5 |
 | jac+pull | 75.0 / 20.0 | 38.5 / 41.0 | 73.0 / 18.0 | 35.0 / 37.5 |
 | adv_h | 41.0 / 59.5 | 28.0 / 62.5 | 35.0 / 55.5 | 22.5 / 64.0 |
+| jac+adv_h | 68.5 / 19.5 | 34.0 / 30.0 | 65.0 / 17.5 | 27.0 / 43.0 |
 | jac+pull+adv_h | 66.5 / 25.0 | 33.0 / 33.5 | 62.0 / 15.5 | 33.0 / 31.5 |
 | adv_λ | 49.0 / 59.0 | 24.5 / 68.0 | 44.0 / 51.0 | 20.5 / 63.5 |
+| jac+adv_λ | 73.5 / 29.0 | 45.0 / 41.5 | 72.5 / 16.5 | 44.5 / 39.5 |
+| jac+pull+adv_λ | 62.5 / 29.0 | 44.0 / 28.5 | 62.5 / 16.5 | 42.5 / 23.0 |
 
 Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels; the same recipe as the OOD tables, trained on red frames in the training orientation, `margin_gp_fail_red_s0.pt`)
 
@@ -613,13 +619,19 @@ Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels;
 | jac | 79.0 / 8.5 | 35.0 / 26.5 | 78.0 / 5.0 | 45.0 / 21.5 |
 | jac+pull | 77.0 / 20.0 | 35.5 / 36.5 | 75.5 / 14.0 | 35.0 / 31.0 |
 | adv_h | 55.5 / 53.0 | 34.5 / 63.0 | 50.5 / 46.5 | 19.0 / 69.5 |
+| jac+adv_h | 76.0 / 13.0 | 25.5 / 37.5 | 73.5 / 11.0 | 18.5 / 46.0 |
 | jac+pull+adv_h | 70.5 / 25.0 | 39.0 / 44.5 | 68.5 / 16.0 | 34.5 / 41.0 |
 | adv_λ | 48.0 / 59.0 | 28.0 / 66.0 | 41.5 / 52.0 | 16.0 / 66.5 |
+| jac+adv_λ | 74.0 / 17.5 | 37.5 / 36.0 | 75.5 / 14.0 | 31.0 / 39.5 |
+| jac+pull+adv_λ | 70.0 / 29.0 | 40.5 / 38.0 | 68.0 / 15.5 | 43.0 / 29.0 |
 
-- Recolor is the hardest shift for planning: with a consistent purple scene every model collapses under raw CEM (16-34% success, 59-76% collision). Diamond hurts only the sigreg-base models (8-20 points of success); the jac-base models are unaffected.
+- Recolor is the hardest shift for planning: with a consistent purple scene every model collapses under raw CEM (7.5-34% success, 58-82% collision; jac+adv_h is worst at 7.5 / 81.5). Diamond hurts only the sigreg-base models (8-20 points of success); the jac-base models are unaffected.
 - The soft cost rescues the jac-base models under purple even though $h$ was trained on red frames: jac 16.0 / 75.5 -> 39.0 / 15.5 (value function) and 35.0 / 26.5 (GP); jac+pull and jac+pull+adv_h drop to 33.5-44.5% collision. It never helps the sigreg-base models (sigreg, adv_h, adv_λ) on any condition.
 - jac gains the most overall: collision 5-27% on every condition, versus 15.5-75.5% raw. With the GP margin function it keeps 78-79% success on red and diamond.
 - The label-free GP margin function matches the privileged value function in most cells; the value function is better for jac under purple and rotation.
+- New models: jac+pull+adv_λ is the strongest raw planner overall (no success cost on red, 81.0 / 29.0 vs jac+pull 81.5 / 29.0; best raw rotation, 46.5 / 46.0), and its soft cost works under the shifts (purple 44.0 / 28.5, rotated 42.5 / 23.0) but not in-distribution (red 62.5-70.0 / 29.0). jac+adv_h is the weakest jac-base model under shifts (raw purple 7.5 / 81.5, rotated 19.5 / 64.5). Adding either safety reg to jac removes most of the soft cost's in-distribution safety gain (jac 8.5-11.0% collision on red vs 13.0-29.0% for jac+adv_h, jac+adv_λ); the per-step diagnostics (h on imagined latents, rollout error, goal geometry) do not explain this, so how h ranks CEM's own candidates is the open question.
+- Encoder-only safety regs (pred_weight = 0, sigreg base so far): raw CEM improves (adv_h 57.5 / 57.0 -> 60.5 / 47.5, adv_λ 51.5 / 58.0 -> 61.0 / 44.0 on red) but color robustness is lost (margin AUC 0.79 / 0.98 -> 0.45 / 0.44; adv_λ enc-only raw purple collision 79.0 vs 66.5). The predictor term trades planning for color robustness; jac+pull+adv_h encoder-only is still training.
+- Replanning every 5 steps instead of executing the 25-step plan open loop (red, partial): raw CEM drops for every model (jac+pull 81.5 / 29.0 -> 60.5 / 46.0), likely because the goal cost scores only the final predicted step and each replan pushes arrival later. Within that setting the fair-pair gap reverses (jac+pull+adv_h 62.5 / 36.5 vs jac+pull 60.5 / 46.0), and the GP soft cost is far more effective (jac+pull 66.5 / 11.5; jac+pull+adv_h 64.5 / 26.0).
 - Control on red (jac): a margin function with no safety knowledge makes CEM worse, not safer (shuffled labels 63.5 / 39.5, random init 36.5 / 43.0, vs GP 79.0 / 8.5 and raw 81.5 / 22.5), so the safety gain comes from what $h$ knows.
 
 Why the safety regs plan worse (diagnostics `diag_rollout_safety.py`, ablations `ablate_plan_worse.sh`, `seeds_jacpull_vs_adv.sh`):
