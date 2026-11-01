@@ -15,13 +15,14 @@ LOG=/home/seongbin/latent/run_logs; PY=/home/seongbin/latent/le-wm/.venv/bin/pyt
 GPU=$1 WM=$2 HEAD=$3 TAG=$4 W=$5; shift 5
 C=${CONST:-0}; SUF=w${W}; [ "$C" != 0 ] && SUF=${SUF}_c${C}   # CONST env: lexicographic flat cost
 [ "${REC:-25}" != 25 ] && SUF=${SUF}_rec${REC}             # REC env: replan every REC steps (default 25 = open loop)
+[ "${GOALCOST:-final}" != final ] && SUF=${SUF}_g${GOALCOST}   # GOALCOST env: final (default) | mean (goal distance at every imagined step)
 declare -A ENVS=([red]= [purple]=DUBINS_OBST_COLOR=purple [diamond]=DUBINS_OBST_SHAPE=square [fullrot90]=DUBINS_ROT_DEG=90)
 for scen in "${@:-red}"; do
   lg="$LOG/softcem_${TAG}_${SUF}_${scen}.log"
   for try in 1 2 3 4 5 6; do
     grep -q "'collision_rate'" "$lg" 2>/dev/null && break
     env ${ENVS[$scen]} CUDA_VISIBLE_DEVICES=$GPU $PY eval.py --config-name=dubins solver=soft_cem \
-      solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C solver.batch_size=${BS:-16} policy="$WM/weights_epoch_50.pt" \
+      solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C solver.goal_cost=${GOALCOST:-final} solver.batch_size=${BS:-16} policy="$WM/weights_epoch_50.pt" \
       eval.num_eval=200 eval.goal_offset_steps=25 eval.goal_at_episode_end=false eval.eval_budget=50 \
       plan_config.horizon=25 plan_config.action_block=1 plan_config.receding_horizon=${REC:-25} \
       '+eval.goal_avoid_obstacles=[[0.25,0.65,0.5],[0.25,-0.65,0.5]]' +eval.goal_avoid_margin=0.05 \
