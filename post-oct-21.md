@@ -682,7 +682,7 @@ The safety-first runs above add a flat $C = 10^4$ for any predicted violation. W
 
 | Model | raw CEM | $w = 100$ | $w = 1000$ |
 | --- | ---: | ---: | ---: |
-| adv_h | 57.5 / 57.0 | 55.0 / 53.0 | pending |
+| adv_h | 57.5 / 57.0 | 55.0 / 53.0 | 54.5 / 53.0 |
 | adv_h, encoder-only | 60.5 / 47.5 | 58.0 / 47.0 | 58.5 / 47.0 |
 | adv_λ | 51.5 / 58.0 | 50.5 / 57.0 | 49.5 / 59.0 |
 | adv_λ, encoder-only | 61.0 / 44.0 | 62.5 / 41.5 | 64.5 / 44.0 |
