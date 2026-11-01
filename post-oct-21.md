@@ -664,13 +664,58 @@ Encoder-only sets $\mathrm{pred\_weight}=0$, removing the adversarial penalty fr
 | jac+pull+adv_h | 0.782 | 0.891 | 75.5 / 29.0 | 78.5 / 33.0 |
 | jac+pull+adv_λ | 0.911 | 0.403 | 81.0 / 29.0 | 78.5 / 28.5 |
 
-Encoder-only models with the GP safety-first cost ($w = 1000$, $C = 10^4$), success / collision (%):
+Full vs encoder-only, success / collision (%), all four conditions (purple and diamond with a consistent goal frame):
 
-| Model | Red | Purple | Diamond | Rotated |
+Raw CEM
+
+| Model | red | purple | diamond | rotated |
 | --- | ---: | ---: | ---: | ---: |
+| adv_h | 57.5 / 57.0 | 34.0 / 63.5 | 49.5 / 47.0 | 20.5 / 70.5 |
+| adv_h, encoder-only | 60.5 / 47.5 | 30.5 / 60.5 | 55.5 / 47.0 | 30.0 / 60.5 |
+| adv_λ | 51.5 / 58.0 | 26.5 / 66.5 | 42.0 / 51.0 | 17.5 / 66.0 |
+| adv_λ, encoder-only | 61.0 / 44.0 | 27.0 / 79.0 | 54.5 / 42.0 | 30.5 / 58.5 |
+| jac+adv_h | 79.0 / 25.0 | 7.5 / 81.5 | 78.0 / 18.5 | 19.5 / 64.5 |
+| jac+adv_h, encoder-only | 81.5 / 26.5 | 23.0 / 72.5 | 80.0 / 15.5 | 29.5 / 47.5 |
+| jac+adv_λ | 81.0 / 27.5 | 26.0 / 61.0 | 80.5 / 15.0 | 36.5 / 48.5 |
+| jac+adv_λ, encoder-only | 83.0 / 21.0 | 28.0 / 59.5 | 80.0 / 13.5 | 28.0 / 57.0 |
+| jac+pull+adv_h | 75.5 / 29.0 | 32.0 / 65.0 | 75.5 / 18.5 | 30.0 / 53.0 |
+| jac+pull+adv_h, encoder-only | 78.5 / 33.0 | 28.5 / 49.0 | 75.5 / 17.0 | 30.5 / 38.5 |
+| jac+pull+adv_λ | 81.0 / 29.0 | 33.0 / 58.0 | 77.5 / 16.5 | 46.5 / 46.0 |
+| jac+pull+adv_λ, encoder-only | 78.5 / 28.5 | 32.5 / 53.5 | 76.5 / 15.5 | 38.0 / 41.5 |
+
+Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function
+
+| Model | red | purple | diamond | rotated |
+| --- | ---: | ---: | ---: | ---: |
+| adv_h | 41.0 / 59.5 | 28.0 / 62.5 | 35.0 / 55.5 | 22.5 / 64.0 |
+| adv_h, encoder-only | 44.5 / 52.5 | 22.5 / 67.0 | 44.0 / 43.5 | 27.0 / 58.0 |
+| adv_λ | 49.0 / 59.0 | 24.5 / 68.0 | 44.0 / 51.0 | 20.5 / 63.5 |
+| adv_λ, encoder-only | 46.0 / 55.0 | 28.0 / 57.5 | 36.5 / 46.0 | 31.0 / 55.0 |
+| jac+adv_h | 68.5 / 19.5 | 34.0 / 30.0 | 65.0 / 17.5 | 27.0 / 43.0 |
+| jac+adv_h, encoder-only | 76.5 / 20.0 | 41.0 / 32.5 | 71.0 / 11.5 | 42.0 / 29.0 |
+| jac+adv_λ | 73.5 / 29.0 | 45.0 / 41.5 | 72.5 / 16.5 | 44.5 / 39.5 |
+| jac+adv_λ, encoder-only | 71.5 / 16.5 | 35.0 / 34.5 | 70.5 / 9.5 | 36.5 / 30.0 |
+| jac+pull+adv_h | 66.5 / 25.0 | 33.0 / 33.5 | 62.0 / 15.5 | 33.0 / 31.5 |
+| jac+pull+adv_h, encoder-only | 69.0 / 25.0 | 34.0 / 30.0 | 66.0 / 18.0 | 34.0 / 26.0 |
+| jac+pull+adv_λ | 62.5 / 29.0 | 44.0 / 28.5 | 62.5 / 16.5 | 42.5 / 23.0 |
+| jac+pull+adv_λ, encoder-only | 67.0 / 25.5 | 32.0 / 24.0 | 67.0 / 15.5 | 38.5 / 20.0 |
+
+Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function
+
+| Model | red | purple | diamond | rotated |
+| --- | ---: | ---: | ---: | ---: |
+| adv_h | 55.5 / 53.0 | 34.5 / 63.0 | 50.5 / 46.5 | 19.0 / 69.5 |
+| adv_h, encoder-only | 58.5 / 47.0 | 31.0 / 60.0 | 55.5 / 46.0 | 32.0 / 59.5 |
+| adv_λ | 48.0 / 59.0 | 28.0 / 66.0 | 41.5 / 52.0 | 16.0 / 66.5 |
+| adv_λ, encoder-only | 64.0 / 44.0 | 28.5 / 77.5 | 55.5 / 40.5 | 30.5 / 58.5 |
+| jac+adv_h | 76.0 / 13.0 | 25.5 / 37.5 | 73.5 / 11.0 | 18.5 / 46.0 |
 | jac+adv_h, encoder-only | 80.5 / 8.0 | 40.0 / 21.0 | 78.0 / 5.5 | 41.5 / 22.5 |
+| jac+adv_λ | 74.0 / 17.5 | 37.5 / 36.0 | 75.5 / 14.0 | 31.0 / 39.5 |
 | jac+adv_λ, encoder-only | 78.5 / 7.5 | 36.5 / 27.5 | 78.5 / 6.5 | 41.0 / 27.5 |
+| jac+pull+adv_h | 70.5 / 25.0 | 39.0 / 44.5 | 68.5 / 16.0 | 34.5 / 41.0 |
 | jac+pull+adv_h, encoder-only | 70.0 / 22.5 | 34.0 / 26.5 | 65.5 / 15.5 | 29.5 / 27.0 |
+| jac+pull+adv_λ | 70.0 / 29.0 | 40.5 / 38.0 | 68.0 / 15.5 | 43.0 / 29.0 |
+| jac+pull+adv_λ, encoder-only | 76.0 / 20.5 | 30.5 / 29.5 | 77.0 / 12.0 | 38.5 / 21.5 |
 
 - adv_h and adv_λ behave differently. Removing adv_h's predictor term keeps or improves color robustness on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but costs it on sigreg (0.789 -> 0.454). adv_λ needs its predictor term on every base (0.911-0.982 -> 0.398-0.440). On sigreg, adv_λ encoder-only also collides more under purple (raw red / purple collision 44.0 / 79.0 vs 58.0 / 66.5 full).
 - Raw red CEM without the predictor term: better on the sigreg base (adv_h 57.5 / 57.0 -> 60.5 / 47.5, adv_λ 51.5 / 58.0 -> 61.0 / 44.0) and for jac+adv_λ (81.0 / 27.5 -> 83.0 / 21.0); mixed elsewhere (jac+adv_h 79.0 / 25.0 -> 81.5 / 26.5, jac+pull+adv_h 75.5 / 29.0 -> 78.5 / 33.0, jac+pull+adv_λ 81.0 / 29.0 -> 78.5 / 28.5).
