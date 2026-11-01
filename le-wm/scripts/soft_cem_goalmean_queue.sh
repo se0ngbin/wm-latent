@@ -4,7 +4,7 @@
 # REC=5) under the same cost; raw CEM and GP safety-first; red; full 9-model Dubins grid.
 set -uo pipefail
 cd "$(dirname "$0")"
-export GOALCOST=mean
+export GOALCOST=mean SCEN=${SCEN:-red}  # SCEN="purple diamond fullrot90" for OOD
 H=/data/seongbin/dreamer/lewm
 declare -A WM=([sigreg]=sigreg_only_dubins [jacobian]=jacobian_w1_dubins [jacpull]=lewm_dubins_jacpull50
   [linf]=lewm_dubins_safeadv_linf50 [jacpull_linf]=lewm_dubins_jacpull_safeadv_linf50 [lam_bdet]=lewm_dubins_lam_bdet50
@@ -12,8 +12,8 @@ declare -A WM=([sigreg]=sigreg_only_dubins [jacobian]=jacobian_w1_dubins [jacpul
 one () {  # gpu tag: 4 runs (REC 25/5 x raw/GP safety-first)
   local g=$1 t=$2 ck=${WM[$2]} gp=$H/${WM[$2]}/margin_gp_fail_red_s0.pt
   for rec in 25 5; do
-    REC=$rec ./soft_cem.sh $g $ck $gp ${t}_gr 0 red
-    REC=$rec CONST=10000 ./soft_cem.sh $g $ck $gp ${t}_gp_gr 1000 red
+    REC=$rec ./soft_cem.sh $g $ck $gp ${t}_gr 0 $SCEN
+    REC=$rec CONST=10000 ./soft_cem.sh $g $ck $gp ${t}_gp_gr 1000 $SCEN
   done
 }
 { one 0 jacpull; one 0 jacpull_linf; } &
