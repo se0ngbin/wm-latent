@@ -1,5 +1,21 @@
 # Dubins, Safety Gym and Cartpole
 
+# Summary (2026-11-01)
+
+What is established, with pointers to the sections below. All margin-function numbers use frames in the training orientation; all CEM OOD numbers use a goal frame in the same shifted appearance.
+
+- Two evaluation bugs were found and fixed. The margin-function OOD evals fed the world model transposed frames (every benchmark; "rotate" was a mirror flip), and the Dubins CEM purple/diamond runs used a red-circle goal frame. Reruns of the old paths reproduce the old tables exactly, so the fixed tables replace them. Still on transposed frames, and hidden below: cartpole "why viewpoint fails" and value functions, and support vs aliasing.
+- Margin functions (Dubins 3×3 grid): sigreg fails every shift; every regularized model handles rotation and shape; color is the hard shift, where adv_λ keeps the ranking on every base (0.911-0.982 AUC). No model's color threshold survives (sign accuracy ≈ 0.5).
+- Planning: raw CEM collapses for every model under a consistent recolor (7.5-34% success). A safety-first soft cost with the margin function cuts collision on every jac-base model (jac: 5-27% on every condition) and never helps the sigreg-base models. The label-free GP margin function matches the oracle value function.
+- Safety regs and planning: on the same base, jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull over 3 WM seeds. The adversarial predictor term raises rollout error. Dropping it (encoder-only) helps planning, and keeps color robustness for adv_h on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but not for adv_λ (0.40-0.44 on every base). Best safety-reg models with the soft cost: jac+adv_h encoder-only and jac+adv_λ encoder-only (red 8% collision at about 80% success, matching jac).
+
+Open:
+
+- One WM seed per model except the jac+pull pair; jac+adv_h's color inversion (0.167) in particular needs a second seed.
+- A fair replanning protocol: replanning every 5 steps lowers raw CEM for every model, likely because the goal cost scores only the final step.
+- Why adding a safety reg to jac weakens the soft cost in-distribution: per-step diagnostics do not explain it; the next test is whether $h$ ranks CEM's own sampled candidates correctly.
+- Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
+
 # Regularizers
 
 Every model is the same le-wm world model (ViT-tiny encoder $f$, transformer predictor $P$, 50 epochs, seed 3072) with one or more terms added to its training loss. The 9-model grid is base $\{$sigreg, jac, jac+pull$\}$ × safety reg $\{$none, adv_h, adv_λ$\}$.
@@ -252,7 +268,7 @@ Reading:
 - Color: sigreg is the weakest (0.853); jac, adv_h and adv_λ reach 0.978-0.983; jac+pull+adv_h is low (0.855).
 - Thresholds: OOD sign errors almost all lean toward calling states safe (balanced predicted-safe fraction > 0.5). On color only jac keeps its threshold (0.914); sigreg calls 83% of frames safe despite AUC 0.853. adv_h is the only model calibrated (predicted-safe about 0.50) on all three viewpoint shifts.
 - The sections below (why viewpoint fails, value functions, support vs aliasing) still use the transposed frames and need rerunning.
-
+<!--
 ## Why viewpoint fails: the latent moves, the information stays
 
 Test episodes split in half: heads trained on one half, scored on the other, either zero-shot (trained on base frames) or
@@ -332,7 +348,8 @@ Reading:
 - The oracle is slightly optimistic near V = 0 (9% of V > 0.02 states fail under the greedy policy). Doomed labels are clean.
 - A viewpoint fix probably needs geometric training (zoom/pan augmentation, or an adversary over small camera shifts)
   rather than appearance invariance.
-
+-->
+<!--
 # Support vs. aliasing: where does an OOD shift send the latent?
 
 An OOD shift can fail a frozen safety head in two different ways:
@@ -566,7 +583,7 @@ Unsafe states whose nearest training latents are mostly safe
   describe neighbourhoods in the latent's own geometry, not pose retrieval.
 - Point layout distance ratios (up to 325×) partly reflect that training layouts recur across episodes, so held-out
   training frames have same-layout neighbours.
-
+-->
 # Planning: soft-cost CEM (Dubins)
 
 CEM with the margin function's unsafe region as an extra cost on the imagined rollout: $\text{cost} = \text{goal MSE} + w \sum_t \mathrm{relu}(-h(\hat z_t)) + C\,\mathbb{1}[\min_t h(\hat z_t) < 0]$. Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). The graded version has $C = 0$; the lexicographic version adds $C = 10^4$ (larger than any goal cost, about 130), so every candidate $h$ calls safe beats every unsafe one, while the hinge still ranks the unsafe ones. Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>[_c<C>]_<condition>.log`.
@@ -630,98 +647,84 @@ Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels;
 - jac gains the most overall: collision 5-27% on every condition, versus 15.5-75.5% raw. With the GP margin function it keeps 78-79% success on red and diamond.
 - The label-free GP margin function matches the privileged value function in most cells; the value function is better for jac under purple and rotation.
 - New models: jac+pull+adv_λ is the strongest raw planner overall (no success cost on red, 81.0 / 29.0 vs jac+pull 81.5 / 29.0; best raw rotation, 46.5 / 46.0), and its soft cost works under the shifts (purple 44.0 / 28.5, rotated 42.5 / 23.0) but not in-distribution (red 62.5-70.0 / 29.0). jac+adv_h is the weakest jac-base model under shifts (raw purple 7.5 / 81.5, rotated 19.5 / 64.5). Adding either safety reg to jac removes most of the soft cost's in-distribution safety gain (jac 8.5-11.0% collision on red vs 13.0-29.0% for jac+adv_h, jac+adv_λ); the per-step diagnostics (h on imagined latents, rollout error, goal geometry) do not explain this, so how h ranks CEM's own candidates is the open question.
-- Encoder-only safety regs (pred_weight = 0) have different effects on the sigreg and jac bases. On sigreg, raw red CEM improves (adv_h 57.5 / 57.0 -> 60.5 / 47.5, adv_λ 51.5 / 58.0 -> 61.0 / 44.0), while color margin AUC falls (0.789 -> 0.454 for adv_h; 0.982 -> 0.440 for adv_λ; adv_λ encoder-only red/purple collision is 44.0 / 79.0 vs 36.0 / 66.5 full). On the jac base, removing the adv_h predictor term preserves or improves color robustness: jac+adv_h AUC rises 0.167 -> 0.808 and jac+pull+adv_h rises 0.782 -> 0.891 (full -> encoder-only). Its raw red CEM also improves slightly: jac+adv_h 79.0 / 25.0 -> 81.5 / 26.5, jac+pull+adv_h 75.5 / 29.0 -> 78.5 / 33.0. By contrast, adv_λ loses color robustness without the predictor term on every base. With the GP safety-first cost, jac+adv_h encoder-only is the strongest jac safety-reg model so far: red 80.5 / 8.0, purple 40.0 / 21.0, diamond 78.0 / 5.5, rotated 41.5 / 22.5. The predictor-term ablation therefore depends on the base model and objective; the sigreg results do not generalize to jac. +gpt
-- Replanning every 5 steps instead of executing the 25-step plan open loop (red, partial): raw CEM drops for every model (jac+pull 81.5 / 29.0 -> 60.5 / 46.0), likely because the goal cost scores only the final predicted step and each replan pushes arrival later. Within that setting the fair-pair gap reverses (jac+pull+adv_h 62.5 / 36.5 vs jac+pull 60.5 / 46.0), and the GP soft cost is far more effective (jac+pull 66.5 / 11.5; jac+pull+adv_h 64.5 / 26.0).
-- Control on red (jac): a margin function with no safety knowledge makes CEM worse, not safer (shuffled labels 63.5 / 39.5, random init 36.5 / 43.0, vs GP 79.0 / 8.5 and raw 81.5 / 22.5), so the safety gain comes from what $h$ knows.
+### Control: does the safety gain come from what $h$ knows?
 
-Why the safety regs plan worse (diagnostics `diag_rollout_safety.py`, ablations `ablate_plan_worse.sh`, `seeds_jacpull_vs_adv.sh`):
+On red with jac, a margin function with no safety knowledge makes CEM worse, not safer: shuffled labels 63.5 / 39.5, random init 36.5 / 43.0, against the GP margin function 79.0 / 8.5 and raw CEM 81.5 / 22.5. The safety gain comes from what $h$ knows.
+
+### Encoder-only safety-reg ablation
+
+Encoder-only sets $\mathrm{pred\_weight}=0$, removing the adversarial penalty from the predictor term; the full model includes it. Margin AUC is the zero-shot color AUC of the GP margin function (fixed orientation, 3 seeds). CEM entries are success / collision (%), red, raw CEM.
+
+| Model | Margin AUC, full | Margin AUC, encoder-only | Red CEM, full | Red CEM, encoder-only |
+| --- | ---: | ---: | ---: | ---: |
+| adv_h | 0.789 | 0.454 | 57.5 / 57.0 | 60.5 / 47.5 |
+| adv_λ | 0.982 | 0.440 | 51.5 / 58.0 | 61.0 / 44.0 |
+| jac+adv_h | 0.167 | 0.808 | 79.0 / 25.0 | 81.5 / 26.5 |
+| jac+adv_λ | 0.946 | 0.398 | 81.0 / 27.5 | 83.0 / 21.0 |
+| jac+pull+adv_h | 0.782 | 0.891 | 75.5 / 29.0 | 78.5 / 33.0 |
+| jac+pull+adv_λ | 0.911 | 0.403 | 81.0 / 29.0 | 78.5 / 28.5 |
+
+Encoder-only models with the GP safety-first cost ($w = 1000$, $C = 10^4$), success / collision (%):
+
+| Model | Red | Purple | Diamond | Rotated |
+| --- | ---: | ---: | ---: | ---: |
+| jac+adv_h, encoder-only | 80.5 / 8.0 | 40.0 / 21.0 | 78.0 / 5.5 | 41.5 / 22.5 |
+| jac+adv_λ, encoder-only | 78.5 / 7.5 | 36.5 / 27.5 | 78.5 / 6.5 | 41.0 / 27.5 |
+| jac+pull+adv_h, encoder-only | 70.0 / 22.5 | 34.0 / 26.5 | 65.5 / 15.5 | 29.5 / 27.0 |
+
+- adv_h and adv_λ behave differently. Removing adv_h's predictor term keeps or improves color robustness on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but costs it on sigreg (0.789 -> 0.454). adv_λ needs its predictor term on every base (0.911-0.982 -> 0.398-0.440). On sigreg, adv_λ encoder-only also collides more under purple (raw red / purple collision 44.0 / 79.0 vs 58.0 / 66.5 full).
+- Raw red CEM without the predictor term: better on the sigreg base (adv_h 57.5 / 57.0 -> 60.5 / 47.5, adv_λ 51.5 / 58.0 -> 61.0 / 44.0) and for jac+adv_λ (81.0 / 27.5 -> 83.0 / 21.0); mixed elsewhere (jac+adv_h 79.0 / 25.0 -> 81.5 / 26.5, jac+pull+adv_h 75.5 / 29.0 -> 78.5 / 33.0, jac+pull+adv_λ 81.0 / 29.0 -> 78.5 / 28.5).
+- With the GP safety-first cost, jac+adv_h encoder-only and jac+adv_λ encoder-only are the strongest jac safety-reg models (red 7.5-8.0% collision at 78.5-80.5% success, matching jac). jac+adv_h encoder-only keeps color robustness (0.808); jac+adv_λ encoder-only does not (0.398).
+
+### Graded GP soft cost ($C = 0$), red
+
+The safety-first runs above add a flat $C = 10^4$ for any predicted violation. Without it, the hinge alone ($w = 100$ or $1000$) with the GP margin function, red, success / collision (%) (`soft_cem_weight_pair_gp.sh`; reference: jac 79.0 / 8.5 safety-first):
+
+| Model | raw CEM | $w = 100$ | $w = 1000$ |
+| --- | ---: | ---: | ---: |
+| adv_h | 57.5 / 57.0 | 55.0 / 53.0 | pending |
+| adv_h, encoder-only | 60.5 / 47.5 | 58.0 / 47.0 | 58.5 / 47.0 |
+| adv_λ | 51.5 / 58.0 | 50.5 / 57.0 | 49.5 / 59.0 |
+| adv_λ, encoder-only | 61.0 / 44.0 | 62.5 / 41.5 | 64.5 / 44.0 |
+| jac+adv_h | 79.0 / 25.0 | 77.5 / 16.5 | 78.0 / 12.5 |
+| jac+adv_h, encoder-only | 81.5 / 26.5 | 81.5 / 9.5 | 80.0 / 9.0 |
+| jac+adv_λ | 81.0 / 27.5 | 79.0 / 17.5 | 76.5 / 18.0 |
+| jac+adv_λ, encoder-only | 83.0 / 21.0 | 80.0 / 8.0 | 80.0 / 8.0 |
+| jac+pull+adv_h | 75.5 / 29.0 | 72.5 / 23.0 | 71.0 / 25.5 |
+| jac+pull+adv_h, encoder-only | 78.5 / 33.0 | 73.5 / 25.0 | 69.5 / 23.0 |
+| jac+pull+adv_λ | 81.0 / 29.0 | 77.0 / 27.5 | 73.0 / 25.0 |
+| jac+pull+adv_λ, encoder-only | 78.5 / 28.5 | 78.0 / 21.0 | 77.0 / 20.0 |
+
+- The graded cost behaves like safety-first: it cuts collision on the jac base (most for the encoder-only models, to 8-9.5% at 80-81.5% success) and does nothing on the sigreg base.
+- Dropping the predictor term makes the soft cost work better on every jac-base model except jac+pull+adv_h.
+
+### Replanning every 5 steps
+
+Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`) instead of executing the whole plan open loop. Success / collision (%), purple with a consistent goal frame:
+
+| Model | red, raw | red, GP safety-first | purple, raw | purple, GP safety-first |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 47.5 / 61.5 | 45.5 / 61.5 | 18.0 / 68.0 | 17.5 / 69.5 |
+| jac | 43.5 / 56.5 | 60.5 / 11.0 | 32.5 / 66.5 | 27.5 / 40.0 |
+| jac+pull | 60.5 / 46.0 | 66.5 / 11.5 | 26.0 / 57.0 | 21.5 / 48.5 |
+| adv_h | 48.5 / 55.5 | 50.0 / 55.0 | 29.0 / 66.0 | 29.5 / 67.0 |
+| jac+adv_h | 52.5 / 43.0 | 55.0 / 27.5 | 19.5 / 73.0 | 23.5 / 49.0 |
+| jac+pull+adv_h | 62.5 / 36.5 | 64.5 / 26.0 | 26.5 / 70.5 | 37.0 / 44.5 |
+| adv_λ | 33.0 / 70.5 | 39.5 / 66.5 | 20.5 / 68.5 | 22.0 / 63.5 |
+| jac+adv_λ | pending | pending | pending | pending |
+| jac+pull+adv_λ | 56.0 / 37.0 | 58.5 / 23.5 | 27.0 / 68.5 | 22.0 / 44.0 |
+
+- Frequent replanning lowers raw CEM for every model (e.g. jac 81.5 / 22.5 -> 43.5 / 56.5 on red), likely because the goal cost scores only the final predicted step and each replan pushes arrival later. A shrinking horizon or an every-step goal cost would be a fairer replanning test.
+- Within this setting the GP safety-first cost cuts collision on every jac-base model (red: jac 56.5 -> 11.0, jac+pull 46.0 -> 11.5) and still does nothing on the sigreg base.
+- The fair-pair gap reverses: jac+pull+adv_h plans slightly better than jac+pull raw (62.5 / 36.5 vs 60.5 / 46.0), but gains less from the soft cost (26.0 vs 11.5% collision).
+
+### Why safety regs plan worse
+
+Diagnostics: `diag_rollout_safety.py`; ablations: `ablate_plan_worse.sh` and `seeds_jacpull_vs_adv.sh`.
 
 - Same base, 3 WM seeds: jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull on red (75.5 / 79.0 / 78.0 vs 81.5 / 87.0 / 82.5; pooled paired 52 vs 15 episodes, $p < 10^{-4}$), with no consistent change in collision.
 - Across 22 Dubins WMs, raw-CEM collision tracks goal-distance fidelity, the Spearman correlation between latent distance to the goal and true $(x, y)$ distance near the goal ($\rho = -0.84$); 25-step rollout error does not ($\rho \approx 0$). adv_h lowers that fidelity on imagined latents and raises 5-step rollout error on every seed of the jac+pull pair.
 - Projecting the safety direction $\lambda$ out of the latent leaves goal fidelity unchanged on every model (λ is about 2.5% of the latent variance), so the distortion is not along the safety axis.
-- Part-ablations of adv_h (sigreg base): the adversarial predictor term causes the rollout-error increase (predictor-only 0.084, full 0.082, encoder-only 0.049, no reg 0.014 at 5 steps); detaching the gap denominator restores most of the real-latent goal geometry; random noise instead of the adversary costs almost nothing. Encoder-only versions of all safety-reg WMs are training to test the fix.
+- Part-ablations of adv_h (sigreg base): the adversarial predictor term causes the rollout-error increase (predictor-only 0.084, full 0.082, encoder-only 0.049, no reg 0.014 at 5 steps); detaching the gap denominator restores most of the real-latent goal geometry; random noise instead of the adversary costs almost nothing. The encoder-only ablation above tests this on every safety-reg model.
 - Training the value function on imagined latents (rollout_k = 8) does not restore $h$ on imagined latents and does not make the soft cost help the sigreg-base models.
 - The goal marker is a nuisance for sigreg's margin function only (AUC 0.985 -> 0.901 when the marker moves; ≤ 0.017 for every other model).
-
-
-That changes my recommendation significantly. If your unsafe-state sink is already accurate on real observations, but imagined trajectories don't enter it when they should, I'd focus on the predictor's ability to preserve safety-relevant geometry—not replace the sink or immediately switch world models.
-
-My leading hypothesis is that your predictor minimizes an average latent prediction loss, while safety depends on getting a relatively small set of critical transitions right. The model can look good on ordinary transitions yet systematically underpredict transitions into unsafe states.
-
-## 1. First, identify which failure you have
-
-Let $z_t=E(o_t)$ be the latent embedding of the real observation, and let $\hat z_{t+k}$ be the imagined latent after $k$ predicted transitions. Let $S(z)$ denote your sink's unsafe score, with larger values meaning more unsafe.
-
-Compare these four quantities on the same held-out trajectories:
-
-| Test | What it diagnoses |
-| --- | --- |
-| $S(z_t)$ on real observations | Whether the sink correctly recognizes unsafe states |
-| $S(\hat z_{t+1})$ versus $S(z_{t+1})$ | Whether the predictor misses unsafe transitions immediately |
-| $S(\hat z_{t+k})$ versus $S(z_{t+k})$ | Whether safety errors accumulate over imagined rollouts |
-| Predicted safety score versus actual future violation | Whether the model preserves the safety signal needed for planning |
-
-In particular, separate transitions that enter an unsafe region from transitions that remain inside it. A predictor can learn to represent already-unsafe states correctly but still fail to predict the transition that crosses the boundary.
-
-## 2. My first intervention: safety-aware multi-step training
-
-Keep your existing LeWM architecture and sink fixed for the first experiment. Add a loss that explicitly penalizes discrepancies in safety predictions over multi-step rollouts.
-
-$$
-\begin{aligned}
-\mathcal L ={}& \mathcal L_{\text{LeWM}}\\
-&+\lambda_s\sum_{k=1}^{K}w_k
-\ell_s\big(S(\hat z_{t+k}),S(z_{t+k})\big).
-\end{aligned}
-$$
-
-Here:
-
-- $K$ is your rollout horizon.
-- $w_k$ weights different prediction horizons.
-- $\ell_s$ measures the mismatch between predicted and target safety scores.
-- $\lambda_s$ controls the safety objective's strength.
-
-If the sink is a hard classifier rather than a smooth score, use a classification loss on the sink's unsafe/unsafe-boundary labels, or distill its output into a differentiable safety head. Don't assume that gradients through a hard threshold will be useful.
-
-Importantly, if the sink is frozen, the safety loss must still provide a gradient path through the predicted latent $\hat z$. If the sink is not differentiable, train a differentiable surrogate or supervise a separate safety head.
-
-### A useful refinement: emphasize boundary-crossing transitions
-
-Uniform safety loss may mostly teach the model to predict common safe states. Oversample or upweight transitions that approach or cross the unsafe boundary.
-
-For example, if a trajectory goes from safe to unsafe between $t$ and $t+1$, penalize predictions that remain confidently safe. This directly targets the failure that matters to your planner.
-
-## 3. Change CEM's objective so it cannot exploit predictor errors
-
-Even after improving prediction, use an explicit safety cost in candidate evaluation:
-
-$$
-J(a_{1:H}) =
-J_{\text{task}}(a_{1:H})
-+\eta\sum_{k=1}^{H} c_{\text{unsafe}}(\hat z_{t+k}).
-$$
-
-A few important details:
-
-- Penalize predicted unsafe states at every imagined step, not only at the final state.
-- If the sink score is probabilistic, penalize predicted risk rather than only thresholded unsafe labels.
-- Evaluate whether the model underestimates risk near the boundary, where false negatives are especially costly.
-- Keep a safety margin around the sink boundary to account for model uncertainty.
-
-A soft penalty alone does not guarantee safety. If violations are costly, you should also consider a conservative fallback action or a verified safety filter.
-
-## 4. The most informative ablation
-
-I'd run these four variants first:
-
-| Variant | Dynamics model | Safety objective | Purpose |
-| --- | --- | --- | --- |
-| A | Original LeWM | Existing sink penalty | Baseline |
-| B | Original LeWM | Stronger boundary-weighted penalty | Test whether CEM is ignoring the sink |
-| C | Multi-step-trained LeWM | Existing sink penalty | Test whether imagined-state drift is the cause |
-| D | Multi-step + safety-aware training | Boundary-weighted penalty | Test the combined solution |
-
-Measure unsafe-state recall in imagined rollouts, false-negative rate near the boundary, actual constraint violations in the simulator, and task reward. Do not select the best model based only on latent prediction error.
-
-If B helps a lot but C does not, your predictor may already encode enough information and the issue may be the planner's objective. If C helps substantially, the dynamics predictor is likely failing to preserve safety-relevant information. If neither helps, investigate whether the latent space is geometrically suitable for the sink and whether the model sees enough boundary-crossing examples.
