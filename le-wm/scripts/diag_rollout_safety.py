@@ -15,7 +15,7 @@ from utils import get_img_preprocessor
 from safe_solver import _MarginHead
 
 DEV, H, K, NW = "cuda", 3, 25, 400
-OUT = "/data/seongbin/lewm/safeadv_results/rollout_diag"; os.makedirs(OUT, exist_ok=True)
+OUT = os.environ.get("DIAG_OUT", "/data/seongbin/lewm/safeadv_results/rollout_diag"); os.makedirs(OUT, exist_ok=True)
 MDIR = "/data/seongbin/dreamer/lewm"
 tf = get_img_preprocessor(source="pixels", target="pixels", img_size=224)
 
@@ -88,6 +88,11 @@ def run(tag, ck):
             r[f"{hn}_auc_{nm}"] = [float(roc_auc_score(safe[:, k], hv[:, k])) if 0 < safe[:, k].mean() < 1 else None
                                    for k in range(K)]
             r[f"{hn}_auc_{nm}_all"] = float(roc_auc_score(safe.ravel(), hv.ravel()))
+            # the soft cost acts on sign(h): false-safe = unsafe frames with h >= 0 (a colliding plan goes unpenalized)
+            r[f"{hn}_falsesafe_{nm}"] = [float((hv[:, k][safe[:, k] == 0] >= 0).mean()) if (safe[:, k] == 0).any() else None
+                                         for k in range(K)]
+            r[f"{hn}_falsesafe_{nm}_all"] = float((hv[safe == 0] >= 0).mean())
+            r[f"{hn}_balacc_{nm}_all"] = float(((hv[safe == 1] >= 0).mean() + (hv[safe == 0] < 0).mean()) / 2)
     json.dump(r, open(f"{OUT}/{tag}.json", "w"))
     print(f"DIAG {tag} nerr@1={nerr[0]:.4f} @5={nerr[4]:.4f} @25={nerr[-1]:.4f} "
           f"goal_rho real={r['goal_spearman_real']:.3f} imag={r['goal_spearman_imag']:.3f} "

@@ -773,3 +773,23 @@ Diagnostics: `diag_rollout_safety.py`; ablations: `ablate_plan_worse.sh` and `se
 - Part-ablations of adv_h (sigreg base): the adversarial predictor term causes the rollout-error increase (predictor-only 0.084, full 0.082, encoder-only 0.049, no reg 0.014 at 5 steps); detaching the gap denominator restores most of the real-latent goal geometry; random noise instead of the adversary costs almost nothing. The encoder-only ablation above tests this on every safety-reg model.
 - Training the value function on imagined latents (rollout_k = 8) does not restore $h$ on imagined latents and does not make the soft cost help the sigreg-base models.
 - The goal marker is a nuisance for sigreg's margin function only (AUC 0.985 -> 0.901 when the marker moves; ≤ 0.017 for every other model).
+
+Why does a safety reg weaken the soft cost on the jac base? The soft cost penalizes $h(\hat z_t) < 0$, so what matters is the sign of $h$ on imagined latents. A false-safe frame is an unsafe frame with $h \ge 0$: a colliding plan through it goes unpenalized. GP margin function on 400 held-out expert windows, real latents vs 1-25-step open-loop predictions (`diag_rollout_safety.py`, `rollout_diag_sign/`); balanced sign accuracy is on a 50/50 safe/unsafe weighting. Collision is red GP safety-first CEM (%):
+
+| Model | Bal. sign acc, real | Bal. sign acc, imagined | False-safe, real | False-safe, imagined | False-safe, step 25 | Collision |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| jac | 0.950 | 0.906 | 0.078 | 0.132 | 0.346 | 8.5 |
+| jac+adv_h | 0.967 | 0.907 | 0.054 | 0.149 | 0.462 | 13.0 |
+| jac+adv_h, encoder-only | 0.962 | 0.932 | 0.065 | 0.100 | 0.269 | 8.0 |
+| jac+adv_λ | 0.965 | 0.909 | 0.060 | 0.156 | 0.500 | 17.5 |
+| jac+adv_λ, encoder-only | 0.967 | 0.928 | 0.056 | 0.113 | 0.346 | 7.5 |
+| jac+pull | 0.944 | 0.850 | 0.095 | 0.215 | 0.500 | 20.0 |
+| jac+pull+adv_h | 0.966 | 0.879 | 0.057 | 0.154 | 0.308 | 25.0 |
+| jac+pull+adv_h, encoder-only | 0.962 | 0.877 | 0.065 | 0.158 | 0.462 | 22.5 |
+| jac+pull+adv_λ | 0.961 | 0.872 | 0.066 | 0.176 | 0.654 | 29.0 |
+| jac+pull+adv_λ, encoder-only | 0.961 | 0.861 | 0.066 | 0.206 | 0.538 | 20.5 |
+
+- On real latents every safety-reg model's $h$ is as good as or better than jac's (false-safe 0.054-0.066 vs 0.078). The errors appear only on imagined latents, so the predictor, not the encoder, is what $h$ misreads.
+- On the jac base the full safety regs have the most imagined false-safes (0.149, 0.156; 0.462, 0.500 at step 25) and the most collisions (13.0, 17.5); encoder-only brings both below jac (0.100-0.113, 7.5-8.0). Spearman with collision: 0.90 over these five models, 0.73 over all ten.
+- It does not explain the jac+pull family: within it the order runs the other way (Spearman -0.70, n = 5; jac+pull has the most false-safes but the fewest collisions). As a group, pull raises both false-safes and collisions.
+- Caveats: one WM seed; windows follow expert actions, while CEM scores random candidates that can leave the expert distribution. A candidate-level test (roll CEM samples in the simulator, check that the soft cost ranks the colliding ones last) would close this.
