@@ -6,14 +6,14 @@ What is established, with pointers to the sections below. All margin-function nu
 
 - Two evaluation bugs were found and fixed. The margin-function OOD evals fed the world model transposed frames (every benchmark; "rotate" was a mirror flip), and the Dubins CEM purple/diamond runs used a red-circle goal frame. Reruns of the old paths reproduce the old tables exactly, so the fixed tables replace them. Still on transposed frames, and hidden below: cartpole "why viewpoint fails" and value functions, and support vs aliasing.
 - Margin functions (Dubins 3×3 grid): sigreg fails every shift; every regularized model handles rotation and shape; color is the hard shift, where adv_λ keeps the ranking on every base (0.911-0.982 AUC). No model's color threshold survives (sign accuracy ≈ 0.5).
-- Planning (main results: $h$ = GP margin function; full and encoder-only safety regs both reported on all four conditions): raw CEM collapses for every model under a consistent recolor (7.5-34% success). A safety-first soft cost cuts collision on every jac-base model on every condition (jac: 5-27%) and never helps the sigreg-base models. Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition; jac+adv_h encoder-only is the safest model under purple. The label-free GP margin function matches the oracle value function. About 90% of the remaining collisions are false-safe: $h$ on imagined latents is optimistic, more so further ahead.
+- Planning (main results: $h$ = GP margin function; full and encoder-only safety regs both reported on all four conditions): raw CEM collapses for every model under a consistent recolor (7.5-34% success). A safety-first soft cost cuts collision on every jac-base model on every condition (jac: 5-27%) and never helps the sigreg-base models. Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition; jac+adv_h encoder-only is the safest model under purple. The label-free GP margin function matches the oracle value function. 85-100% of the remaining collisions are false-safe: $h$ on imagined latents is optimistic, more so further ahead.
 - Safety regs and planning: on the same base, jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull over 3 WM seeds. The adversarial predictor term raises rollout error. Dropping it (encoder-only) helps planning, and keeps color robustness for adv_h on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but not for adv_λ (0.40-0.44 on every base). Best safety-reg models with the soft cost: jac+adv_h encoder-only and jac+adv_λ encoder-only (red 8% collision at about 80% success, matching jac).
 
 Open:
 
 - One WM seed per model except the jac+pull pair; jac+adv_h's color inversion (0.167) in particular needs a second seed.
-- Fair replanning (goal cost at every imagined step): red is done for the full models (jac safety-first, replanning every 5 steps: 84.0 / 8.0); OOD conditions are running; encoder-only models are not yet run.
-- Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (jac+adv_λ: 26.0 of 28.5%); traces for the other models are running. Fixes to test: a safety margin on $h$, and training $h$ on predicted latents.
+- Fair replanning (goal cost at every imagined step): red done for the full models plus two encoder-only models; OOD 96 of 108 cells done, rest about 03:00-05:00 UTC Nov 3. Not run: the other encoder-only models, and encoder-only on OOD.
+- Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (85-100% in all 7 models traced; sigreg and adv_h pending, about 23:30 UTC). Fixes to test: a safety margin on $h$, and training $h$ on predicted latents.
 - Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
 
 # Regularizers
@@ -612,11 +612,11 @@ Summary:
 
 - Raw CEM collapses for every model under recolor (7.5-34% success, 49-82% collision); diamond hurts only the sigreg base.
 - The soft cost cuts collision on every jac-base model on every condition, including the OOD ones, although $h$ only saw red frames. It never helps the sigreg-base models.
-- Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition with the safety-first cost (red 7.5-22.5 vs 13.0-29.0, purple 21.0-29.5 vs 36.0-44.5, rotated 21.5-27.5 vs 29.0-46.0% collision). The full safety regs lose most of the soft cost's gain over jac; encoder-only recovers it.
+- Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition with the safety-first cost (red 7.5-22.5 vs 13.0-29.0, purple 21.0-29.5 vs 36.0-44.5, rotated 21.5-27.5 vs 29.0-46.0% collision). The full safety regs lose most of the soft cost's gain over jac; encoder-only recovers it open loop, but only partly with replanning every 5 steps (17.5-20.0 vs jac 8.0% on red).
 - Best models: jac (safety-first 79.0 / 8.5 red, 5-27% collision on every condition) and jac+adv_h encoder-only (80.5 / 8.0 red; safest under purple, 40.0 / 21.0 safety-first and 45.5 / 20.0 graded). jac+adv_λ encoder-only matches them on red and diamond (78.5 / 7.5, 78.5 / 6.5).
 - Graded ($C = 0$) and safety-first give nearly the same numbers.
-- With the goal cost scored at every imagined step and replanning every 5 steps, jac safety-first reaches 84.0 / 8.0 on red, the best result so far.
-- About 90% of the remaining collisions are false-safe: the executed plan's $h$ stayed $\ge 0$ up to the crash. $h$ on imagined latents is optimistic, more so further ahead (executed-plan trace under Diagnostics).
+- With the goal cost scored at every imagined step and replanning every 5 steps, jac safety-first reaches 84.0 / 8.0 on red and 80.0 / 6.5 on diamond, the best results so far. Under purple, frequent replanning raises collision instead (jac 26.5 -> 43.0).
+- 85-100% of the remaining collisions are false-safe: the executed plan's $h$ stayed $\ge 0$ up to the crash. $h$ on imagined latents is optimistic, more so further ahead (executed-plan trace under Diagnostics).
 
 ### Raw CEM (no safety cost)
 
@@ -695,7 +695,7 @@ Summary:
 
 ### Replanning: goal cost at every imagined step
 
-The open-loop runs above score only the last imagined step; with that cost, replanning pushes arrival later and lowers success (Secondary results). Here the goal cost is the latent goal distance averaged over every imagined step ($\mathrm{goal\_cost} = \mathrm{mean}$, `soft_cem_goalmean_queue.sh`), with both replanning intervals under the same cost: every 25 steps (open loop) and every 5 steps. Red; safety-first as above:
+The open-loop runs above score only the last imagined step; with that cost, replanning pushes arrival later and lowers success (Secondary results). Here the goal cost is the latent goal distance averaged over every imagined step ($\mathrm{goal\_cost} = \mathrm{mean}$, `soft_cem_goalmean_queue.sh`), with both replanning intervals under the same cost: every 25 steps (open loop) and every 5 steps. Safety-first as above. The two encoder-only cells come from the executed-plan trace runs (tracing does not change behavior); the other encoder-only models and cells are not run. Red:
 
 | Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
 | --- | ---: | ---: | ---: | ---: |
@@ -704,7 +704,9 @@ The open-loop runs above score only the last imagined step; with that cost, repl
 | adv_λ | 60.5 / 57.0 | 56.5 / 55.0 | 60.5 / 58.5 | 56.0 / 54.5 |
 | jac | 68.0 / 52.0 | 77.5 / 48.5 | 76.0 / 22.0 | 84.0 / 8.0 |
 | jac+adv_h | 51.0 / 61.5 | 56.5 / 63.5 | 57.5 / 47.5 | 60.5 / 47.5 |
+| jac+adv_h, encoder-only | not run | not run | not run | 84.5 / 17.5 |
 | jac+adv_λ | 70.5 / 46.5 | 82.5 / 42.5 | 71.0 / 39.0 | 80.0 / 28.5 |
+| jac+adv_λ, encoder-only | not run | not run | not run | 78.5 / 20.0 |
 | jac+pull | 66.0 / 46.0 | 76.0 / 43.5 | 61.5 / 38.5 | 74.0 / 19.5 |
 | jac+pull+adv_h | 58.0 / 54.5 | 68.0 / 53.5 | 59.5 / 44.5 | 69.5 / 41.5 |
 | jac+pull+adv_λ | 61.0 / 48.5 | 75.0 / 45.0 | 59.5 / 39.5 | 72.0 / 28.5 |
@@ -713,7 +715,57 @@ The open-loop runs above score only the last imagined step; with that cost, repl
 - Raw CEM collides about 45-65% under both intervals. The mean cost rewards getting close early, which favors cutting through obstacles (jac open loop: 81.5 / 22.5 with the final-step cost vs 68.0 / 52.0 here), so the 22.5% earlier was a side effect of the goal cost, not safety knowledge.
 - Safety-first plus replanning every 5 steps gives the best result so far: jac 84.0 / 8.0, better than every other jac setting on both success and collision. jac+pull also improves (19.5% collision).
 - Adding a full safety reg weakens the soft cost here too: 28.5-47.5% collision with safety-first every 5 steps for the four jac-base safety-reg models, against 8.0 (jac) and 19.5 (jac+pull). Safety-first still does nothing on the sigreg base.
-- Not yet run: the encoder-only models, and the OOD conditions (purple, diamond, rotated; running for the full models).
+- Encoder-only (two models, safety-first every 5 steps): jac+adv_h encoder-only 84.5 / 17.5 and jac+adv_λ encoder-only 78.5 / 20.0. Better than their full versions (47.5, 28.5% collision) but 2-2.5x jac's 8.0, unlike open-loop safety-first, where they match jac (8.0, 7.5).
+
+OOD conditions, same settings. Pending = queued, about 03:00-05:00 UTC Nov 3 (12 of 108 cells).
+
+Purple
+
+| Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 35.5 / 67.0 | 14.5 / 72.0 | 34.5 / 68.5 | 14.0 / 72.5 |
+| adv_h | 37.0 / 66.5 | 35.0 / 60.5 | 38.5 / 63.0 | 32.0 / 59.5 |
+| adv_λ | 40.5 / 56.5 | 37.5 / 62.0 | 43.5 / 60.0 | 24.5 / 65.0 |
+| jac | 16.0 / 80.5 | 20.5 / 75.5 | 43.0 / 26.5 | 34.5 / 43.0 |
+| jac+adv_h | 14.0 / 80.0 | 18.0 / 79.0 | 33.0 / 56.5 | pending |
+| jac+adv_λ | 20.5 / 74.5 | 26.5 / 65.5 | 35.0 / 44.5 | 26.0 / 50.0 |
+| jac+pull | 30.5 / 63.0 | 33.0 / 64.0 | 43.5 / 38.0 | 18.5 / 53.5 |
+| jac+pull+adv_h | 21.5 / 75.0 | 19.5 / 79.0 | 42.5 / 53.0 | 26.5 / 61.5 |
+| jac+pull+adv_λ | 24.0 / 71.5 | 27.5 / 74.0 | 43.0 / 37.0 | pending |
+
+Diamond
+
+| Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 51.5 / 50.0 | 59.5 / 46.5 | 49.5 / 52.0 | 57.5 / 47.0 |
+| adv_h | 52.5 / 46.0 | 57.0 / 48.0 | 51.5 / 45.5 | 59.0 / 47.0 |
+| adv_λ | 48.0 / 50.0 | 60.0 / 40.5 | 49.0 / 50.5 | 64.0 / 41.0 |
+| jac | 65.5 / 33.5 | 79.5 / 29.5 | 76.5 / 10.5 | 80.0 / 6.5 |
+| jac+adv_h | 55.0 / 47.5 | pending | 56.0 / 32.5 | pending |
+| jac+adv_λ | 70.0 / 30.0 | 80.5 / 23.0 | 69.0 / 25.5 | 80.5 / 15.5 |
+| jac+pull | 60.5 / 34.5 | 74.5 / 26.5 | 63.0 / 24.5 | 75.5 / 13.0 |
+| jac+pull+adv_h | 57.5 / 39.5 | 65.5 / 42.0 | 53.5 / 31.5 | 65.0 / 33.0 |
+| jac+pull+adv_λ | 63.0 / 33.0 | pending | 64.5 / 29.0 | pending |
+
+Rotated
+
+| Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 23.5 / 53.5 | 56.0 / 58.5 | 23.0 / 54.0 | 55.0 / 58.5 |
+| adv_h | 26.5 / 59.0 | 41.5 / 57.0 | 25.0 / 59.0 | pending |
+| adv_λ | 22.5 / 62.0 | 31.5 / 60.0 | 20.5 / 61.0 | 32.0 / 59.5 |
+| jac | 25.5 / 62.0 | 47.5 / 54.0 | 39.0 / 38.5 | 50.0 / 40.0 |
+| jac+adv_h | 19.5 / 66.5 | pending | 18.0 / 52.0 | pending |
+| jac+adv_λ | 34.0 / 61.0 | 51.5 / 57.5 | 31.5 / 57.5 | 33.0 / 53.0 |
+| jac+pull | 35.5 / 40.0 | 53.0 / 45.5 | 36.0 / 29.5 | 52.5 / 31.5 |
+| jac+pull+adv_h | 29.0 / 64.0 | 32.0 / 62.5 | 29.0 / 50.0 | pending |
+| jac+pull+adv_λ | 35.5 / 46.5 | pending | 44.0 / 34.5 | pending |
+
+- Purple: replanning every 5 steps hurts the soft cost. Safety-first collision rises from every 25 to every 5 steps on every jac-base model that has both (jac 26.5 -> 43.0, jac+adv_λ 44.5 -> 50.0, jac+pull 38.0 -> 53.5, jac+pull+adv_h 53.0 -> 61.5), the opposite of red. Safety-first every 25 is still the best purple setting for jac (43.0 / 26.5, vs 35.0 / 26.5 open loop with the final-step cost). Raw CEM collides 56.5-80.5% under both intervals.
+- Diamond behaves like red: safety-first every 5 steps is best (jac 80.0 / 6.5, jac+adv_λ 80.5 / 15.5, jac+pull 75.5 / 13.0).
+- Rotated: replanning every 5 steps raises success at similar collision (jac safety-first 39.0 / 38.5 -> 50.0 / 40.0, jac+pull 36.0 / 29.5 -> 52.5 / 31.5); jac+pull is the safest model under rotation.
+- As on red, the soft cost does nothing on the sigreg base, and jac+adv_h is the weakest jac-base model (safety-first every 25: 56.5, 32.5, 52.0% collision on purple, diamond, rotated).
+- Not run: the encoder-only models on OOD conditions.
 
 ## Secondary results
 
@@ -826,33 +878,44 @@ Why does a safety reg weaken the soft cost on the jac base? The soft cost penali
 
 ### Why safety-first CEM still collides: executed-plan trace
 
-The rollout margin test above uses expert actions. Here the evidence comes from the plans CEM actually executes. Setting: GP safety-first ($w = 1000$, $C = 10^4$), goal cost at every imagined step, replanning every 5 steps, red. At every replan we record $h$ along the chosen plan's imagined rollout, and for every episode the first env step that collides (`soft_cem.sh` with `TRACE`, `collision_cause_queue.sh`, `diag_collision_cause.py`). Replan $k$ starts after $5k$ env steps, and imagined step $j$ of its plan is env step $5k + j + 1$. Each collision is split by what the plan being executed predicted at that step: predicted unsafe ($h < 0$ at or before the collision step: the planner knowingly took a violating plan, no predicted-safe plan was found) or false-safe ($h \ge 0$ up to the collision step: the world model and margin function missed it). Tracing does not change behavior (both models reproduce the untraced 84.0 / 8.0 and 80.0 / 28.5).
+The rollout margin test above uses expert actions. Here the evidence comes from the plans CEM actually executes. Setting: GP safety-first ($w = 1000$, $C = 10^4$), goal cost at every imagined step, replanning every 5 steps, red. At every replan we record $h$ along the chosen plan's imagined rollout, and for every episode the first env step that collides (`soft_cem.sh` with `TRACE`, `collision_cause_queue.sh`, `diag_collision_cause.py`). Replan $k$ starts after $5k$ env steps, and imagined step $j$ of its plan is env step $5k + j + 1$. Each collision is split by what the plan being executed predicted at that step: predicted unsafe ($h < 0$ at or before the collision step: the planner knowingly took a violating plan, no predicted-safe plan was found) or false-safe ($h \ge 0$ up to the collision step: the world model and margin function missed it). Tracing does not change behavior (every model with an untraced run reproduces it, e.g. jac 84.0 / 8.0, jac+adv_λ 80.0 / 28.5, jac+adv_h 60.5 / 47.5).
 
 | Model | Collision (%) | Predicted unsafe (%) | False-safe (%) | False-safe share of collisions |
 | --- | ---: | ---: | ---: | ---: |
+| sigreg | pending | pending | pending | pending |
+| adv_h | pending | pending | pending | pending |
 | jac | 8.0 | 1.0 | 7.0 | 88% |
+| jac+adv_h | 47.5 | 0.0 | 47.5 | 100% |
+| jac+adv_h, encoder-only | 17.5 | 1.0 | 16.5 | 94% |
 | jac+adv_λ | 28.5 | 2.5 | 26.0 | 91% |
-| other 7 models | pending | pending | pending | pending |
+| jac+adv_λ, encoder-only | 20.0 | 1.0 | 19.0 | 95% |
+| jac+pull | 19.5 | 3.0 | 16.5 | 85% |
+| jac+pull+adv_h | 41.5 | 4.5 | 37.0 | 89% |
+
+Pending = running, about 23:30 UTC Nov 2. Not run: adv_λ, the sigreg-base encoder-only models, jac+pull+adv_h encoder-only, jac+pull+adv_λ (full and encoder-only).
 
 $h$ along the executed plans (same runs):
 
-| | jac | jac+adv_λ |
-| --- | ---: | ---: |
-| $h$ at the crash step, median (p10-p90) | 0.117 (0.009-0.311) | 0.239 (0.003-0.707) |
-| Same crash step, as predicted by the previous replan (5 steps earlier), median | 0.394 | 0.622 |
-| Min $h$ over the executed 5 steps, episodes that never collide, median (p10) | 0.724 (0.073) | 1.125 (0.355) |
-| Fraction of crashes with $h < 0.1$ at the crash step | 0.50 | 0.25 |
+| Model | $h$ at crash step, median (p10-p90) | Same step, previous replan, median | Min $h$ over executed 5 steps, safe episodes, median (p10) | Crashes with $h < 0.1$ |
+| --- | ---: | ---: | ---: | ---: |
+| jac | 0.117 (0.009-0.311) | 0.394 | 0.724 (0.073) | 0.50 |
+| jac+adv_h | 0.908 (0.326-1.378) | 1.091 | 0.899 (0.588) | 0.04 |
+| jac+adv_h, encoder-only | 0.327 (0.086-0.683) | 0.447 | 0.977 (0.178) | 0.11 |
+| jac+adv_λ | 0.239 (0.003-0.707) | 0.622 | 1.125 (0.355) | 0.25 |
+| jac+adv_λ, encoder-only | 0.433 (0.032-0.888) | 0.498 | 1.148 (0.087) | 0.17 |
+| jac+pull | 0.111 (0.001-0.397) | 0.399 | 0.742 (0.203) | 0.49 |
+| jac+pull+adv_h | 0.404 (0.006-1.339) | 0.976 | 1.046 (0.323) | 0.22 |
 
-- About 90% of collisions are false-safe. The planner almost always finds a plan it predicts safe, so search and infeasibility are not the problem. The 20-point gap between jac and jac+adv_λ is almost all false-safe (7.0 -> 26.0).
-- $h$ on imagined latents is optimistic, not random. Crash steps get much lower $h$ than safe driving (jac 0.117 vs 0.724) but stay above 0, so the soft cost never fires.
-- The optimism grows with how far ahead the prediction is. One replan earlier, the same crash step had 3-4x higher $h$ (0.394, 0.622); it only falls toward 0 as the car gets close. This matches the expert-window false-safe rate rising with horizon (0.10-0.16 over all steps, 0.35-0.50 at step 25).
-- jac's misses are mostly borderline (half of its crashes have $h < 0.1$); jac+adv_λ's are more confident (a quarter below 0.1, median crash-step $h$ twice jac's).
+- 85-100% of collisions are false-safe in every model traced. The planner almost always finds a plan it predicts safe, so search and infeasibility are not the problem. The gap between jac and the safety-reg models is almost all false-safe (7.0 vs 16.5-47.5).
+- $h$ on imagined latents is optimistic, not random, for jac and jac+pull: crash steps get much lower $h$ than safe driving (0.117 vs 0.724, 0.111 vs 0.742) but stay above 0, so the soft cost never fires. For jac+adv_h it does not separate them at all: median crash-step $h$ 0.908, the same as the safe-episode minimum 0.899.
+- The optimism grows with how far ahead the prediction is. One replan earlier, the same crash step had higher $h$ in every model (jac 0.394 vs 0.117, jac+adv_λ 0.622 vs 0.239); it only falls toward 0 as the car gets close. This matches the expert-window false-safe rate rising with horizon (0.10-0.16 over all steps, 0.35-0.50 at step 25).
+- jac's and jac+pull's misses are mostly borderline (half of their crashes have $h < 0.1$); the safety-reg models' are more confident (4-25% below 0.1; jac+adv_h 4%). Encoder-only lowers jac+adv_h's crash-step $h$ (0.908 -> 0.327) but not jac+adv_λ's (0.239 -> 0.433); both encoder-only models collide 17.5-20.0%, between jac and the full models.
 
 Likely causes of the optimism:
 
 - The predictor is trained with MSE on expert data that rarely touches obstacles. Under uncertainty it predicts close to the average future, and the average expert future is safe. Contact is a thin, rare region, so imagined states rarely land in it.
 - $h$ is trained on encoder latents of real frames and never sees predicted latents, so nothing anchors its sign on the states it is used on.
 - CEM samples action sequences that leave the expert distribution (harder turns), and the predictor fills those in with expert-like, safe-looking futures.
-- The full safety regs add to this. Their predictor term penalizes changes in what $h$ reads off the predictor output, which plausibly also dulls its response to actually approaching an obstacle (hypothesis, not isolated); the encoder-only versions recover jac's level.
+- The full safety regs add to this. Their predictor term penalizes changes in what $h$ reads off the predictor output, which plausibly also dulls its response to actually approaching an obstacle (hypothesis, not isolated). The encoder-only versions recover part of it: with replanning they collide 17.5-20.0% vs jac 8.0 and the full versions 28.5-47.5.
 
 Fixes to test, cheapest first: a safety margin $h(\hat z_t) \ge \epsilon$ (`unsafe_margin`; for jac, $\epsilon = 0.1$ covers half the crashes but would also flag about 10% of safe-episode replans); a margin that grows with the imagined step, matching the growing optimism; and training $h$ on predicted latents from CEM-style action sequences, labelled by running the same actions in the simulator (the earlier imagined-latent value function used expert windows only and the sigreg base).
