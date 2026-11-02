@@ -839,4 +839,37 @@ Why does a safety reg weaken the soft cost on the jac base? The soft cost penali
 - On real latents every safety-reg model's $h$ is as good as or better than jac's (false-safe 0.054-0.066 vs 0.078). The errors appear only on imagined latents, so the predictor, not the encoder, is what $h$ misreads.
 - On the jac base the full safety regs have the most imagined false-safes (0.149, 0.156; 0.462, 0.500 at step 25) and the most collisions (13.0, 17.5); encoder-only brings both below jac (0.100-0.113, 7.5-8.0). Spearman with collision: 0.90 over these five models, 0.73 over all ten.
 - It does not explain the jac+pull family: within it the order runs the other way (Spearman -0.70, n = 5; jac+pull has the most false-safes but the fewest collisions). As a group, pull raises both false-safes and collisions.
-- Caveats: one WM seed; windows follow expert actions, while CEM scores random candidates that can leave the expert distribution. A candidate-level test (roll CEM samples in the simulator, check that the soft cost ranks the colliding ones last) would close this.
+- Caveats: one WM seed; windows follow expert actions, while CEM scores random candidates that can leave the expert distribution. The executed-plan test below checks this on the plans CEM actually runs.
+
+#### Why safety-first CEM still collides: executed-plan trace
+
+The rollout margin test above uses expert actions. Here the evidence comes from the plans CEM actually executes. Setting: GP safety-first ($w = 1000$, $C = 10^4$), goal cost at every imagined step, replanning every 5 steps, red. At every replan we record $h$ along the chosen plan's imagined rollout, and for every episode the first env step that collides (`soft_cem.sh` with `TRACE`, `collision_cause_queue.sh`, `diag_collision_cause.py`). Replan $k$ starts after $5k$ env steps, and imagined step $j$ of its plan is env step $5k + j + 1$. Each collision is split by what the plan being executed predicted at that step: predicted unsafe ($h < 0$ at or before the collision step: the planner knowingly took a violating plan, no predicted-safe plan was found) or false-safe ($h \ge 0$ up to the collision step: the world model and margin function missed it). Tracing does not change behavior (both models reproduce the untraced 84.0 / 8.0 and 80.0 / 28.5).
+
+| Model | Collision (%) | Predicted unsafe (%) | False-safe (%) | False-safe share of collisions |
+| --- | ---: | ---: | ---: | ---: |
+| jac | 8.0 | 1.0 | 7.0 | 88% |
+| jac+adv_λ | 28.5 | 2.5 | 26.0 | 91% |
+| other 7 models | pending | pending | pending | pending |
+
+$h$ along the executed plans (same runs):
+
+| | jac | jac+adv_λ |
+| --- | ---: | ---: |
+| $h$ at the crash step, median (p10-p90) | 0.117 (0.009-0.311) | 0.239 (0.003-0.707) |
+| Same crash step, as predicted by the previous replan (5 steps earlier), median | 0.394 | 0.622 |
+| Min $h$ over the executed 5 steps, episodes that never collide, median (p10) | 0.724 (0.073) | 1.125 (0.355) |
+| Fraction of crashes with $h < 0.1$ at the crash step | 0.50 | 0.25 |
+
+- About 90% of collisions are false-safe. The planner almost always finds a plan it predicts safe, so search and infeasibility are not the problem. The 20-point gap between jac and jac+adv_λ is almost all false-safe (7.0 -> 26.0).
+- $h$ on imagined latents is optimistic, not random. Crash steps get much lower $h$ than safe driving (jac 0.117 vs 0.724) but stay above 0, so the soft cost never fires.
+- The optimism grows with how far ahead the prediction is. One replan earlier, the same crash step had 3-4x higher $h$ (0.394, 0.622); it only falls toward 0 as the car gets close. This matches the expert-window false-safe rate rising with horizon (0.10-0.16 over all steps, 0.35-0.50 at step 25).
+- jac's misses are mostly borderline (half of its crashes have $h < 0.1$); jac+adv_λ's are more confident (a quarter below 0.1, median crash-step $h$ twice jac's).
+
+Likely causes of the optimism:
+
+- The predictor is trained with MSE on expert data that rarely touches obstacles. Under uncertainty it predicts close to the average future, and the average expert future is safe. Contact is a thin, rare region, so imagined states rarely land in it.
+- $h$ is trained on encoder latents of real frames and never sees predicted latents, so nothing anchors its sign on the states it is used on.
+- CEM samples action sequences that leave the expert distribution (harder turns), and the predictor fills those in with expert-like, safe-looking futures.
+- The full safety regs add to this. Their predictor term penalizes changes in what $h$ reads off the predictor output, which plausibly also dulls its response to actually approaching an obstacle (hypothesis, not isolated); the encoder-only versions recover jac's level.
+
+Fixes to test, cheapest first: a safety margin $h(\hat z_t) \ge \epsilon$ (`unsafe_margin`; for jac, $\epsilon = 0.1$ covers half the crashes but would also flag about 10% of safe-episode replans); a margin that grows with the imagined step, matching the growing optimism; and training $h$ on predicted latents from CEM-style action sequences, labelled by running the same actions in the simulator (the earlier imagined-latent value function used expert windows only and the sigreg base).
