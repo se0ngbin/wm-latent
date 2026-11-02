@@ -756,12 +756,34 @@ Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`
 | jac+adv_h | 52.5 / 43.0 | 55.0 / 27.5 | 19.5 / 73.0 | 23.5 / 49.0 |
 | jac+pull+adv_h | 62.5 / 36.5 | 64.5 / 26.0 | 26.5 / 70.5 | 37.0 / 44.5 |
 | adv_λ | 33.0 / 70.5 | 39.5 / 66.5 | 20.5 / 68.5 | 22.0 / 63.5 |
-| jac+adv_λ | pending | pending | pending | pending |
+| jac+adv_λ | 57.5 / 39.5 | 57.5 / 16.5 | 29.5 / 54.0 | 26.5 / 47.0 |
 | jac+pull+adv_λ | 56.0 / 37.0 | 58.5 / 23.5 | 27.0 / 68.5 | 22.0 / 44.0 |
 
 - Frequent replanning lowers raw CEM for every model (e.g. jac 81.5 / 22.5 -> 43.5 / 56.5 on red), likely because the goal cost scores only the final predicted step and each replan pushes arrival later. A shrinking horizon or an every-step goal cost would be a fairer replanning test.
 - Within this setting the GP safety-first cost cuts collision on every jac-base model (red: jac 56.5 -> 11.0, jac+pull 46.0 -> 11.5) and still does nothing on the sigreg base.
 - The fair-pair gap reverses: jac+pull+adv_h plans slightly better than jac+pull raw (62.5 / 36.5 vs 60.5 / 46.0), but gains less from the soft cost (26.0 vs 11.5% collision).
+
+### Fair replanning test: goal cost at every imagined step
+
+The goal cost above scores only the last imagined step, so each replan pushes arrival later. Here it is the latent goal distance averaged over every imagined step ($\mathrm{goal\_cost} = \mathrm{mean}$, `soft_cem_goalmean_queue.sh`), with both replanning intervals under the same cost: every 25 steps (open loop) and every 5 steps. Red, success / collision (%); safety-first is the GP margin function, $w = 1000$, $C = 10^4$:
+
+| Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 61.0 / 52.5 | 63.0 / 55.5 | 60.0 / 52.0 | 63.0 / 55.5 |
+| jac | 68.0 / 52.0 | 77.5 / 48.5 | 76.0 / 22.0 | 84.0 / 8.0 |
+| jac+pull | 66.0 / 46.0 | 76.0 / 43.5 | 61.5 / 38.5 | 74.0 / 19.5 |
+| adv_h | 53.0 / 54.5 | 64.0 / 55.5 | 53.5 / 54.0 | 64.0 / 54.5 |
+| jac+adv_h | 51.0 / 61.5 | 56.5 / 63.5 | 57.5 / 47.5 | 60.5 / 47.5 |
+| jac+pull+adv_h | 58.0 / 54.5 | 68.0 / 53.5 | 59.5 / 44.5 | 69.5 / 41.5 |
+| adv_λ | 60.5 / 57.0 | 56.5 / 55.0 | 60.5 / 58.5 | 56.0 / 54.5 |
+| jac+adv_λ | 70.5 / 46.5 | 82.5 / 42.5 | 71.0 / 39.0 | 80.0 / 28.5 |
+| jac+pull+adv_λ | 61.0 / 48.5 | 75.0 / 45.0 | 59.5 / 39.5 | 72.0 / 28.5 |
+
+- With this cost, replanning every 5 steps helps success for every model except adv_λ (e.g. jac 68.0 -> 77.5, jac+adv_λ 70.5 -> 82.5): the earlier drop was the final-step cost, not replanning.
+- Raw CEM collides about 45-65% under both intervals. The mean cost rewards getting close early, which favors cutting through obstacles (jac open loop: 81.5 / 22.5 with the final-step cost vs 68.0 / 52.0 here), so the 22.5% earlier was a side effect of the goal cost, not safety knowledge.
+- Safety-first plus replanning every 5 steps gives the best result so far: jac 84.0 / 8.0, better than every other jac setting on both success and collision. jac+pull also improves (19.5% collision).
+- Adding a safety reg weakens the soft cost here too: 28.5-47.5% collision with safety-first every 5 steps for the four jac-base safety-reg models, against 8.0 (jac) and 19.5 (jac+pull). Safety-first still does nothing on the sigreg base.
+- OOD conditions (purple, diamond, rotated) for this test: running.
 
 ### Why safety regs plan worse
 
