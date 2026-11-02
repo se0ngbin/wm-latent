@@ -284,8 +284,12 @@ class _SoftCostJEPA:
             g = g[..., -1:, :]                                    # same goal latent JEPA.criterion uses
             cost = (z - g.detach()).pow(2).sum(-1).mean(-1).to(cost.dtype)
         h = self.head(z.float())                                  # (B, S, T')
-        pen = torch.relu(self.margin - h).sum(-1)
-        viol = (h < self.margin).any(-1)
+        # margin: scalar, or one value per imagined step (h on imagined latents grows more optimistic further ahead)
+        m = torch.as_tensor(list(self.margin) if hasattr(self.margin, "__len__") else self.margin,
+                            device=h.device, dtype=h.dtype)
+        m = m if m.dim() == 0 else m[:h.size(-1)]
+        pen = torch.relu(m - h).sum(-1)
+        viol = (h < m).any(-1)
         self.last_h = h
         self.last =(cost.mean().item(), pen.mean().item(), viol.float().mean().item())
         return cost + (self.weight * pen + self.const * viol).to(cost.dtype)
