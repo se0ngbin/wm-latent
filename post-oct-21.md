@@ -13,7 +13,7 @@ Open:
 
 - One WM seed per model except the jac+pull pair; jac+adv_h's color inversion (0.167) in particular needs a second seed.
 - Fair replanning (goal cost at every imagined step): red done for the full models plus two encoder-only models; OOD 96 of 108 cells done, rest about 03:00-05:00 UTC Nov 3. Not run: the other encoder-only models, and encoder-only on OOD.
-- Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (85-100% in all 7 models traced; sigreg and adv_h pending, about 23:30 UTC). Fixes to test: a safety margin on $h$, and training $h$ on predicted latents.
+- Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (85-100% in all 9 models traced). Fixes to test: a safety margin on $h$, and training $h$ on predicted latents.
 - Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
 
 # Regularizers
@@ -618,6 +618,22 @@ Summary:
 - With the goal cost scored at every imagined step and replanning every 5 steps, jac safety-first reaches 84.0 / 8.0 on red and 80.0 / 6.5 on diamond, the best results so far. Under purple, frequent replanning raises collision instead (jac 26.5 -> 43.0).
 - 85-100% of the remaining collisions are false-safe: the executed plan's $h$ stayed $\ge 0$ up to the crash. $h$ on imagined latents is optimistic, more so further ahead (executed-plan trace under Diagnostics).
 
+Original CEM cost (LeWM, raw CEM): only goal distance in latent space.
+
+$$J(a_{1:H}) = \big\|\hat z_H - z_g\big\|^2$$
+
+- $\hat z_H$ is the imagined latent after $H = 25$ steps under action sequence $a_{1:H}$, and $z_g$ is the encoded goal frame.
+- "final" scores only that last step. Our fair-replanning variant ("mean") averages over every step: $\frac{1}{H}\sum_{t=1}^{H} \|\hat z_t - z_g\|^2$.
+- Safety appears nowhere. Any avoidance comes only from the world model's dynamics, which mostly mimic the expert data.
+
+With the safety penalty (soft-cost CEM):
+
+$$J(a_{1:H}) = \underbrace{\big\|\hat z_H - z_g\big\|^2}_{\text{goal}} \;+\; \underbrace{w \sum_{t=1}^{H} \mathrm{relu}\big(m - h(\hat z_t)\big)}_{\text{hinge}} \;+\; \underbrace{C\,\mathbb{1}\big[\min_t h(\hat z_t) < m\big]}_{\text{flat}}$$
+- $h$ is the margin function: positive means safe, negative means unsafe.
+- $m$ is the safety margin, 0 by default (the `unsafe_margin` knob).
+- Hinge: adds a penalty proportional to how far below $m$ each imagined step falls. It is zero for any trajectory that stays predicted-safe, so it never distorts goal-seeking among safe plans. $w = 1000$ in the main results.
+- Flat term: a constant hit for any violation. With $C = 10^4$ (safety-first), any predicted-safe plan beats any predicted-unsafe one, since goal costs are about 130 at most. Graded sets $C = 0$.
+
 ### Raw CEM (no safety cost)
 
 | Model | red | purple | diamond | rotated |
@@ -882,8 +898,8 @@ The rollout margin test above uses expert actions. Here the evidence comes from 
 
 | Model | Collision (%) | Predicted unsafe (%) | False-safe (%) | False-safe share of collisions |
 | --- | ---: | ---: | ---: | ---: |
-| sigreg | pending | pending | pending | pending |
-| adv_h | pending | pending | pending | pending |
+| sigreg | 55.5 | 0.5 | 55.0 | 99% |
+| adv_h | 54.5 | 1.5 | 53.0 | 97% |
 | jac | 8.0 | 1.0 | 7.0 | 88% |
 | jac+adv_h | 47.5 | 0.0 | 47.5 | 100% |
 | jac+adv_h, encoder-only | 17.5 | 1.0 | 16.5 | 94% |
@@ -892,12 +908,14 @@ The rollout margin test above uses expert actions. Here the evidence comes from 
 | jac+pull | 19.5 | 3.0 | 16.5 | 85% |
 | jac+pull+adv_h | 41.5 | 4.5 | 37.0 | 89% |
 
-Pending = running, about 23:30 UTC Nov 2. Not run: adv_λ, the sigreg-base encoder-only models, jac+pull+adv_h encoder-only, jac+pull+adv_λ (full and encoder-only).
+Not run: adv_λ, the sigreg-base encoder-only models, jac+pull+adv_h encoder-only, jac+pull+adv_λ (full and encoder-only).
 
 $h$ along the executed plans (same runs):
 
 | Model | $h$ at crash step, median (p10-p90) | Same step, previous replan, median | Min $h$ over executed 5 steps, safe episodes, median (p10) | Crashes with $h < 0.1$ |
 | --- | ---: | ---: | ---: | ---: |
+| sigreg | 0.871 (0.498-1.180) | 1.089 | 0.998 (0.528) | 0.02 |
+| adv_h | 0.672 (0.211-1.354) | 1.337 | 1.166 (0.684) | 0.06 |
 | jac | 0.117 (0.009-0.311) | 0.394 | 0.724 (0.073) | 0.50 |
 | jac+adv_h | 0.908 (0.326-1.378) | 1.091 | 0.899 (0.588) | 0.04 |
 | jac+adv_h, encoder-only | 0.327 (0.086-0.683) | 0.447 | 0.977 (0.178) | 0.11 |
@@ -907,7 +925,7 @@ $h$ along the executed plans (same runs):
 | jac+pull+adv_h | 0.404 (0.006-1.339) | 0.976 | 1.046 (0.323) | 0.22 |
 
 - 85-100% of collisions are false-safe in every model traced. The planner almost always finds a plan it predicts safe, so search and infeasibility are not the problem. The gap between jac and the safety-reg models is almost all false-safe (7.0 vs 16.5-47.5).
-- $h$ on imagined latents is optimistic, not random, for jac and jac+pull: crash steps get much lower $h$ than safe driving (0.117 vs 0.724, 0.111 vs 0.742) but stay above 0, so the soft cost never fires. For jac+adv_h it does not separate them at all: median crash-step $h$ 0.908, the same as the safe-episode minimum 0.899.
+- $h$ on imagined latents is optimistic, not random, for jac and jac+pull: crash steps get much lower $h$ than safe driving (0.117 vs 0.724, 0.111 vs 0.742) but stay above 0, so the soft cost never fires. For jac+adv_h it does not separate them at all: median crash-step $h$ 0.908, the same as the safe-episode minimum 0.899. The same holds on the sigreg base (sigreg 0.871 vs 0.998, adv_h 0.672 vs 1.166; 2-6% of crashes below 0.1), which explains why the soft cost never helps those models: imagined crashes look like safe driving to $h$, so the penalty never fires.
 - The optimism grows with how far ahead the prediction is. One replan earlier, the same crash step had higher $h$ in every model (jac 0.394 vs 0.117, jac+adv_λ 0.622 vs 0.239); it only falls toward 0 as the car gets close. This matches the expert-window false-safe rate rising with horizon (0.10-0.16 over all steps, 0.35-0.50 at step 25).
 - jac's and jac+pull's misses are mostly borderline (half of their crashes have $h < 0.1$); the safety-reg models' are more confident (4-25% below 0.1; jac+adv_h 4%). Encoder-only lowers jac+adv_h's crash-step $h$ (0.908 -> 0.327) but not jac+adv_λ's (0.239 -> 0.433); both encoder-only models collide 17.5-20.0%, between jac and the full models.
 
