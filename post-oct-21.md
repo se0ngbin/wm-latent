@@ -6,14 +6,14 @@ What is established, with pointers to the sections below. All margin-function nu
 
 - Two evaluation bugs were found and fixed. The margin-function OOD evals fed the world model transposed frames (every benchmark; "rotate" was a mirror flip), and the Dubins CEM purple/diamond runs used a red-circle goal frame. Reruns of the old paths reproduce the old tables exactly, so the fixed tables replace them. Still on transposed frames, and hidden below: cartpole "why viewpoint fails" and value functions, and support vs aliasing.
 - Margin functions (Dubins 3×3 grid): sigreg fails every shift; every regularized model handles rotation and shape; color is the hard shift, where adv_λ keeps the ranking on every base (0.911-0.982 AUC). No model's color threshold survives (sign accuracy ≈ 0.5).
-- Planning: raw CEM collapses for every model under a consistent recolor (7.5-34% success). A safety-first soft cost with the margin function cuts collision on every jac-base model (jac: 5-27% on every condition) and never helps the sigreg-base models. The label-free GP margin function matches the oracle value function.
+- Planning (main results: $h$ = GP margin function; full and encoder-only safety regs both reported on all four conditions): raw CEM collapses for every model under a consistent recolor (7.5-34% success). A safety-first soft cost cuts collision on every jac-base model on every condition (jac: 5-27%) and never helps the sigreg-base models. Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition; jac+adv_h encoder-only is the safest model under purple. The label-free GP margin function matches the oracle value function. About 90% of the remaining collisions are false-safe: $h$ on imagined latents is optimistic, more so further ahead.
 - Safety regs and planning: on the same base, jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull over 3 WM seeds. The adversarial predictor term raises rollout error. Dropping it (encoder-only) helps planning, and keeps color robustness for adv_h on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but not for adv_λ (0.40-0.44 on every base). Best safety-reg models with the soft cost: jac+adv_h encoder-only and jac+adv_λ encoder-only (red 8% collision at about 80% success, matching jac).
 
 Open:
 
 - One WM seed per model except the jac+pull pair; jac+adv_h's color inversion (0.167) in particular needs a second seed.
-- A fair replanning protocol: replanning every 5 steps lowers raw CEM for every model, likely because the goal cost scores only the final step.
-- Why adding a safety reg to jac weakens the soft cost in-distribution: per-step diagnostics do not explain it; the next test is whether $h$ ranks CEM's own sampled candidates correctly.
+- Fair replanning (goal cost at every imagined step): red is done for the full models (jac safety-first, replanning every 5 steps: 84.0 / 8.0); OOD conditions are running; encoder-only models are not yet run.
+- Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (jac+adv_λ: 26.0 of 28.5%); traces for the other models are running. Fixes to test: a safety margin on $h$, and training $h$ on predicted latents.
 - Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
 
 # Regularizers
@@ -586,144 +586,172 @@ Unsafe states whose nearest training latents are mostly safe
 -->
 # Planning: soft-cost CEM (Dubins)
 
-CEM with the margin function's unsafe region as an extra cost on the imagined rollout: $\text{cost} = \text{goal MSE} + w \sum_t \mathrm{relu}(-h(\hat z_t)) + C\,\mathbb{1}[\min_t h(\hat z_t) < 0]$. Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). The graded version has $C = 0$; the lexicographic version adds $C = 10^4$ (larger than any goal cost, about 130), so every candidate $h$ calls safe beats every unsafe one, while the hinge still ranks the unsafe ones. Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>[_c<C>]_<condition>.log`.
+CEM with the margin function's unsafe region as an extra cost on the imagined rollout: $\text{cost} = \text{goal MSE} + w \sum_t \mathrm{relu}(-h(\hat z_t)) + C\,\mathbb{1}[\min_t h(\hat z_t) < 0]$. Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). Safety-first adds $C = 10^4$ (larger than any goal cost, about 130), so every candidate $h$ calls safe beats every unsafe one, while the hinge still ranks the unsafe ones; graded has $C = 0$. Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>[_c<C>]_<condition>.log`.
 
-- $h$ here is a supervised value function, not a margin function: MSE regression onto the oracle HJ value $V^*$ (computed offline by a grid solver on the true dynamics, `hj_truth.npz`) at random states rendered red and encoded by the frozen WM (`train_margin_hj_lewm.py`, `margin_hj_color_red_rk0_s0.pt`; no GP, no RL). The labels are privileged; a GP margin function on failure labels (the one behind the OOD tables) is the label-free variant; both are compared below. Frames are in the training orientation, so the eval transpose bug does not affect these numbers.
-- Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50. N = 200 episodes per cell, one run per cell. Success % / collision %.
+## Setup
 
-Weight sweep (red)
+- $h$ (main results): the GP margin function on failure labels, the same recipe as the margin-function OOD tables, trained on red frames in the training orientation and encoded by the frozen WM (`margin_gp_fail_red_s0.pt`). It never sees purple, diamond or rotated frames, so the OOD columns test the world model and $h$ together, zero-shot. A supervised value function fit to the oracle HJ value is the privileged comparison (Secondary results).
+- Models: 15 Dubins WMs, grouped by base (sigreg, jac, jac+pull). Each safety reg (adv_h, adv_λ) on each base is run in two versions, both first-class: full (adversarial penalty on the encoder and predictor terms) and encoder-only ($\mathrm{pred\_weight} = 0$, encoder term only). Every table lists them as adjacent rows.
+- Conditions: red (training appearance), purple (recolor), diamond (obstacle shape), rotated (90° view). Purple and diamond use a goal frame rendered in the same shifted appearance (`eval.py` re-renders it; fixed 2026-10-29). Before the fix, `World.evaluate` took the goal frame from the dataset, so purple and diamond runs showed a red-circle goal in a purple or diamond world; those numbers, and the earlier claim that recolor does not affect CEM, were artifacts. Control: red through the re-render path reproduces the original red result (jac+pull raw 83.0 / 27.5 vs 81.5 / 29.0, logs `softcem_jacpull_rr_*`). Rotated already rotated the goal frame.
+- Protocol sg25clean: goals 25 steps ahead in an annulus around the obstacles, horizon 25, budget 50, plan executed open loop unless stated. N = 200 episodes per cell, one run per cell. Frames are in the training orientation, so the eval transpose bug does not affect these numbers. Entries are success / collision (%).
 
-| model | raw CEM | w = 100 | w = 1000 | w = 10000 | safety-first |
-|---|---|---|---|---|---|
-| sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 | 39.0 / 60.5 |
-| jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 | 72.0 / 11.0 |
+Zero-shot color AUC of the GP margin function, full vs encoder-only (fixed orientation, 3 seeds), for reference:
 
-Purple and diamond use a goal frame rendered in the same shifted appearance (`eval.py` re-renders it; fixed 2026-10-29). Before the fix, `World.evaluate` took the goal frame from the dataset, so purple and diamond runs showed a red-circle goal in a purple or diamond world; those numbers, and the earlier claim that recolor does not affect CEM, were artifacts and are replaced below. Control: red through the re-render path reproduces the original red result (jac+pull raw 83.0 / 27.5 vs 81.5 / 29.0, logs `softcem_jacpull_rr_*`). Red and rotated cells are unchanged (no mismatch: red has none, rotation already rotated the goal frame).
+| Model | Margin AUC, full | Margin AUC, encoder-only |
+| --- | ---: | ---: |
+| adv_h | 0.789 | 0.454 |
+| adv_λ | 0.982 | 0.440 |
+| jac+adv_h | 0.167 | 0.808 |
+| jac+adv_λ | 0.946 | 0.398 |
+| jac+pull+adv_h | 0.782 | 0.891 |
+| jac+pull+adv_λ | 0.911 | 0.403 |
 
-Raw CEM
+## Main results: GP margin function
 
-| model | red | purple | diamond | rotated |
-|---|---|---|---|---|
-| sigreg | 62.5 / 50.0 | 33.0 / 65.0 | 42.0 / 49.0 | 26.5 / 62.5 |
-| jac | 81.5 / 22.5 | 16.0 / 75.5 | 79.0 / 15.5 | 30.0 / 60.0 |
-| jac+pull | 81.5 / 29.0 | 25.5 / 59.0 | 82.0 / 14.0 | 41.5 / 54.5 |
-| adv_h | 57.5 / 57.0 | 34.0 / 63.5 | 49.5 / 47.0 | 20.5 / 70.5 |
-| jac+adv_h | 79.0 / 25.0 | 7.5 / 81.5 | 78.0 / 18.5 | 19.5 / 64.5 |
-| jac+pull+adv_h | 75.5 / 29.0 | 32.0 / 65.0 | 75.5 / 18.5 | 30.0 / 53.0 |
-| adv_λ | 51.5 / 58.0 | 26.5 / 66.5 | 42.0 / 51.0 | 17.5 / 66.0 |
-| jac+adv_λ | 81.0 / 27.5 | 26.0 / 61.0 | 80.5 / 15.0 | 36.5 / 48.5 |
-| jac+pull+adv_λ | 81.0 / 29.0 | 33.0 / 58.0 | 77.5 / 16.5 | 46.5 / 46.0 |
+Summary:
 
-Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function (oracle $V^*$)
+- Raw CEM collapses for every model under recolor (7.5-34% success, 49-82% collision); diamond hurts only the sigreg base.
+- The soft cost cuts collision on every jac-base model on every condition, including the OOD ones, although $h$ only saw red frames. It never helps the sigreg-base models.
+- Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition with the safety-first cost (red 7.5-22.5 vs 13.0-29.0, purple 21.0-29.5 vs 36.0-44.5, rotated 21.5-27.5 vs 29.0-46.0% collision). The full safety regs lose most of the soft cost's gain over jac; encoder-only recovers it.
+- Best models: jac (safety-first 79.0 / 8.5 red, 5-27% collision on every condition) and jac+adv_h encoder-only (80.5 / 8.0 red; safest under purple, 40.0 / 21.0 safety-first and 45.5 / 20.0 graded). jac+adv_λ encoder-only matches them on red and diamond (78.5 / 7.5, 78.5 / 6.5).
+- Graded ($C = 0$) and safety-first give nearly the same numbers.
+- With the goal cost scored at every imagined step and replanning every 5 steps, jac safety-first reaches 84.0 / 8.0 on red, the best result so far.
+- About 90% of the remaining collisions are false-safe: the executed plan's $h$ stayed $\ge 0$ up to the crash. $h$ on imagined latents is optimistic, more so further ahead (executed-plan trace under Diagnostics).
 
-| model | red | purple | diamond | rotated |
-|---|---|---|---|---|
-| sigreg | 39.0 / 60.5 | 28.5 / 61.5 | 35.5 / 50.0 | 23.5 / 64.0 |
-| jac | 72.0 / 11.0 | 39.0 / 15.5 | 71.5 / 5.5 | 48.0 / 13.5 |
-| jac+pull | 75.0 / 20.0 | 38.5 / 41.0 | 73.0 / 18.0 | 35.0 / 37.5 |
-| adv_h | 41.0 / 59.5 | 28.0 / 62.5 | 35.0 / 55.5 | 22.5 / 64.0 |
-| jac+adv_h | 68.5 / 19.5 | 34.0 / 30.0 | 65.0 / 17.5 | 27.0 / 43.0 |
-| jac+pull+adv_h | 66.5 / 25.0 | 33.0 / 33.5 | 62.0 / 15.5 | 33.0 / 31.5 |
-| adv_λ | 49.0 / 59.0 | 24.5 / 68.0 | 44.0 / 51.0 | 20.5 / 63.5 |
-| jac+adv_λ | 73.5 / 29.0 | 45.0 / 41.5 | 72.5 / 16.5 | 44.5 / 39.5 |
-| jac+pull+adv_λ | 62.5 / 29.0 | 44.0 / 28.5 | 62.5 / 16.5 | 42.5 / 23.0 |
-
-Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function (failure labels; the same recipe as the OOD tables, trained on red frames in the training orientation, `margin_gp_fail_red_s0.pt`)
-
-| model | red | purple | diamond | rotated |
-|---|---|---|---|---|
-| sigreg | 57.5 / 49.5 | 34.0 / 66.0 | 40.5 / 50.5 | 26.0 / 64.5 |
-| jac | 79.0 / 8.5 | 35.0 / 26.5 | 78.0 / 5.0 | 45.0 / 21.5 |
-| jac+pull | 77.0 / 20.0 | 35.5 / 36.5 | 75.5 / 14.0 | 35.0 / 31.0 |
-| adv_h | 55.5 / 53.0 | 34.5 / 63.0 | 50.5 / 46.5 | 19.0 / 69.5 |
-| jac+adv_h | 76.0 / 13.0 | 25.5 / 37.5 | 73.5 / 11.0 | 18.5 / 46.0 |
-| jac+pull+adv_h | 70.5 / 25.0 | 39.0 / 44.5 | 68.5 / 16.0 | 34.5 / 41.0 |
-| adv_λ | 48.0 / 59.0 | 28.0 / 66.0 | 41.5 / 52.0 | 16.0 / 66.5 |
-| jac+adv_λ | 74.0 / 17.5 | 37.5 / 36.0 | 75.5 / 14.0 | 31.0 / 39.5 |
-| jac+pull+adv_λ | 70.0 / 29.0 | 40.5 / 38.0 | 68.0 / 15.5 | 43.0 / 29.0 |
-
-- Recolor is the hardest shift for planning: with a consistent purple scene every model collapses under raw CEM (7.5-34% success, 58-82% collision; jac+adv_h is worst at 7.5 / 81.5). Diamond hurts only the sigreg-base models (8-20 points of success); the jac-base models are unaffected.
-- The soft cost rescues the jac-base models under purple even though $h$ was trained on red frames: jac 16.0 / 75.5 -> 39.0 / 15.5 (value function) and 35.0 / 26.5 (GP); jac+pull and jac+pull+adv_h drop to 33.5-44.5% collision. It never helps the sigreg-base models (sigreg, adv_h, adv_λ) on any condition.
-- jac gains the most overall: collision 5-27% on every condition, versus 15.5-75.5% raw. With the GP margin function it keeps 78-79% success on red and diamond.
-- The label-free GP margin function matches the privileged value function in most cells; the value function is better for jac under purple and rotation.
-- New models: jac+pull+adv_λ is the strongest raw planner overall (no success cost on red, 81.0 / 29.0 vs jac+pull 81.5 / 29.0; best raw rotation, 46.5 / 46.0), and its soft cost works under the shifts (purple 44.0 / 28.5, rotated 42.5 / 23.0) but not in-distribution (red 62.5-70.0 / 29.0). jac+adv_h is the weakest jac-base model under shifts (raw purple 7.5 / 81.5, rotated 19.5 / 64.5). Adding either safety reg to jac removes most of the soft cost's in-distribution safety gain (jac 8.5-11.0% collision on red vs 13.0-29.0% for jac+adv_h, jac+adv_λ); the per-step diagnostics (h on imagined latents, rollout error, goal geometry) do not explain this, so how h ranks CEM's own candidates is the open question.
-### Control: does the safety gain come from what $h$ knows?
-
-On red with jac, a margin function with no safety knowledge makes CEM worse, not safer: shuffled labels 63.5 / 39.5, random init 36.5 / 43.0, against the GP margin function 79.0 / 8.5 and raw CEM 81.5 / 22.5. The safety gain comes from what $h$ knows.
-
-### Encoder-only safety-reg ablation
-
-Encoder-only sets $\mathrm{pred\_weight}=0$, removing the adversarial penalty from the predictor term; the full model includes it. Margin AUC is the zero-shot color AUC of the GP margin function (fixed orientation, 3 seeds). CEM entries are success / collision (%), red, raw CEM.
-
-| Model | Margin AUC, full | Margin AUC, encoder-only | Red CEM, full | Red CEM, encoder-only |
-| --- | ---: | ---: | ---: | ---: |
-| adv_h | 0.789 | 0.454 | 57.5 / 57.0 | 60.5 / 47.5 |
-| adv_λ | 0.982 | 0.440 | 51.5 / 58.0 | 61.0 / 44.0 |
-| jac+adv_h | 0.167 | 0.808 | 79.0 / 25.0 | 81.5 / 26.5 |
-| jac+adv_λ | 0.946 | 0.398 | 81.0 / 27.5 | 83.0 / 21.0 |
-| jac+pull+adv_h | 0.782 | 0.891 | 75.5 / 29.0 | 78.5 / 33.0 |
-| jac+pull+adv_λ | 0.911 | 0.403 | 81.0 / 29.0 | 78.5 / 28.5 |
-
-Full vs encoder-only, success / collision (%), all four conditions (purple and diamond with a consistent goal frame):
-
-Raw CEM
+### Raw CEM (no safety cost)
 
 | Model | red | purple | diamond | rotated |
 | --- | ---: | ---: | ---: | ---: |
+| sigreg | 62.5 / 50.0 | 33.0 / 65.0 | 42.0 / 49.0 | 26.5 / 62.5 |
 | adv_h | 57.5 / 57.0 | 34.0 / 63.5 | 49.5 / 47.0 | 20.5 / 70.5 |
 | adv_h, encoder-only | 60.5 / 47.5 | 30.5 / 60.5 | 55.5 / 47.0 | 30.0 / 60.5 |
 | adv_λ | 51.5 / 58.0 | 26.5 / 66.5 | 42.0 / 51.0 | 17.5 / 66.0 |
 | adv_λ, encoder-only | 61.0 / 44.0 | 27.0 / 79.0 | 54.5 / 42.0 | 30.5 / 58.5 |
+| jac | 81.5 / 22.5 | 16.0 / 75.5 | 79.0 / 15.5 | 30.0 / 60.0 |
 | jac+adv_h | 79.0 / 25.0 | 7.5 / 81.5 | 78.0 / 18.5 | 19.5 / 64.5 |
 | jac+adv_h, encoder-only | 81.5 / 26.5 | 23.0 / 72.5 | 80.0 / 15.5 | 29.5 / 47.5 |
 | jac+adv_λ | 81.0 / 27.5 | 26.0 / 61.0 | 80.5 / 15.0 | 36.5 / 48.5 |
 | jac+adv_λ, encoder-only | 83.0 / 21.0 | 28.0 / 59.5 | 80.0 / 13.5 | 28.0 / 57.0 |
+| jac+pull | 81.5 / 29.0 | 25.5 / 59.0 | 82.0 / 14.0 | 41.5 / 54.5 |
 | jac+pull+adv_h | 75.5 / 29.0 | 32.0 / 65.0 | 75.5 / 18.5 | 30.0 / 53.0 |
 | jac+pull+adv_h, encoder-only | 78.5 / 33.0 | 28.5 / 49.0 | 75.5 / 17.0 | 30.5 / 38.5 |
 | jac+pull+adv_λ | 81.0 / 29.0 | 33.0 / 58.0 | 77.5 / 16.5 | 46.5 / 46.0 |
 | jac+pull+adv_λ, encoder-only | 78.5 / 28.5 | 32.5 / 53.5 | 76.5 / 15.5 | 38.0 / 41.5 |
 
-Safety-first ($w = 1000$, $C = 10^4$), $h$ = supervised value function
+- Recolor is the hardest shift for planning: every model collapses (7.5-34% success, 49-82% collision); jac+adv_h is worst at 7.5 / 81.5. Diamond hurts only the sigreg-base models (8-20 points of success); the jac-base models are unaffected.
+- Encoder-only vs full: better on the sigreg base (red adv_h 57.5 / 57.0 -> 60.5 / 47.5, adv_λ 51.5 / 58.0 -> 61.0 / 44.0, though adv_λ encoder-only collides more under purple, 79.0 vs 66.5) and for jac+adv_λ on red (81.0 / 27.5 -> 83.0 / 21.0); mixed elsewhere. Under rotation encoder-only lowers collision on every jac-base model except jac+adv_λ.
+- jac+pull+adv_λ is the strongest raw planner overall (no success cost on red, 81.0 / 29.0 vs jac+pull 81.5 / 29.0; best raw rotation, 46.5 / 46.0). jac+adv_h is the weakest jac-base model under shifts (purple 7.5 / 81.5, rotated 19.5 / 64.5).
+
+### Safety-first ($w = 1000$, $C = 10^4$)
 
 | Model | red | purple | diamond | rotated |
 | --- | ---: | ---: | ---: | ---: |
-| adv_h | 41.0 / 59.5 | 28.0 / 62.5 | 35.0 / 55.5 | 22.5 / 64.0 |
-| adv_h, encoder-only | 44.5 / 52.5 | 22.5 / 67.0 | 44.0 / 43.5 | 27.0 / 58.0 |
-| adv_λ | 49.0 / 59.0 | 24.5 / 68.0 | 44.0 / 51.0 | 20.5 / 63.5 |
-| adv_λ, encoder-only | 46.0 / 55.0 | 28.0 / 57.5 | 36.5 / 46.0 | 31.0 / 55.0 |
-| jac+adv_h | 68.5 / 19.5 | 34.0 / 30.0 | 65.0 / 17.5 | 27.0 / 43.0 |
-| jac+adv_h, encoder-only | 76.5 / 20.0 | 41.0 / 32.5 | 71.0 / 11.5 | 42.0 / 29.0 |
-| jac+adv_λ | 73.5 / 29.0 | 45.0 / 41.5 | 72.5 / 16.5 | 44.5 / 39.5 |
-| jac+adv_λ, encoder-only | 71.5 / 16.5 | 35.0 / 34.5 | 70.5 / 9.5 | 36.5 / 30.0 |
-| jac+pull+adv_h | 66.5 / 25.0 | 33.0 / 33.5 | 62.0 / 15.5 | 33.0 / 31.5 |
-| jac+pull+adv_h, encoder-only | 69.0 / 25.0 | 34.0 / 30.0 | 66.0 / 18.0 | 34.0 / 26.0 |
-| jac+pull+adv_λ | 62.5 / 29.0 | 44.0 / 28.5 | 62.5 / 16.5 | 42.5 / 23.0 |
-| jac+pull+adv_λ, encoder-only | 67.0 / 25.5 | 32.0 / 24.0 | 67.0 / 15.5 | 38.5 / 20.0 |
-
-Safety-first ($w = 1000$, $C = 10^4$), $h$ = GP margin function
-
-| Model | red | purple | diamond | rotated |
-| --- | ---: | ---: | ---: | ---: |
+| sigreg | 57.5 / 49.5 | 34.0 / 66.0 | 40.5 / 50.5 | 26.0 / 64.5 |
 | adv_h | 55.5 / 53.0 | 34.5 / 63.0 | 50.5 / 46.5 | 19.0 / 69.5 |
 | adv_h, encoder-only | 58.5 / 47.0 | 31.0 / 60.0 | 55.5 / 46.0 | 32.0 / 59.5 |
 | adv_λ | 48.0 / 59.0 | 28.0 / 66.0 | 41.5 / 52.0 | 16.0 / 66.5 |
 | adv_λ, encoder-only | 64.0 / 44.0 | 28.5 / 77.5 | 55.5 / 40.5 | 30.5 / 58.5 |
+| jac | 79.0 / 8.5 | 35.0 / 26.5 | 78.0 / 5.0 | 45.0 / 21.5 |
 | jac+adv_h | 76.0 / 13.0 | 25.5 / 37.5 | 73.5 / 11.0 | 18.5 / 46.0 |
 | jac+adv_h, encoder-only | 80.5 / 8.0 | 40.0 / 21.0 | 78.0 / 5.5 | 41.5 / 22.5 |
 | jac+adv_λ | 74.0 / 17.5 | 37.5 / 36.0 | 75.5 / 14.0 | 31.0 / 39.5 |
 | jac+adv_λ, encoder-only | 78.5 / 7.5 | 36.5 / 27.5 | 78.5 / 6.5 | 41.0 / 27.5 |
+| jac+pull | 77.0 / 20.0 | 35.5 / 36.5 | 75.5 / 14.0 | 35.0 / 31.0 |
 | jac+pull+adv_h | 70.5 / 25.0 | 39.0 / 44.5 | 68.5 / 16.0 | 34.5 / 41.0 |
 | jac+pull+adv_h, encoder-only | 70.0 / 22.5 | 34.0 / 26.5 | 65.5 / 15.5 | 29.5 / 27.0 |
 | jac+pull+adv_λ | 70.0 / 29.0 | 40.5 / 38.0 | 68.0 / 15.5 | 43.0 / 29.0 |
 | jac+pull+adv_λ, encoder-only | 76.0 / 20.5 | 30.5 / 29.5 | 77.0 / 12.0 | 38.5 / 21.5 |
 
-- adv_h and adv_λ behave differently. Removing adv_h's predictor term keeps or improves color robustness on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but costs it on sigreg (0.789 -> 0.454). adv_λ needs its predictor term on every base (0.911-0.982 -> 0.398-0.440). On sigreg, adv_λ encoder-only also collides more under purple (raw red / purple collision 44.0 / 79.0 vs 58.0 / 66.5 full).
-- Raw red CEM without the predictor term: better on the sigreg base (adv_h 57.5 / 57.0 -> 60.5 / 47.5, adv_λ 51.5 / 58.0 -> 61.0 / 44.0) and for jac+adv_λ (81.0 / 27.5 -> 83.0 / 21.0); mixed elsewhere (jac+adv_h 79.0 / 25.0 -> 81.5 / 26.5, jac+pull+adv_h 75.5 / 29.0 -> 78.5 / 33.0, jac+pull+adv_λ 81.0 / 29.0 -> 78.5 / 28.5).
-- With the GP safety-first cost, jac+adv_h encoder-only and jac+adv_λ encoder-only are the strongest jac safety-reg models (red 7.5-8.0% collision at 78.5-80.5% success, matching jac). jac+adv_h encoder-only keeps color robustness (0.808); jac+adv_λ encoder-only does not (0.398).
+- The soft cost cuts collision on every jac-base model on every condition. jac gains the most: 5-27% collision on every condition vs 15.5-75.5% raw, keeping 78-79% success on red and diamond. Under purple: jac 16.0 / 75.5 -> 35.0 / 26.5.
+- It never helps the sigreg-base models, full or encoder-only, on any condition.
+- Full vs encoder-only, jac base: encoder-only collides less on every model and condition (red: jac+adv_h 13.0 -> 8.0, jac+adv_λ 17.5 -> 7.5, jac+pull+adv_h 25.0 -> 22.5, jac+pull+adv_λ 29.0 -> 20.5; purple: 37.5 -> 21.0, 36.0 -> 27.5, 44.5 -> 26.5, 38.0 -> 29.5; rotated: 46.0 -> 22.5, 39.5 -> 27.5, 41.0 -> 27.0, 29.0 -> 21.5). On the jac+pull base it costs some OOD success (purple 39.0 -> 34.0, 40.5 -> 30.5).
+- jac+adv_h encoder-only and jac+adv_λ encoder-only are the strongest safety-reg models (red 7.5-8.0% collision at 78.5-80.5% success, matching jac). jac+adv_h encoder-only also keeps color robustness in its margin function (AUC 0.808); jac+adv_λ encoder-only does not (0.398).
+- The full safety regs lose most of the in-distribution gain (red 13.0-29.0% collision vs jac 8.5); the diagnostics below trace this to false-safe $h$ on imagined latents.
 
-### Graded GP soft cost ($C = 0$), red
+### Graded ($w = 1000$, $C = 0$)
 
-The safety-first runs above add a flat $C = 10^4$ for any predicted violation. Without it, the hinge alone ($w = 100$ or $1000$) with the GP margin function, red, success / collision (%) (`soft_cem_weight_pair_gp.sh`; reference: jac 79.0 / 8.5 safety-first):
+| Model | red | purple | diamond | rotated |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 57.0 / 49.5 | 33.0 / 66.0 | 41.0 / 50.5 | 26.0 / 64.5 |
+| adv_h | 54.5 / 53.0 | 34.0 / 63.5 | 50.5 / 46.5 | 18.5 / 69.5 |
+| adv_h, encoder-only | 58.5 / 47.0 | 29.5 / 60.5 | 55.5 / 46.5 | 32.0 / 60.0 |
+| adv_λ | 49.5 / 59.0 | 26.5 / 66.5 | 42.0 / 52.5 | 18.5 / 67.5 |
+| adv_λ, encoder-only | 64.5 / 44.0 | 28.5 / 80.0 | 56.0 / 40.5 | 30.0 / 59.5 |
+| jac | 79.5 / 9.0 | 37.5 / 27.5 | 78.5 / 5.0 | 45.5 / 23.0 |
+| jac+adv_h | 78.0 / 12.5 | 23.5 / 43.0 | 75.5 / 11.5 | 21.5 / 47.0 |
+| jac+adv_h, encoder-only | 80.0 / 9.0 | 45.5 / 20.0 | 78.0 / 6.0 | 39.0 / 24.5 |
+| jac+adv_λ | 76.5 / 18.0 | 37.5 / 37.0 | 77.5 / 11.5 | 33.0 / 39.5 |
+| jac+adv_λ, encoder-only | 80.0 / 8.0 | 39.0 / 28.5 | 78.5 / 7.0 | 40.0 / 25.5 |
+| jac+pull | 77.0 / 19.5 | 35.0 / 34.0 | 76.5 / 13.0 | 36.5 / 32.0 |
+| jac+pull+adv_h | 71.0 / 25.5 | 35.0 / 47.5 | 70.0 / 15.5 | 36.0 / 39.0 |
+| jac+pull+adv_h, encoder-only | 69.5 / 23.0 | 33.0 / 27.0 | 68.5 / 13.0 | 31.5 / 27.5 |
+| jac+pull+adv_λ | 73.0 / 25.0 | 41.5 / 38.5 | 69.5 / 18.0 | 45.0 / 33.0 |
+| jac+pull+adv_λ, encoder-only | 77.0 / 20.0 | 31.0 / 28.0 | 77.5 / 11.5 | 38.5 / 25.0 |
+
+- Graded and safety-first give nearly the same numbers on every condition (jac graded 79.5 / 9.0, 37.5 / 27.5, 78.5 / 5.0, 45.5 / 23.0 vs safety-first 79.0 / 8.5, 35.0 / 26.5, 78.0 / 5.0, 45.0 / 21.5): with $w = 1000$ the hinge already dominates the goal cost, so the flat $C$ adds little.
+- Under shift, encoder-only is safer than full on every jac-base safety-reg model: purple collision 20.0-28.5 vs 37.0-47.5, rotated 24.5-27.5 vs 33.0-47.0.
+- jac+adv_h encoder-only is the only model that beats jac under purple (45.5 / 20.0 vs 37.5 / 27.5) and is close to jac elsewhere (rotated 39.0 / 24.5 vs 45.5 / 23.0). The full jac+adv_h is the worst jac-base model under purple and rotation (43.0 and 47.0% collision).
+- The sigreg-base models gain nothing on any condition.
+
+### Replanning: goal cost at every imagined step
+
+The open-loop runs above score only the last imagined step; with that cost, replanning pushes arrival later and lowers success (Secondary results). Here the goal cost is the latent goal distance averaged over every imagined step ($\mathrm{goal\_cost} = \mathrm{mean}$, `soft_cem_goalmean_queue.sh`), with both replanning intervals under the same cost: every 25 steps (open loop) and every 5 steps. Red; safety-first as above:
+
+| Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 61.0 / 52.5 | 63.0 / 55.5 | 60.0 / 52.0 | 63.0 / 55.5 |
+| adv_h | 53.0 / 54.5 | 64.0 / 55.5 | 53.5 / 54.0 | 64.0 / 54.5 |
+| adv_λ | 60.5 / 57.0 | 56.5 / 55.0 | 60.5 / 58.5 | 56.0 / 54.5 |
+| jac | 68.0 / 52.0 | 77.5 / 48.5 | 76.0 / 22.0 | 84.0 / 8.0 |
+| jac+adv_h | 51.0 / 61.5 | 56.5 / 63.5 | 57.5 / 47.5 | 60.5 / 47.5 |
+| jac+adv_λ | 70.5 / 46.5 | 82.5 / 42.5 | 71.0 / 39.0 | 80.0 / 28.5 |
+| jac+pull | 66.0 / 46.0 | 76.0 / 43.5 | 61.5 / 38.5 | 74.0 / 19.5 |
+| jac+pull+adv_h | 58.0 / 54.5 | 68.0 / 53.5 | 59.5 / 44.5 | 69.5 / 41.5 |
+| jac+pull+adv_λ | 61.0 / 48.5 | 75.0 / 45.0 | 59.5 / 39.5 | 72.0 / 28.5 |
+
+- With this cost, replanning every 5 steps helps success for every model except adv_λ (e.g. jac 68.0 -> 77.5, jac+adv_λ 70.5 -> 82.5): the earlier drop was the final-step cost, not replanning.
+- Raw CEM collides about 45-65% under both intervals. The mean cost rewards getting close early, which favors cutting through obstacles (jac open loop: 81.5 / 22.5 with the final-step cost vs 68.0 / 52.0 here), so the 22.5% earlier was a side effect of the goal cost, not safety knowledge.
+- Safety-first plus replanning every 5 steps gives the best result so far: jac 84.0 / 8.0, better than every other jac setting on both success and collision. jac+pull also improves (19.5% collision).
+- Adding a full safety reg weakens the soft cost here too: 28.5-47.5% collision with safety-first every 5 steps for the four jac-base safety-reg models, against 8.0 (jac) and 19.5 (jac+pull). Safety-first still does nothing on the sigreg base.
+- Not yet run: the encoder-only models, and the OOD conditions (purple, diamond, rotated; running for the full models).
+
+## Secondary results
+
+### Supervised value function as $h$
+
+$h$ fit by MSE regression onto the oracle HJ value $V^*$ (computed offline by a grid solver on the true dynamics, `hj_truth.npz`) at random states rendered red and encoded by the frozen WM (`train_margin_hj_lewm.py`, `margin_hj_color_red_rk0_s0.pt`; no GP, no RL). The labels are privileged. Safety-first ($w = 1000$, $C = 10^4$):
+
+| Model | red | purple | diamond | rotated |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 39.0 / 60.5 | 28.5 / 61.5 | 35.5 / 50.0 | 23.5 / 64.0 |
+| adv_h | 41.0 / 59.5 | 28.0 / 62.5 | 35.0 / 55.5 | 22.5 / 64.0 |
+| adv_h, encoder-only | 44.5 / 52.5 | 22.5 / 67.0 | 44.0 / 43.5 | 27.0 / 58.0 |
+| adv_λ | 49.0 / 59.0 | 24.5 / 68.0 | 44.0 / 51.0 | 20.5 / 63.5 |
+| adv_λ, encoder-only | 46.0 / 55.0 | 28.0 / 57.5 | 36.5 / 46.0 | 31.0 / 55.0 |
+| jac | 72.0 / 11.0 | 39.0 / 15.5 | 71.5 / 5.5 | 48.0 / 13.5 |
+| jac+adv_h | 68.5 / 19.5 | 34.0 / 30.0 | 65.0 / 17.5 | 27.0 / 43.0 |
+| jac+adv_h, encoder-only | 76.5 / 20.0 | 41.0 / 32.5 | 71.0 / 11.5 | 42.0 / 29.0 |
+| jac+adv_λ | 73.5 / 29.0 | 45.0 / 41.5 | 72.5 / 16.5 | 44.5 / 39.5 |
+| jac+adv_λ, encoder-only | 71.5 / 16.5 | 35.0 / 34.5 | 70.5 / 9.5 | 36.5 / 30.0 |
+| jac+pull | 75.0 / 20.0 | 38.5 / 41.0 | 73.0 / 18.0 | 35.0 / 37.5 |
+| jac+pull+adv_h | 66.5 / 25.0 | 33.0 / 33.5 | 62.0 / 15.5 | 33.0 / 31.5 |
+| jac+pull+adv_h, encoder-only | 69.0 / 25.0 | 34.0 / 30.0 | 66.0 / 18.0 | 34.0 / 26.0 |
+| jac+pull+adv_λ | 62.5 / 29.0 | 44.0 / 28.5 | 62.5 / 16.5 | 42.5 / 23.0 |
+| jac+pull+adv_λ, encoder-only | 67.0 / 25.5 | 32.0 / 24.0 | 67.0 / 15.5 | 38.5 / 20.0 |
+
+- The label-free GP margin function matches the privileged value function in most cells and is better for most models on red (jac 79.0 / 8.5 vs 72.0 / 11.0); the value function is better for jac under purple and rotation (39.0 / 15.5, 48.0 / 13.5 vs 35.0 / 26.5, 45.0 / 21.5).
+- Same pattern as the GP: gains on the jac base only.
+
+Weight sweep, value function, red:
+
+| Model | raw CEM | $w = 100$ | $w = 1000$ | $w = 10^4$ | safety-first |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sigreg | 62.5 / 50.0 | 45.0 / 58.5 | 39.5 / 60.5 | 35.5 / 61.5 | 39.0 / 60.5 |
+| jac | 81.5 / 22.5 | 82.5 / 10.0 | 80.0 / 9.5 | 71.5 / 9.0 | 72.0 / 11.0 |
+
+### Graded GP weight sweep, red
+
+Hinge only ($C = 0$) with the GP margin function, $w = 100$ vs $1000$ (`soft_cem_weight_pair_gp.sh`):
 
 | Model | raw CEM | $w = 100$ | $w = 1000$ |
 | --- | ---: | ---: | ---: |
@@ -740,77 +768,32 @@ The safety-first runs above add a flat $C = 10^4$ for any predicted violation. W
 | jac+pull+adv_λ | 81.0 / 29.0 | 77.0 / 27.5 | 73.0 / 25.0 |
 | jac+pull+adv_λ, encoder-only | 78.5 / 28.5 | 78.0 / 21.0 | 77.0 / 20.0 |
 
-- The graded cost behaves like safety-first: it cuts collision on the jac base (most for the encoder-only models, to 8-9.5% at 80-81.5% success) and does nothing on the sigreg base.
-- Dropping the predictor term makes the soft cost work better on every jac-base model except jac+pull+adv_h.
+- $w = 100$ and $w = 1000$ are close; on the jac base the cost works better encoder-only on every model except jac+pull+adv_h.
 
-All four conditions, graded ($w = 1000$, $C = 0$), GP margin function trained on red frames, purple and diamond with a consistent goal frame (`soft_cem_graded_ood_queue.sh`), success / collision (%):
+### Control: does the safety gain come from what $h$ knows?
 
-| Model | red | purple | diamond | rotated |
-| --- | ---: | ---: | ---: | ---: |
-| sigreg | 57.0 / 49.5 | 33.0 / 66.0 | 41.0 / 50.5 | 26.0 / 64.5 |
-| jac | 79.5 / 9.0 | 37.5 / 27.5 | 78.5 / 5.0 | 45.5 / 23.0 |
-| jac+pull | 77.0 / 19.5 | 35.0 / 34.0 | 76.5 / 13.0 | 36.5 / 32.0 |
-| adv_h | 54.5 / 53.0 | 34.0 / 63.5 | 50.5 / 46.5 | 18.5 / 69.5 |
-| adv_h, encoder-only | 58.5 / 47.0 | 29.5 / 60.5 | 55.5 / 46.5 | 32.0 / 60.0 |
-| adv_λ | 49.5 / 59.0 | 26.5 / 66.5 | 42.0 / 52.5 | 18.5 / 67.5 |
-| adv_λ, encoder-only | 64.5 / 44.0 | 28.5 / 80.0 | 56.0 / 40.5 | 30.0 / 59.5 |
-| jac+adv_h | 78.0 / 12.5 | 23.5 / 43.0 | 75.5 / 11.5 | 21.5 / 47.0 |
-| jac+adv_h, encoder-only | 80.0 / 9.0 | 45.5 / 20.0 | 78.0 / 6.0 | 39.0 / 24.5 |
-| jac+adv_λ | 76.5 / 18.0 | 37.5 / 37.0 | 77.5 / 11.5 | 33.0 / 39.5 |
-| jac+adv_λ, encoder-only | 80.0 / 8.0 | 39.0 / 28.5 | 78.5 / 7.0 | 40.0 / 25.5 |
-| jac+pull+adv_h | 71.0 / 25.5 | 35.0 / 47.5 | 70.0 / 15.5 | 36.0 / 39.0 |
-| jac+pull+adv_h, encoder-only | 69.5 / 23.0 | 33.0 / 27.0 | 68.5 / 13.0 | 31.5 / 27.5 |
-| jac+pull+adv_λ | 73.0 / 25.0 | 41.5 / 38.5 | 69.5 / 18.0 | 45.0 / 33.0 |
-| jac+pull+adv_λ, encoder-only | 77.0 / 20.0 | 31.0 / 28.0 | 77.5 / 11.5 | 38.5 / 25.0 |
+On red with jac, a margin function with no safety knowledge makes CEM worse, not safer: shuffled labels 63.5 / 39.5, random init 36.5 / 43.0, against the GP margin function 79.0 / 8.5 and raw CEM 81.5 / 22.5. The safety gain comes from what $h$ knows.
 
-- Graded and safety-first give nearly the same numbers on every condition (jac graded 79.5 / 9.0, 37.5 / 27.5, 78.5 / 5.0, 45.5 / 23.0 vs safety-first 79.0 / 8.5, 35.0 / 26.5, 78.0 / 5.0, 45.0 / 21.5): with $w = 1000$ the hinge already dominates the goal cost, so the flat $C$ adds little.
-- Under shift, encoder-only is safer than full on every jac-base safety-reg model: purple collision 20.0-28.5 vs 37.0-47.5, rotated 24.5-27.5 vs 33.0-47.0.
-- jac+adv_h encoder-only is the only model that beats jac under purple (45.5 / 20.0 vs 37.5 / 27.5) and is close to jac elsewhere (rotated 39.0 / 24.5 vs 45.5 / 23.0). The full jac+adv_h is the worst jac-base model under purple and rotation (43.0 and 47.0% collision).
-- The sigreg-base models gain nothing on any condition.
+### Replanning every 5 steps, final-step goal cost (superseded)
 
-### Replanning every 5 steps
-
-Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`) instead of executing the whole plan open loop. Success / collision (%), purple with a consistent goal frame:
+Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`) with the original final-step goal cost. Superseded by the every-step goal cost above. Purple with a consistent goal frame:
 
 | Model | red, raw | red, GP safety-first | purple, raw | purple, GP safety-first |
 | --- | ---: | ---: | ---: | ---: |
 | sigreg | 47.5 / 61.5 | 45.5 / 61.5 | 18.0 / 68.0 | 17.5 / 69.5 |
-| jac | 43.5 / 56.5 | 60.5 / 11.0 | 32.5 / 66.5 | 27.5 / 40.0 |
-| jac+pull | 60.5 / 46.0 | 66.5 / 11.5 | 26.0 / 57.0 | 21.5 / 48.5 |
 | adv_h | 48.5 / 55.5 | 50.0 / 55.0 | 29.0 / 66.0 | 29.5 / 67.0 |
-| jac+adv_h | 52.5 / 43.0 | 55.0 / 27.5 | 19.5 / 73.0 | 23.5 / 49.0 |
-| jac+pull+adv_h | 62.5 / 36.5 | 64.5 / 26.0 | 26.5 / 70.5 | 37.0 / 44.5 |
 | adv_λ | 33.0 / 70.5 | 39.5 / 66.5 | 20.5 / 68.5 | 22.0 / 63.5 |
+| jac | 43.5 / 56.5 | 60.5 / 11.0 | 32.5 / 66.5 | 27.5 / 40.0 |
+| jac+adv_h | 52.5 / 43.0 | 55.0 / 27.5 | 19.5 / 73.0 | 23.5 / 49.0 |
 | jac+adv_λ | 57.5 / 39.5 | 57.5 / 16.5 | 29.5 / 54.0 | 26.5 / 47.0 |
+| jac+pull | 60.5 / 46.0 | 66.5 / 11.5 | 26.0 / 57.0 | 21.5 / 48.5 |
+| jac+pull+adv_h | 62.5 / 36.5 | 64.5 / 26.0 | 26.5 / 70.5 | 37.0 / 44.5 |
 | jac+pull+adv_λ | 56.0 / 37.0 | 58.5 / 23.5 | 27.0 / 68.5 | 22.0 / 44.0 |
 
-- Frequent replanning lowers raw CEM for every model (e.g. jac 81.5 / 22.5 -> 43.5 / 56.5 on red), likely because the goal cost scores only the final predicted step and each replan pushes arrival later. A shrinking horizon or an every-step goal cost would be a fairer replanning test.
+- Frequent replanning lowers raw CEM for every model (e.g. jac 81.5 / 22.5 -> 43.5 / 56.5 on red), because the goal cost scores only the final predicted step and each replan pushes arrival later.
 - Within this setting the GP safety-first cost cuts collision on every jac-base model (red: jac 56.5 -> 11.0, jac+pull 46.0 -> 11.5) and still does nothing on the sigreg base.
-- The fair-pair gap reverses: jac+pull+adv_h plans slightly better than jac+pull raw (62.5 / 36.5 vs 60.5 / 46.0), but gains less from the soft cost (26.0 vs 11.5% collision).
 
-### Fair replanning test: goal cost at every imagined step
-
-The goal cost above scores only the last imagined step, so each replan pushes arrival later. Here it is the latent goal distance averaged over every imagined step ($\mathrm{goal\_cost} = \mathrm{mean}$, `soft_cem_goalmean_queue.sh`), with both replanning intervals under the same cost: every 25 steps (open loop) and every 5 steps. Red, success / collision (%); safety-first is the GP margin function, $w = 1000$, $C = 10^4$:
-
-| Model | raw, every 25 | raw, every 5 | safety-first, every 25 | safety-first, every 5 |
-| --- | ---: | ---: | ---: | ---: |
-| sigreg | 61.0 / 52.5 | 63.0 / 55.5 | 60.0 / 52.0 | 63.0 / 55.5 |
-| jac | 68.0 / 52.0 | 77.5 / 48.5 | 76.0 / 22.0 | 84.0 / 8.0 |
-| jac+pull | 66.0 / 46.0 | 76.0 / 43.5 | 61.5 / 38.5 | 74.0 / 19.5 |
-| adv_h | 53.0 / 54.5 | 64.0 / 55.5 | 53.5 / 54.0 | 64.0 / 54.5 |
-| jac+adv_h | 51.0 / 61.5 | 56.5 / 63.5 | 57.5 / 47.5 | 60.5 / 47.5 |
-| jac+pull+adv_h | 58.0 / 54.5 | 68.0 / 53.5 | 59.5 / 44.5 | 69.5 / 41.5 |
-| adv_λ | 60.5 / 57.0 | 56.5 / 55.0 | 60.5 / 58.5 | 56.0 / 54.5 |
-| jac+adv_λ | 70.5 / 46.5 | 82.5 / 42.5 | 71.0 / 39.0 | 80.0 / 28.5 |
-| jac+pull+adv_λ | 61.0 / 48.5 | 75.0 / 45.0 | 59.5 / 39.5 | 72.0 / 28.5 |
-
-- With this cost, replanning every 5 steps helps success for every model except adv_λ (e.g. jac 68.0 -> 77.5, jac+adv_λ 70.5 -> 82.5): the earlier drop was the final-step cost, not replanning.
-- Raw CEM collides about 45-65% under both intervals. The mean cost rewards getting close early, which favors cutting through obstacles (jac open loop: 81.5 / 22.5 with the final-step cost vs 68.0 / 52.0 here), so the 22.5% earlier was a side effect of the goal cost, not safety knowledge.
-- Safety-first plus replanning every 5 steps gives the best result so far: jac 84.0 / 8.0, better than every other jac setting on both success and collision. jac+pull also improves (19.5% collision).
-- Adding a safety reg weakens the soft cost here too: 28.5-47.5% collision with safety-first every 5 steps for the four jac-base safety-reg models, against 8.0 (jac) and 19.5 (jac+pull). Safety-first still does nothing on the sigreg base.
-- OOD conditions (purple, diamond, rotated) for this test: running.
-
-### Why safety regs plan worse
+## Diagnostics: why safety regs plan worse, and why CEM still collides
 
 Diagnostics: `diag_rollout_safety.py`; ablations: `ablate_plan_worse.sh` and `seeds_jacpull_vs_adv.sh`.
 
@@ -841,7 +824,7 @@ Why does a safety reg weaken the soft cost on the jac base? The soft cost penali
 - It does not explain the jac+pull family: within it the order runs the other way (Spearman -0.70, n = 5; jac+pull has the most false-safes but the fewest collisions). As a group, pull raises both false-safes and collisions.
 - Caveats: one WM seed; windows follow expert actions, while CEM scores random candidates that can leave the expert distribution. The executed-plan test below checks this on the plans CEM actually runs.
 
-#### Why safety-first CEM still collides: executed-plan trace
+### Why safety-first CEM still collides: executed-plan trace
 
 The rollout margin test above uses expert actions. Here the evidence comes from the plans CEM actually executes. Setting: GP safety-first ($w = 1000$, $C = 10^4$), goal cost at every imagined step, replanning every 5 steps, red. At every replan we record $h$ along the chosen plan's imagined rollout, and for every episode the first env step that collides (`soft_cem.sh` with `TRACE`, `collision_cause_queue.sh`, `diag_collision_cause.py`). Replan $k$ starts after $5k$ env steps, and imagined step $j$ of its plan is env step $5k + j + 1$. Each collision is split by what the plan being executed predicted at that step: predicted unsafe ($h < 0$ at or before the collision step: the planner knowingly took a violating plan, no predicted-safe plan was found) or false-safe ($h \ge 0$ up to the collision step: the world model and margin function missed it). Tracing does not change behavior (both models reproduce the untraced 84.0 / 8.0 and 80.0 / 28.5).
 
