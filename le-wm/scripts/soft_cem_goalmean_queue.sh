@@ -18,6 +18,7 @@ one () {  # gpu tag: 4 runs (REC 25/5 x raw/GP safety-first)
 }
 { one 0 jacpull; one 0 jacpull_linf; } &
 { one 1 jacobian; one 1 jac_linf; } &
-{ one 0 sigreg; one 0 linf; one 0 lam_bdet; } &
+{ one 0 sigreg; one 0 linf; } &
+{ one 1 lam_bdet; } &
 { one 1 jac_lam_bdet; one 1 jacpull_lam_bdet; } &
 wait; echo GOALMEAN_DONE
