@@ -2,6 +2,7 @@
 # Soft-cost CEM: goal + w * sum_t relu(-h(z_t)) on imagined latents (HJ margin head), sg25clean protocol
 # (same eval.py overrides as raw_cem_ood.sh). Usage: soft_cem.sh <gpu> <wm_dir> <head.pt> <tag> <w> [scen ...]
 # Optional env CONST=<c> adds c * 1[any violation]; BS = envs per CEM batch (16; 1 is launch-bound when CPU is shared). scen in red purple diamond fullrot90 (default red).
+# Optional env TRACE=<dir> saves h along each executed plan and per-episode collision step (diag_collision_cause.py).
 # Retries on CUDA OOM (the GPUs are shared with training jobs): 5 min backoff, up to 6 tries.
 # Edit by writing a new file and mv-ing it over this one: running copies keep reading the old inode.
 set -uo pipefail
@@ -19,6 +20,7 @@ C=${CONST:-0}; SUF=w${W}; [ "$C" != 0 ] && SUF=${SUF}_c${C}   # CONST env: lexic
 declare -A ENVS=([red]= [purple]=DUBINS_OBST_COLOR=purple [diamond]=DUBINS_OBST_SHAPE=square [fullrot90]=DUBINS_ROT_DEG=90)
 for scen in "${@:-red}"; do
   lg="$LOG/softcem_${TAG}_${SUF}_${scen}.log"
+  [ -n "${TRACE:-}" ] && export SOFTCEM_TRACE="$TRACE/${TAG}_${SUF}_${scen}"   # TRACE=<dir>: per-episode plan h + outcomes
   for try in 1 2 3 4 5 6; do
     grep -q "'collision_rate'" "$lg" 2>/dev/null && break
     env ${ENVS[$scen]} CUDA_VISIBLE_DEVICES=$GPU $PY eval.py --config-name=dubins solver=soft_cem \

@@ -21,8 +21,10 @@ sg25clean200_fs1h25rec25 protocol), where the tail is empty.
 """
 from __future__ import annotations
 
+import os
 import sys
 
+import numpy as np
 import torch
 
 from stable_worldmodel.solver.cem import CEMSolver
@@ -284,7 +286,8 @@ class _SoftCostJEPA:
         h = self.head(z.float())                                  # (B, S, T')
         pen = torch.relu(self.margin - h).sum(-1)
         viol = (h < self.margin).any(-1)
-        self.last = (cost.mean().item(), pen.mean().item(), viol.float().mean().item())
+        self.last_h = h
+        self.last =(cost.mean().item(), pen.mean().item(), viol.float().mean().item())
         return cost + (self.weight * pen + self.const * viol).to(cost.dtype)
 
 
@@ -298,10 +301,30 @@ class SoftSafeCEMSolver(CEMSolver):
         head.load_state_dict(torch.load(margin_ckpt, map_location=device)["margin_gp"])
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost),
                          **kwargs)
+        self._trace = []
 
     @torch.inference_mode()
     def solve(self, info_dict, init_action=None):
+        idx = info_dict.pop("_env_idx", None)  # set by eval.py only when SOFTCEM_TRACE is on
         out = super().solve(info_dict, init_action)
         g, p, f = self.model.last
         print(f"[soft_cem] goal={g:.3f} pen={p:.3f} frac_cand_unsafe={f:.3f}")
+        if idx is not None:  # h along the returned plan's imagined rollout, per episode, one entry per replan
+            self._trace.append((np.asarray(idx), self._plan_h(info_dict, out["actions"])))
+            torch.save(self._trace, os.environ["SOFTCEM_TRACE"] + "_plan_h.pt")
         return out
+
+    def _plan_h(self, info_dict, actions):
+        hs = []
+        for s in range(0, len(actions), self.batch_size):   # same per-batch expansion as CEMSolver.solve, 1 sample
+            exp = {}
+            for k, v in info_dict.items():
+                v = v[s:s + self.batch_size]
+                if torch.is_tensor(v):
+                    v = v.to(self.device, self.dtype if v.is_floating_point() else None).unsqueeze(1)
+                elif isinstance(v, np.ndarray):
+                    v = v[:, None]
+                exp[k] = v
+            self.model.get_cost(exp, actions[s:s + self.batch_size].to(self.device, self.dtype).unsqueeze(1))
+            hs.append(self.model.last_h[:, 0].float().cpu())
+        return torch.cat(hs).numpy()                          # (n_replanned, horizon)
