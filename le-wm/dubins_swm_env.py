@@ -110,6 +110,7 @@ class DubinsSwmEnv(gym.Env):
             self.state = np.asarray(options["initial_state"], dtype=np.float32).copy()
         self._collided = False
         self._reached = False  # episode-level: did the trajectory ever reach the goal
+        self._t, self._t_collide = 0, -1  # step count; first step that collided (-1 = never)
         self._goal = self.render()
         return self._obs(), self._info()
 
@@ -120,6 +121,9 @@ class DubinsSwmEnv(gym.Env):
         dist = float(np.linalg.norm(self.state[:2] - self.goal_position))
         terminated = dist <= self.success_tol
         collision = bool(self._collides())
+        self._t += 1
+        if collision and not self._collided:
+            self._t_collide = self._t
         self._collided = self._collided or collision
         self._reached = self._reached or terminated
         info = self._info({"goal_distance": dist, "collision": collision})

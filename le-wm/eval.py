@@ -263,6 +263,9 @@ def run(cfg: DictConfig):
     if len(eval_episodes) < cfg.eval.num_eval:
         raise ValueError("Not enough episodes with sufficient length for evaluation.")
 
+    if os.environ.get("SOFTCEM_TRACE"):  # episode index, sliced along with the obs at each replan (see SoftSafeCEMSolver)
+        _prep = policy._prepare_info
+        policy._prepare_info = lambda d: {**_prep(d), "_env_idx": np.arange(policy.env.num_envs)}
     world.set_policy(policy)
 
     results_path.mkdir(parents=True, exist_ok=True)
@@ -289,6 +292,10 @@ def run(cfg: DictConfig):
         collided = np.array([bool(e.unwrapped._collided) for e in pool_envs])
         metrics["collision_rate"] = float(collided.mean() * 100.0)
         metrics["episode_collisions"] = collided
+        if os.environ.get("SOFTCEM_TRACE"):
+            np.savez(os.environ["SOFTCEM_TRACE"] + "_outcome.npz", collided=collided,
+                     reached=np.array([bool(getattr(e.unwrapped, "_reached", False)) for e in pool_envs]),
+                     t_collide=np.array([getattr(e.unwrapped, "_t_collide", -1) for e in pool_envs]))
         # 2x2 joint outcome breakdown: {reached goal} x {collided en route}. Uses the
         # env's own episode-level _reached flag (goal reached within success_tol) so it
         # is exactly consistent with the collision flag on the same trajectories.
