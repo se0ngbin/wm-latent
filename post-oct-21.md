@@ -743,6 +743,31 @@ The safety-first runs above add a flat $C = 10^4$ for any predicted violation. W
 - The graded cost behaves like safety-first: it cuts collision on the jac base (most for the encoder-only models, to 8-9.5% at 80-81.5% success) and does nothing on the sigreg base.
 - Dropping the predictor term makes the soft cost work better on every jac-base model except jac+pull+adv_h.
 
+All four conditions, graded ($w = 1000$, $C = 0$), GP margin function trained on red frames, purple and diamond with a consistent goal frame (`soft_cem_graded_ood_queue.sh`), success / collision (%):
+
+| Model | red | purple | diamond | rotated |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 57.0 / 49.5 | 33.0 / 66.0 | 41.0 / 50.5 | 26.0 / 64.5 |
+| jac | 79.5 / 9.0 | 37.5 / 27.5 | 78.5 / 5.0 | 45.5 / 23.0 |
+| jac+pull | 77.0 / 19.5 | 35.0 / 34.0 | 76.5 / 13.0 | 36.5 / 32.0 |
+| adv_h | 54.5 / 53.0 | 34.0 / 63.5 | 50.5 / 46.5 | 18.5 / 69.5 |
+| adv_h, encoder-only | 58.5 / 47.0 | 29.5 / 60.5 | 55.5 / 46.5 | 32.0 / 60.0 |
+| adv_λ | 49.5 / 59.0 | 26.5 / 66.5 | 42.0 / 52.5 | 18.5 / 67.5 |
+| adv_λ, encoder-only | 64.5 / 44.0 | 28.5 / 80.0 | 56.0 / 40.5 | 30.0 / 59.5 |
+| jac+adv_h | 78.0 / 12.5 | 23.5 / 43.0 | 75.5 / 11.5 | 21.5 / 47.0 |
+| jac+adv_h, encoder-only | 80.0 / 9.0 | 45.5 / 20.0 | 78.0 / 6.0 | 39.0 / 24.5 |
+| jac+adv_λ | 76.5 / 18.0 | 37.5 / 37.0 | 77.5 / 11.5 | 33.0 / 39.5 |
+| jac+adv_λ, encoder-only | 80.0 / 8.0 | 39.0 / 28.5 | 78.5 / 7.0 | 40.0 / 25.5 |
+| jac+pull+adv_h | 71.0 / 25.5 | 35.0 / 47.5 | 70.0 / 15.5 | 36.0 / 39.0 |
+| jac+pull+adv_h, encoder-only | 69.5 / 23.0 | 33.0 / 27.0 | 68.5 / 13.0 | 31.5 / 27.5 |
+| jac+pull+adv_λ | 73.0 / 25.0 | 41.5 / 38.5 | 69.5 / 18.0 | 45.0 / 33.0 |
+| jac+pull+adv_λ, encoder-only | 77.0 / 20.0 | 31.0 / 28.0 | 77.5 / 11.5 | 38.5 / 25.0 |
+
+- Graded and safety-first give nearly the same numbers on every condition (jac graded 79.5 / 9.0, 37.5 / 27.5, 78.5 / 5.0, 45.5 / 23.0 vs safety-first 79.0 / 8.5, 35.0 / 26.5, 78.0 / 5.0, 45.0 / 21.5): with $w = 1000$ the hinge already dominates the goal cost, so the flat $C$ adds little.
+- Under shift, encoder-only is safer than full on every jac-base safety-reg model: purple collision 20.0-28.5 vs 37.0-47.5, rotated 24.5-27.5 vs 33.0-47.0.
+- jac+adv_h encoder-only is the only model that beats jac under purple (45.5 / 20.0 vs 37.5 / 27.5) and is close to jac elsewhere (rotated 39.0 / 24.5 vs 45.5 / 23.0). The full jac+adv_h is the worst jac-base model under purple and rotation (43.0 and 47.0% collision).
+- The sigreg-base models gain nothing on any condition.
+
 ### Replanning every 5 steps
 
 Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`) instead of executing the whole plan open loop. Success / collision (%), purple with a consistent goal frame:
