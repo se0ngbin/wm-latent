@@ -291,6 +291,34 @@ class _SoftCostJEPA:
         return cost + (self.weight * pen + self.const * viol).to(cost.dtype)
 
 
+class _EliteSpread:
+    """CEM callback (SOFTCEM_SPREAD=<path>): how converged are the elites when CEM stops?
+    Every iteration: mean elite std. Last iteration, per env: elite std per horizon step, RMS distance from the best
+    elite to the returned mean, elite cost range, all elites predicted safe (cost < const), and the share of elite
+    variance on the top principal direction (near 1 with a large std = elites spread along one line, e.g. two modes)."""
+
+    def __init__(self, n_steps, const):
+        self.n_steps, self.const, self.rows, self.curve = n_steps, const, [], []
+        self.output_key, self.history = "elite_spread", []              # read by CEMSolver.solve
+
+    def reset(self): pass
+    def start_batch(self): pass
+    def end_solve(self): pass
+
+    def __call__(self, step, topk_candidates, topk_vals, mean, **_):
+        e = topk_candidates.float()                                      # (B, K, H, D), K sorted best first
+        sd = e.std(1)                                                    # (B, H, D)
+        self.curve.append((step, sd.mean((1, 2)).cpu()))
+        if step != self.n_steps - 1:
+            return
+        c = (e - e.mean(1, keepdim=True)).flatten(2)                     # (B, K, H*D)
+        s = torch.linalg.svdvals(c) ** 2
+        v = topk_vals.float()
+        self.rows.append(dict(sd_h=sd.mean(-1).cpu(), best_to_mean=(e[:, 0] - mean.float()).flatten(1).pow(2).mean(1).sqrt().cpu(),
+                              cost_range=(v[:, -1] - v[:, 0]).cpu(), all_safe=(v[:, -1] < self.const).cpu() if self.const else None,
+                              pc1=(s[:, 0] / s.sum(1).clamp_min(1e-12)).cpu()))
+
+
 class SoftSafeCEMSolver(CEMSolver):
     """Plain CEM with the learned margin's unsafe region as a soft cost."""
 
@@ -302,6 +330,9 @@ class SoftSafeCEMSolver(CEMSolver):
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost),
                          **kwargs)
         self._trace = []
+        if os.environ.get("SOFTCEM_SPREAD"):
+            self._spread = _EliteSpread(self.n_steps, unsafe_const)
+            self.callbacks.append(self._spread)
 
     @torch.inference_mode()
     def solve(self, info_dict, init_action=None):
@@ -312,6 +343,8 @@ class SoftSafeCEMSolver(CEMSolver):
         if idx is not None:  # h along the returned plan's imagined rollout, per episode, one entry per replan
             self._trace.append((np.asarray(idx), self._plan_h(info_dict, out["actions"])))
             torch.save(self._trace, os.environ["SOFTCEM_TRACE"] + "_plan_h.pt")
+        if os.environ.get("SOFTCEM_SPREAD"):
+            torch.save({"rows": self._spread.rows, "curve": self._spread.curve}, os.environ["SOFTCEM_SPREAD"])
         return out
 
     def _plan_h(self, info_dict, actions):
