@@ -12,7 +12,7 @@ What is established, with pointers to the sections below. All margin-function nu
 Open:
 
 - One WM seed per model except the jac+pull pair; jac+adv_h's color inversion (0.167) in particular needs a second seed.
-- Fair replanning (goal cost at every imagined step): red done for the full models plus two encoder-only models; OOD 107 of 108 cells done, last one about 08:30 UTC Nov 3. Not run: the other encoder-only models, and encoder-only on OOD.
+- Fair replanning (goal cost at every imagined step): red done for the full models plus two encoder-only models; OOD done (all 108 cells). Not run: the other encoder-only models, and encoder-only on OOD.
 - Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (85-100% in all 9 models traced). Fixes to test: a safety margin on $h$, and training $h$ on predicted latents.
 - Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
 
@@ -733,7 +733,7 @@ The open-loop runs above score only the last imagined step; with that cost, repl
 - Adding a full safety reg weakens the soft cost here too: 28.5-47.5% collision with safety-first every 5 steps for the four jac-base safety-reg models, against 8.0 (jac) and 19.5 (jac+pull). Safety-first still does nothing on the sigreg base.
 - Encoder-only (two models, safety-first every 5 steps): jac+adv_h encoder-only 84.5 / 17.5 and jac+adv_λ encoder-only 78.5 / 20.0. Better than their full versions (47.5, 28.5% collision) but 2-2.5x jac's 8.0, unlike open-loop safety-first, where they match jac (8.0, 7.5).
 
-OOD conditions, same settings. Pending = running, about 08:30 UTC Nov 3 (1 of 108 cells).
+OOD conditions, same settings:
 
 Purple
 
@@ -771,7 +771,7 @@ Rotated
 | adv_h | 26.5 / 59.0 | 41.5 / 57.0 | 25.0 / 59.0 | 39.5 / 56.0 |
 | adv_λ | 22.5 / 62.0 | 31.5 / 60.0 | 20.5 / 61.0 | 32.0 / 59.5 |
 | jac | 25.5 / 62.0 | 47.5 / 54.0 | 39.0 / 38.5 | 50.0 / 40.0 |
-| jac+adv_h | 19.5 / 66.5 | 30.5 / 63.0 | 18.0 / 52.0 | pending |
+| jac+adv_h | 19.5 / 66.5 | 30.5 / 63.0 | 18.0 / 52.0 | 33.0 / 55.0 |
 | jac+adv_λ | 34.0 / 61.0 | 51.5 / 57.5 | 31.5 / 57.5 | 33.0 / 53.0 |
 | jac+pull | 35.5 / 40.0 | 53.0 / 45.5 | 36.0 / 29.5 | 52.5 / 31.5 |
 | jac+pull+adv_h | 29.0 / 64.0 | 32.0 / 62.5 | 29.0 / 50.0 | 37.0 / 54.0 |
