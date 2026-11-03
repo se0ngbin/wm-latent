@@ -29,7 +29,7 @@ for i in range(N):
     for k in range(K):
         env._integrate(float(np.clip(A[i, k, 0] * a_sd[0] + a_mu[0], -env.max_angular_velocity, env.max_angular_velocity)))
         y[i, k] = E.inside_obstacle(env.state[None, :2], "circle")[0]
-safe = ~y
+safe = ~y if not os.environ.get("DOOM") else ~np.maximum.accumulate(y, 1)
 m = swm.wm.utils.load_pretrained(f"{ck}/weights_epoch_50.pt").to(DEV).eval()
 Hs = []
 for p in heads:
