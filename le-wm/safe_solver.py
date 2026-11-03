@@ -262,7 +262,7 @@ class _SoftCostJEPA:
     """Model proxy: goal cost + w * sum_t relu(m - h(z_t)) over the imagined
     rollout. Unsafe-looking candidates just rank badly; no action map."""
 
-    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None):
+    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None):
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
         self.const = const  # flat cost for ANY violation: safe beats unsafe lexicographically
         # "final": JEPA.criterion, goal distance of the last imagined step only (receding-horizon replanning
@@ -273,6 +273,9 @@ class _SoftCostJEPA:
         # so the bottom p of imagined latents read unsafe. Label-free fix for OOD h that keeps its ranking but collapses
         # its scale (purple: safe/unsafe medians 1.56/-0.53 -> 0.38/0.32 at AUC 0.95).
         self.h_quantile = h_quantile
+        # h_steps=n: safety cost on the first n imagined steps only (under purple, h ranks imagined latents for ~5
+        # steps, then the predictor drifts to chance; with replanning every 5 only those steps are executed)
+        self.h_steps = h_steps
 
     def parameters(self):
         return self.jepa.parameters()
@@ -288,6 +291,8 @@ class _SoftCostJEPA:
             g = g[..., -1:, :]                                    # same goal latent JEPA.criterion uses
             cost = (z - g.detach()).pow(2).sum(-1).mean(-1).to(cost.dtype)
         h = self.head(z.float())                                  # (B, S, T')
+        if self.h_steps is not None:
+            h = h[..., :self.h_steps]
         # ponytail: S == 1 is _plan_h re-scoring the chosen plan; no candidate set to rank against, so traces keep raw h
         if self.h_quantile is not None and h.size(1) > 1:
             q = torch.quantile(h.flatten(1), torch.tensor([self.h_quantile, 0.5], device=h.device), dim=1)  # (2, B)
@@ -308,12 +313,12 @@ class SoftSafeCEMSolver(CEMSolver):
 
     def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
                  unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final",
-                 h_quantile: float | None = None, **kwargs):
+                 h_quantile: float | None = None, h_steps: int | None = None, **kwargs):
         device = kwargs.get("device", "cuda")
         head = _MarginHead().to(device)
         head.load_state_dict(torch.load(margin_ckpt, map_location=device)["margin_gp"])
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost,
-                                       h_quantile),
+                                       h_quantile, h_steps),
                          **kwargs)
         self._trace = []
 
