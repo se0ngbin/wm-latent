@@ -1,5 +1,5 @@
 --- /home/seongbin/latent/post-oct-21.md	2026-11-04 18:06:24.316225468 +0000
-+++ post-oct-21.md	2026-11-04 20:07:04.731719187 +0000
++++ post-oct-21.md	2026-11-04 20:31:47.002495767 +0000
 @@ -10,6 +10,10 @@
  - Fixing the optimistic $h$ (red, replanning every 5 steps): training $h$ on predicted latents of CEM-style plans labelled in the simulator lowers collision on 6 of 8 jac-base models (jac 84.5 / 6.0); with a margin that grows with the imagined step it cuts the robust models' collision the most (jac+adv_h encoder-only 17.5 -> 6.0, jac+pull+adv_h 41.5 -> 17.5) at 5-10 points of success. No variant helps under purple: from a recolored start the predictor loses $h$'s ranking within 5-10 imagined steps on every model (AUC 0.40-0.59 over the horizon), although real purple frames keep it (0.885-0.963 on the robust models).
  - Why purple imagined states fail (jac+pull+adv_h encoder-only): the predictor tracks the purple world about as well as the red one (error 0.57 vs 0.53 of the latent variance at step 10), but in the purple region $h$'s safe/unsafe gap is about 30 times smaller (0.06 vs 1.73), so one step of prediction noise already erases its ranking. The defect is the size of the safety gap under an appearance shift, not predictor drift.
@@ -19,10 +19,20 @@
  
  # Regularizers
  
-@@ -38,6 +43,30 @@
+@@ -38,6 +43,40 @@
  
  Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the names say which readout the attack is aimed at. The report's "w/o h" model, which protects the whole latent, would be adv_latent.
  
++Where the code is: jac is `JacobianNormReg` (`le-wm/module.py:467`) and pull is `ActionSeparationReg` with `pull_target` set (`module.py:347`; the two-sided term at `:397`; without `pull_target` the class is a one-sided hinge $\mathrm{relu}(L^2\|\Delta a\|^2 - \|\Delta z\|^2)$, not used in any reported model). adv_h and adv_λ are `SafetyAdvInvarianceReg` (`attack=linf`, `target=head` vs `target=lambda, lambda_mode=batch_detached`), which is not on main: it is on branch `safety-adv-reg` and in the code snapshot `/data/seongbin/lewm/code_safeadv_92e7589/module.py:316` that trained every adv model. Flag recipes: `le-wm/scripts/train_dubins_jacadv.sh`.
++
++Why pull targets exactly 1: never tuned. It copies jac's $L = 1$ as the predictor-side analogue (one latent unit per action standard deviation; SIGReg keeps the latent near unit scale and actions are z-scored). The free ratio without the term is about 1.7 at frameskip 1, and a ratio of norms between a 192-dimensional latent and the action is not dimensionally principled; the always-on two-sided form was chosen over hinges on the frameskip-5 collapse, but the target value was not swept.
++
++## Setup relative to upstream LeWM
++
++- Architecture unchanged from the imported le-wm (`config/train/model/lewm.yaml`): ViT-tiny encoder (patch 14, 12 layers, 3 heads, width 192), CLS token through a BatchNorm MLP projector, 6-layer 16-head AdaLN-zero predictor with dropout 0.1 and its own projector. Only the JEPA+GRU ablation swaps the predictor.
++- Training differs from the upstream default in length only: 50 epochs instead of 100 (cosine schedule fitted to 50), frameskip 1 for Dubins and cartpole. The predictor sees 3 frames of history and is trained one step ahead with teacher forcing (4-frame windows), with no multi-step loss except the rollout-loss variants.
++- Planning is much deeper than upstream. The upstream benchmarks (pushT, cube, reacher, tworoom) use frameskip 5, `action_block` 5, a 5-step predictor horizon and replanning every 5 steps, with a 1-frame planning history. Our Dubins protocol (sg25clean) rolls the predictor out 25 steps from 1 real frame, 5 times deeper into the free-running regime that one-step training never covers.
++
 +## Do the world models converge in 50 epochs?
 +
 +Every world model trains for 50 epochs with a cosine learning-rate schedule that reaches about 0 at epoch 50, so every loss curve is flat over the last few epochs by construction (0-2% change from epoch 45 to 49 on almost every run). The useful signal is how much validation prediction loss still fell from epoch 30, when the learning rate was still about 35% of its peak. Sources: wandb histories and, for runs with wandb off, the per-epoch validation tables in `run_logs/` (they match wandb exactly where both exist).
@@ -50,7 +60,7 @@
  # Dubins
  
  ![Dubins base vs OOD frames](figs/ood_frames_dubins.png)
-@@ -83,6 +112,38 @@
+@@ -83,6 +122,38 @@
  - Encoder-only ablations (adversarial penalty on the encoder term only): color AUC drops from 0.789 to 0.454 (adv_h) and from 0.982 to 0.440 (adv_λ), so the predictor term is where the color robustness comes from (see the CEM section for its planning cost).
  - One WM seed per model; jac+adv_h's color inversion in particular needs a second seed before it is trusted. The earlier 3-WM-seed comparison was run on transposed frames and needs redoing.
  
@@ -89,7 +99,15 @@
  # Safety Gym
  
  ![Safety Gym Point base vs OOD frames](figs/ood_frames_sg_point.png)
-@@ -1197,6 +1258,50 @@
+@@ -146,6 +217,7 @@
+   now an exact image rotation.
+ - Training data: `sg_point_ovh224.h5`, 170,400 clean frames, about 850 random layouts, same trajectories and labels as the
+   fixedfar set.
++- How it was collected (`collect_overhead_train.sh`, branch `point-dynamics-probe`): 852 scripted 200-step episodes, one random layout each (8 hazards of radius 0.2), 4 shards with seeds 20-23. Per episode, with probability 0.6 the robot dashes at the nearest hazard and brakes at a random distance 0-0.4 from its edge, otherwise it drives at the goal at full thrust without braking and overshoots; both with action noise. Episodes are cut into 8-frame chunks and shuffled, so the file holds 21,300 "episodes" of 8 frames and no training sample is longer than 8 steps. 19.3% failure frames (no chunk was dropped: the natural rate already exceeded the 17% target), mostly the robot sitting inside a hazard (mean speed 0.20 when unsafe vs 0.54 when safe). Not expert data. Write-up: `point_dataset.tex` (branch `worktree-dubins-dataset-doc`).
+ - Eval: margin function (margin_gp) trained on 50k frames of the training set, scored on 5000 poses of a separate collection (every
+   layout unseen). Views: base, purple hazards (color), 90 degree camera rotation (rotate), box-shaped hazards (shape), Car
+   robot instead of Point (agent).
+@@ -1197,6 +1269,50 @@
  - Candidate fixes, all trained on red data only (OOD stays a test-only measure): keep the safety gap under generic appearance perturbations (an encoder-side penalty when perturbations shrink the safe/unsafe distance along the direction $h$ reads; the saved $\lambda$-projected invariance idea is one version); or weight the prediction loss by how much an error moves $h$, so the predictor is most accurate along the directions $h$ depends on.
  - Caveats: one WM seed; 400 states; a single recolor (purple).
  

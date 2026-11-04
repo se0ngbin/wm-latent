@@ -43,6 +43,16 @@ Every model is the same le-wm world model (ViT-tiny encoder $f$, transformer pre
 
 Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the names say which readout the attack is aimed at. The report's "w/o h" model, which protects the whole latent, would be adv_latent.
 
+Where the code is: jac is `JacobianNormReg` (`le-wm/module.py:467`) and pull is `ActionSeparationReg` with `pull_target` set (`module.py:347`; the two-sided term at `:397`; without `pull_target` the class is a one-sided hinge $\mathrm{relu}(L^2\|\Delta a\|^2 - \|\Delta z\|^2)$, not used in any reported model). adv_h and adv_λ are `SafetyAdvInvarianceReg` (`attack=linf`, `target=head` vs `target=lambda, lambda_mode=batch_detached`), which is not on main: it is on branch `safety-adv-reg` and in the code snapshot `/data/seongbin/lewm/code_safeadv_92e7589/module.py:316` that trained every adv model. Flag recipes: `le-wm/scripts/train_dubins_jacadv.sh`.
+
+Why pull targets exactly 1: never tuned. It copies jac's $L = 1$ as the predictor-side analogue (one latent unit per action standard deviation; SIGReg keeps the latent near unit scale and actions are z-scored). The free ratio without the term is about 1.7 at frameskip 1, and a ratio of norms between a 192-dimensional latent and the action is not dimensionally principled; the always-on two-sided form was chosen over hinges on the frameskip-5 collapse, but the target value was not swept.
+
+## Setup relative to upstream LeWM
+
+- Architecture unchanged from the imported le-wm (`config/train/model/lewm.yaml`): ViT-tiny encoder (patch 14, 12 layers, 3 heads, width 192), CLS token through a BatchNorm MLP projector, 6-layer 16-head AdaLN-zero predictor with dropout 0.1 and its own projector. Only the JEPA+GRU ablation swaps the predictor.
+- Training differs from the upstream default in length only: 50 epochs instead of 100 (cosine schedule fitted to 50), frameskip 1 for Dubins and cartpole. The predictor sees 3 frames of history and is trained one step ahead with teacher forcing (4-frame windows), with no multi-step loss except the rollout-loss variants.
+- Planning is much deeper than upstream. The upstream benchmarks (pushT, cube, reacher, tworoom) use frameskip 5, `action_block` 5, a 5-step predictor horizon and replanning every 5 steps, with a 1-frame planning history. Our Dubins protocol (sg25clean) rolls the predictor out 25 steps from 1 real frame, 5 times deeper into the free-running regime that one-step training never covers.
+
 ## Do the world models converge in 50 epochs?
 
 Every world model trains for 50 epochs with a cosine learning-rate schedule that reaches about 0 at epoch 50, so every loss curve is flat over the last few epochs by construction (0-2% change from epoch 45 to 49 on almost every run). The useful signal is how much validation prediction loss still fell from epoch 30, when the learning rate was still about 35% of its peak. Sources: wandb histories and, for runs with wandb off, the per-epoch validation tables in `run_logs/` (they match wandb exactly where both exist).
@@ -207,6 +217,7 @@ reason to encode them.
   now an exact image rotation.
 - Training data: `sg_point_ovh224.h5`, 170,400 clean frames, about 850 random layouts, same trajectories and labels as the
   fixedfar set.
+- How it was collected (`collect_overhead_train.sh`, branch `point-dynamics-probe`): 852 scripted 200-step episodes, one random layout each (8 hazards of radius 0.2), 4 shards with seeds 20-23. Per episode, with probability 0.6 the robot dashes at the nearest hazard and brakes at a random distance 0-0.4 from its edge, otherwise it drives at the goal at full thrust without braking and overshoots; both with action noise. Episodes are cut into 8-frame chunks and shuffled, so the file holds 21,300 "episodes" of 8 frames and no training sample is longer than 8 steps. 19.3% failure frames (no chunk was dropped: the natural rate already exceeded the 17% target), mostly the robot sitting inside a hazard (mean speed 0.20 when unsafe vs 0.54 when safe). Not expert data. Write-up: `point_dataset.tex` (branch `worktree-dubins-dataset-doc`).
 - Eval: margin function (margin_gp) trained on 50k frames of the training set, scored on 5000 poses of a separate collection (every
   layout unseen). Views: base, purple hazards (color), 90 degree camera rotation (rotate), box-shaped hazards (shape), Car
   robot instead of Point (agent).
