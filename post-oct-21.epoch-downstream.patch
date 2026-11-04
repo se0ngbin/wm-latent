@@ -1,0 +1,50 @@
+--- /home/seongbin/latent/post-oct-21.md	2026-11-04 20:33:11.088830765 +0000
++++ post-oct-21.md	2026-11-04 22:29:42.182234612 +0000
+@@ -11,7 +11,7 @@
+ - Why purple imagined states fail (jac+pull+adv_h encoder-only): the predictor tracks the purple world about as well as the red one (error 0.57 vs 0.53 of the latent variance at step 10), but in the purple region $h$'s safe/unsafe gap is about 30 times smaller (0.06 vs 1.73), so one step of prediction noise already erases its ranking. The defect is the size of the safety gap under an appearance shift, not predictor drift.
+ - Free-running 5-step rollout loss (SLS-squared style; 15-epoch screens): imagined-state ranking on red improves by 10-18 AUC points at steps 10-25, but CEM ties on red (modest gain with replanning for one model) and raw CEM under purple gets worse in all 4 comparisons. 50-epoch versions pending.
+ - Margin-function training length (Dubins, 1000-10000 steps): rotate and shape are unaffected, but color is not. jac, jac+pull and jac+pull+adv_h lose 0.2+ AUC with longer training and the ranking among them changes with the step count; only adv_λ is stable (0.982-0.989). The spread comes from the margin function being underdetermined by red data (a 0.5% latent perturbation moves color AUC by up to 0.049). On imagined latents a 2500-step $h$ changes little (jac false-safe 0.115 -> 0.109), so it will not change CEM much.
+-- World-model training: Dubins models are still improving at epoch 50 (validation prediction loss fell 15-40% from epoch 30 to 49); they look flat at the end only because the cosine schedule ends. Cartpole has plateaued. `*_jaclam50` runs are unstable and several Point seed-2 runs stopped early.
++- World-model training: Dubins models are still improving at epoch 50 by prediction loss (validation fell 15-40% from epoch 30 to 49; it looks flat at the end only because the cosine schedule ends). Downstream metrics mostly are not: at the epoch-30/40/50 checkpoints the headline margin-function and imagined-$h$ results hold throughout, and jac, jac+pull and adv_λ are flat. Still improving at epoch 50: imagined-rollout quality of sigreg, adv_h and jac+pull+adv_h, which weakens the "safety regs plan worse" comparison until that pair is retrained longer. Cartpole has plateaued. `*_jaclam50` runs are unstable and several Point seed-2 runs stopped early.
+ - Predictor gain: every predictor expands a latent perturbation 2-3× in one step, but over 25 steps the worst case is only 17-35× and a typical direction about 1×, and the most-amplifying models plan best. A non-expansion penalty would bind but there is no sign that amplification limits planning.
+ - Data: the Dubins dataset is not expert data. 94% of frames are diffusion-policy rollouts from 39 training checkpoints with starts anywhere in the arena, 6% are the 200 MPPI demonstrations; collisions do not end episodes (16.7% failure frames), and "the last 10% of episodes" used for held-out windows is 49% MPPI. Write-up: `dubins_dataset.tex` (branch `worktree-dubins-dataset-doc`), with `point_dataset.tex` for the Safety Gym Point data.
+ - Safety regs and planning: on the same base, jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull over 3 WM seeds. The adversarial predictor term raises rollout error. Dropping it (encoder-only) helps planning, and keeps color robustness for adv_h on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but not for adv_λ (0.40-0.44 on every base). Best safety-reg models with the soft cost: jac+adv_h encoder-only and jac+adv_λ encoder-only (red 8% collision at about 80% success, matching jac).
+@@ -77,6 +77,38 @@
+ - Broken runs, not used in the tables: `lewm_dubins_jaclam50_*` and `sg_jaclam50_*` (validation loss spikes to 20-25 and ends 20-50× above jac+adv_λ; best epoch around 17-27).
+ - Incomplete runs: several Point seed-2 runs (and one seed-1) stopped early, at epochs 2-49, and are not running; the Point seed tables need them rerun.
+ 
++### Are the downstream metrics still moving?
++
++Prediction loss is not what the conclusions rest on, so we re-measured the downstream quantities at the saved epoch-10/20/30/40/50 checkpoints of 6 Dubins models (`epoch_downstream.py`, results `epoch_downstream.results.txt`). Per checkpoint: the GP margin function (5000 steps, red uniform states, seed-0 states) and its zero-shot AUC on color (mean ± std over 3 margin-function seeds), rotate and shape (seed 0); the same seed-0 margin function on imagined latents of 600 CEM-style plans (as Table 16); and goal-distance fidelity near the goal (Spearman between latent distance to the goal frame and true $(x, y)$ distance, true distance < 0.5, 400 held-out windows × 25 steps), on real and on imagined latents. The epoch-50 rows reproduce Table 16 (e.g. sigreg 0.814 / 0.423, jac+pull 0.961 / 0.281). Caveat: an epoch-30 checkpoint is not a model trained for 30 epochs, since the learning rate is still about 35% of its peak there.
++
++| Model | Epoch | Color AUC | Rotate AUC | Shape AUC | Imagined red AUC | Imagined red false-safe | Goal fidelity, real | Goal fidelity, imagined |
++|---|---|---|---|---|---|---|---|---|
++| sigreg | 30 | 0.124 ± 0.007 | 0.100 | 0.715 | 0.801 | 0.260 | 0.570 | 0.235 |
++| sigreg | 40 | 0.100 ± 0.004 | 0.059 | 0.566 | 0.811 | 0.383 | 0.566 | 0.368 |
++| sigreg | 50 | 0.101 ± 0.004 | 0.086 | 0.464 | 0.814 | 0.423 | 0.570 | 0.448 |
++| jac | 30 | 0.553 ± 0.049 | 0.994 | 0.995 | 0.960 | 0.129 | 0.654 | 0.509 |
++| jac | 40 | 0.522 ± 0.023 | 0.991 | 0.995 | 0.966 | 0.129 | 0.659 | 0.496 |
++| jac | 50 | 0.558 ± 0.017 | 0.990 | 0.994 | 0.968 | 0.113 | 0.659 | 0.522 |
++| jac+pull | 30 | 0.776 ± 0.062 | 0.990 | 0.994 | 0.938 | 0.290 | 0.658 | 0.386 |
++| jac+pull | 40 | 0.786 ± 0.053 | 0.983 | 0.994 | 0.952 | 0.285 | 0.683 | 0.437 |
++| jac+pull | 50 | 0.833 ± 0.100 | 0.979 | 0.993 | 0.961 | 0.281 | 0.686 | 0.445 |
++| adv_h | 30 | 0.961 ± 0.018 | 0.995 | 0.998 | 0.662 | 0.881 | 0.518 | 0.205 |
++| adv_h | 40 | 0.853 ± 0.026 | 0.995 | 0.998 | 0.669 | 0.793 | 0.524 | 0.244 |
++| adv_h | 50 | 0.764 ± 0.056 | 0.995 | 0.998 | 0.661 | 0.796 | 0.526 | 0.298 |
++| jac+pull+adv_h | 30 | 0.889 ± 0.040 | 0.997 | 0.997 | 0.891 | 0.384 | 0.635 | 0.237 |
++| jac+pull+adv_h | 40 | 0.774 ± 0.073 | 0.996 | 0.997 | 0.907 | 0.382 | 0.651 | 0.326 |
++| jac+pull+adv_h | 50 | 0.817 ± 0.096 | 0.996 | 0.997 | 0.927 | 0.351 | 0.653 | 0.375 |
++| adv_λ | 30 | 0.972 ± 0.009 | 0.997 | 0.998 | 0.612 | 0.754 | 0.482 | 0.009 |
++| adv_λ | 40 | 0.985 ± 0.002 | 0.998 | 0.998 | 0.593 | 0.833 | 0.486 | 0.168 |
++| adv_λ | 50 | 0.985 ± 0.003 | 0.998 | 0.998 | 0.628 | 0.764 | 0.487 | 0.183 |
++
++- Stable from epoch 30: rotate and shape on every regularized model, real-frame goal fidelity on every model (at most +0.03 from epoch 30 to 50), and everything for jac. The headline claims hold at every checkpoint from epoch 30: sigreg fails every shift, every regularized model handles rotate and shape, adv_λ has the best color AUC (0.972-0.985), and jac reads imagined states best.
++- Still moving at epoch 50: imagined goal fidelity on sigreg (0.368 -> 0.448 from epoch 40 to 50), adv_h (0.244 -> 0.298) and jac+pull+adv_h (0.326 -> 0.375), and jac+pull+adv_h's imagined red AUC (0.891 -> 0.927 from epoch 30). These are the models with the most prediction loss left (previous table). jac, jac+pull and adv_λ are flat from epoch 40 to 50.
++- Consequence for one claim: "jac+pull+adv_h loses 6.2 points of raw-CEM success against jac+pull" and "the adversarial predictor term raises rollout error" compare a model whose imagined rollouts are still improving (imagined goal fidelity 0.375 at epoch 50) with one that has flattened (0.445). Part of that gap may be the 50-epoch budget rather than the regularizer; a 100-epoch retrain of that pair would settle it.
++- adv_h's color robustness falls with training (0.961 -> 0.853 -> 0.764 from epoch 30 to 50); its color number depends on the training budget as well as on the margin-function length.
++- sigreg is still moving, but in the direction that strengthens its conclusion: shape 0.715 -> 0.464 and imagined false-safe 0.260 -> 0.423.
++- Framing: report the models as trained for an equal 50-epoch budget with the learning rate annealed to zero, not as converged.
++
+ # Dubins
+ 
+ ![Dubins base vs OOD frames](figs/ood_frames_dubins.png)
