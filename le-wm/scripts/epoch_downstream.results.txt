@@ -28,3 +28,18 @@ EPD adv_h ep=20 in=0.9989 color=0.885±0.068 rotate=0.995 shape=0.998 imag_red_a
 EPD adv_h ep=30 in=0.9990 color=0.961±0.018 rotate=0.995 shape=0.998 imag_red_auc=0.662 imag_red_fs=0.881 imag_purple_auc=0.402 goal_near_real=0.518 goal_near_imag=0.205
 EPD adv_h ep=40 in=0.9991 color=0.853±0.026 rotate=0.995 shape=0.998 imag_red_auc=0.669 imag_red_fs=0.793 imag_purple_auc=0.409 goal_near_real=0.524 goal_near_imag=0.244
 EPD adv_h ep=50 in=0.9992 color=0.764±0.056 rotate=0.995 shape=0.998 imag_red_auc=0.661 imag_red_fs=0.796 imag_purple_auc=0.409 goal_near_real=0.526 goal_near_imag=0.298
+EPD jac+adv_h ep=30 in=0.9992 color=0.272±0.102 rotate=0.997 shape=0.997 imag_red_auc=0.934 imag_red_fs=0.298 imag_purple_auc=0.433 goal_near_real=0.659 goal_near_imag=0.499
+EPD jac+adv_h ep=40 in=0.9992 color=0.177±0.059 rotate=0.996 shape=0.997 imag_red_auc=0.946 imag_red_fs=0.298 imag_purple_auc=0.433 goal_near_real=0.668 goal_near_imag=0.469
+EPD jac+adv_h ep=50 in=0.9992 color=0.102±0.043 rotate=0.996 shape=0.997 imag_red_auc=0.951 imag_red_fs=0.266 imag_purple_auc=0.457 goal_near_real=0.670 goal_near_imag=0.504
+EPD jac+adv_λ ep=30 in=0.9991 color=0.851±0.148 rotate=0.997 shape=0.997 imag_red_auc=0.948 imag_red_fs=0.197 imag_purple_auc=0.439 goal_near_real=0.659 goal_near_imag=0.490
+EPD jac+adv_λ ep=40 in=0.9992 color=0.970±0.015 rotate=0.996 shape=0.997 imag_red_auc=0.959 imag_red_fs=0.221 imag_purple_auc=0.403 goal_near_real=0.679 goal_near_imag=0.492
+EPD jac+adv_λ ep=50 in=0.9991 color=0.970±0.012 rotate=0.996 shape=0.997 imag_red_auc=0.968 imag_red_fs=0.173 imag_purple_auc=0.405 goal_near_real=0.678 goal_near_imag=0.527
+EPD jac+adv_h enc ep=30 in=0.9991 color=0.717±0.092 rotate=0.996 shape=0.996 imag_red_auc=0.954 imag_red_fs=0.147 imag_purple_auc=0.495 goal_near_real=0.643 goal_near_imag=0.482
+EPD jac+adv_h enc ep=40 in=0.9991 color=0.728±0.053 rotate=0.995 shape=0.996 imag_red_auc=0.963 imag_red_fs=0.151 imag_purple_auc=0.500 goal_near_real=0.653 goal_near_imag=0.482
+EPD jac+adv_h enc ep=50 in=0.9991 color=0.808±0.073 rotate=0.995 shape=0.996 imag_red_auc=0.969 imag_red_fs=0.109 imag_purple_auc=0.490 goal_near_real=0.655 goal_near_imag=0.515
+EPD jac+adv_λ enc ep=30 in=0.9989 color=0.273±0.020 rotate=0.996 shape=0.997 imag_red_auc=0.949 imag_red_fs=0.152 imag_purple_auc=0.555 goal_near_real=0.658 goal_near_imag=0.516
+EPD jac+adv_λ enc ep=40 in=0.9990 color=0.514±0.165 rotate=0.996 shape=0.997 imag_red_auc=0.961 imag_red_fs=0.131 imag_purple_auc=0.475 goal_near_real=0.673 goal_near_imag=0.511
+EPD jac+adv_λ enc ep=50 in=0.9990 color=0.482±0.135 rotate=0.996 shape=0.997 imag_red_auc=0.961 imag_red_fs=0.129 imag_purple_auc=0.468 goal_near_real=0.676 goal_near_imag=0.536
+EPD jac+pull+adv_λ ep=30 in=0.9989 color=0.957±0.044 rotate=0.996 shape=0.997 imag_red_auc=0.917 imag_red_fs=0.356 imag_purple_auc=0.459 goal_near_real=0.621 goal_near_imag=0.355
+EPD jac+pull+adv_λ ep=40 in=0.9991 color=0.957±0.035 rotate=0.996 shape=0.997 imag_red_auc=0.935 imag_red_fs=0.300 imag_purple_auc=0.456 goal_near_real=0.651 goal_near_imag=0.395
+EPD jac+pull+adv_λ ep=50 in=0.9991 color=0.944±0.047 rotate=0.995 shape=0.997 imag_red_auc=0.949 imag_red_fs=0.294 imag_purple_auc=0.476 goal_near_real=0.653 goal_near_imag=0.429
