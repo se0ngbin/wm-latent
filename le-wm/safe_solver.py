@@ -61,6 +61,26 @@ class _MarginHead(torch.nn.Module):
         return self.mean_layer(self.layers(x)).squeeze(-1)
 
 
+class _LinMarginHead(torch.nn.Module):
+    """Linear margin function h(z) = w.z + b (saved as {"margin_lin": ...} by train_lin_margin_dubins.py). Under recolor
+    the MLP margin function flattens in the shifted region (gap/noise 1.3 at step 1 on purple rollouts) while a linear
+    readout of the same latents keeps 4x more (5.0)."""
+
+    def __init__(self, inp_dim=192):
+        super().__init__()
+        self.lin = torch.nn.Linear(inp_dim, 1)
+
+    def forward(self, x):
+        return self.lin(x).squeeze(-1)
+
+
+def _load_margin_head(path, device):
+    ck = torch.load(path, map_location=device)
+    head = _LinMarginHead() if "margin_lin" in ck else _MarginHead()
+    head.load_state_dict(ck["margin_lin"] if "margin_lin" in ck else ck["margin_gp"])
+    return head.to(device)
+
+
 class _SafeJEPA:
     """Model proxy: safe-maps candidate actions (state-space, gt h) before
     delegating cost evaluation to the wrapped JEPA unchanged."""
@@ -343,8 +363,7 @@ class SoftSafeCEMSolver(CEMSolver):
                  unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final",
                  h_quantile: float | None = None, h_steps: int | None = None, **kwargs):
         device = kwargs.get("device", "cuda")
-        head = _MarginHead().to(device)
-        head.load_state_dict(torch.load(margin_ckpt, map_location=device)["margin_gp"])
+        head = _load_margin_head(margin_ckpt, device)
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost,
                                        h_quantile, h_steps),
                          **kwargs)
