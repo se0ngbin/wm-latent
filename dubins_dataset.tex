@@ -1,0 +1,91 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xurl}
+\usepackage{hyperref}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+
+\title{The Dubins world-model dataset (\file{dubins_expert.h5}): provenance and composition}
+\author{}
+\date{2026-11-04}
+
+\begin{document}
+\maketitle
+
+\section{Summary}
+
+Every Dubins LeWM world model in this project (sigreg, jac, jac+pull, the adv\_h / adv\_$\lambda$ grid, the encoder-only variants and the roll5 retrains) is trained on \file{/data/seongbin/lewm/datasets/dubins_expert.h5}, loaded through \file{data=dubins} or \file{data=dubins_safety} (same file; the latter also loads the \file{failures} label for the safety regularizers). Despite its name, the file is not an expert dataset. It is the latent\_cbf Dreamer training buffer converted to the LeWM layout, and $94\%$ of its frames come from rollouts of a diffusion behavior-cloning policy at 39 training checkpoints, started from random states over the whole arena. Only $200$ of its $4{,}100$ episodes ($6\%$ of frames) are from the MPPI controller that served as the demonstrator, and even those pass through an obstacle in $21.5\%$ of episodes. Collisions do not end an episode, so $16.7\%$ of all frames have the car inside an obstacle.
+
+\section{Environment}
+
+The data comes from the latent\_cbf Dubins environment (\file{latent_cbf/src/latent_cbf/dubins/dubins_env.py}, defaults in \file{configs/environment.py}).
+
+\begin{itemize}
+\item State $s = (x, y, \theta)$, constant speed $v = 1.0$, time step $\Delta t = 0.05$, one action: the steering rate $\omega \in [-2, 2]$ rad/s. Dynamics $\dot x = v\cos\theta$, $\dot y = v\sin\theta$, $\dot\theta = \omega$.
+\item Arena $[-1.5, 1.5]^2$. Two circular obstacles at $(0.25, \pm 0.65)$ with radius $0.5$, leaving a gap of width $0.3$ around $y = 0$. Goal at $(1.3, 0)$.
+\item Collision: the car is a point (\file{collision_radius = 0}); a frame is a failure when the car's center lies inside an obstacle. Collision does not terminate the episode: the car drives through the obstacle and continues.
+\item Termination: goal reached (distance $\le 4 \times 0.05 = 0.2$) or the car leaves the arena. Truncation at 200 steps (never reached: the longest episode is 127 steps).
+\item Reset: initial states are drawn uniformly from a controller-specific box (below), rejecting states inside an obstacle.
+\item Observations: $128 \times 128$ RGB, white background, blue car, green goal, red obstacles. LeWM resizes them to $224 \times 224$ and ImageNet-normalizes.
+\end{itemize}
+
+\section{Generation pipeline}
+
+The pipeline is the one documented in \file{latent_cbf/README.md}, steps 1--5.
+
+\begin{enumerate}
+\item \textbf{MPPI demonstrations} (\file{scripts/collect_trajs.py --n_trajectories 200 --save_images --filename dubins_gap}, controller and config \file{mppi}). Output \file{/data/seongbin/dreamer/trajs/dubins_gap.h5}, 200 trajectories. MPPI settings (\file{configs/presets.py}, \file{get_mppi_config}): horizon 8, 500 samples, temperature 3.0 (adaptive), $\lambda = 0.2$, noise variance 3.0, goal weight 10, obstacle weight 10, control weight 0.01, obstacle safety margin 0.05, goal tolerance 0.1. Starts: $x \in [-1.5, -1.0]$, $y \in [-1, 1]$, $\theta \in [-\pi/3, \pi/3]$, i.e.\ the left edge, roughly facing the gap.
+\item \textbf{Diffusion BC policy} (\file{scripts/combine_traj_to_buffer_dubins.py}, then \file{scripts/train_diffusion.py}). A diffusion policy is trained on the 200 MPPI demonstrations; checkpoints are saved every 500 iterations. Inference: action chunk 8, total chunk 16, 16 denoising steps.
+\item \textbf{Exploratory diffusion rollouts} (\file{scripts/collect_batch_diffusion.sh}). For each of the 39 checkpoints $500, 1000, \dots, 19500$, 100 rollouts with config \file{diffusion} (\file{get_diffusion_config}), whose starts cover the whole arena: $x, y \in [-1.5, 1.5]$, $\theta \in [-\pi, \pi]$. These starts are out of distribution for the policy, which only saw left-edge MPPI starts, and the early checkpoints are undertrained, so the rollouts are diverse and often unsafe. Output \file{diffusion_trajectories_<ckpt>.h5}.
+\item \textbf{Dreamer buffer} (\file{scripts/combine_trajectories.py}). Concatenates every \file{*.h5} under \file{trajs/} into \file{latent_cbf/data/buffers/dreamer_buffer.h5} (combined 2026-06-18; 4{,}100 trajectories; the file's \file{source_files} attribute lists the 40 sources).
+\item \textbf{Conversion to LeWM} (\file{latent_cbf/src/latent_cbf/scripts/dump_dubins_to_swm.py}). Flattens the buffer into the stable-worldmodel layout: \file{pixels}, \file{action}, \file{state} $= (x, y, \theta)$, \file{proprio} $= (\cos\theta, \sin\theta)$, \file{failures}, \file{episode_idx}, \file{step_idx}, \file{ep_offset}, \file{ep_len}. Each trajectory stores $T{+}1$ observations and $T$ actions; the converter trims every field to $T$.
+\end{enumerate}
+
+Episode order is preserved. The sources are concatenated in filename order (\file{diffusion_trajectories_1000}, \file{_10000}, \file{_10500}, \dots, \file{_9500}, then \file{dubins_gap}), so LeWM episodes $0$--$3899$ are diffusion rollouts and $3900$--$4099$ are the MPPI demonstrations. Every episode length in \file{dubins_expert.h5} matches its source trajectory exactly.
+
+\section{Composition}
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Source & Episodes & Frames (share) & Length, mean (range) & Episodes with collision & Frames in obstacle & Goal reached \\
+\midrule
+Diffusion rollouts (39 ckpts) & 3{,}900 & 158{,}797 (0.939) & 40.7 (21--127) & 0.489 & 0.175 & 0.480 \\
+MPPI demonstrations & 200 & 10{,}392 (0.061) & 52.0 (44--61) & 0.215 & 0.042 & 1.000 \\
+\midrule
+All & 4{,}100 & 169{,}189 & 41.3 (21--127) & 0.476 & 0.167 & 0.506 \\
+\bottomrule
+\end{tabular}}
+\caption{Composition of \file{dubins_expert.h5}. ``Goal reached'' is the source file's per-trajectory \file{success} flag.}
+\end{table}
+
+\begin{itemize}
+\item Diffusion checkpoints behave similarly after the first few. Goal-reaching rate is 0.265 over checkpoints 500--2000 (400 rollouts; checkpoint 500 alone: 0.08) and 0.497 over checkpoints 2500--19500 (3{,}500 rollouts). Per checkpoint, the share of episodes with a collision ranges from 0.34 to 0.67 and the share of frames inside an obstacle from 0.117 to 0.241.
+\item Actions: mean $|\omega| = 0.931$ rad/s for diffusion frames and $0.736$ for MPPI frames (standard deviation 1.162 and 1.015). About 2\% of actions sit at the $\pm 2$ limit in both sources.
+\item Failure labels: 28{,}254 frames ($16.7\%$). A colliding episode spends on average a third of its frames inside an obstacle (mean and median 0.33), because the car keeps driving through it. No episode ends inside an obstacle.
+\end{itemize}
+
+\section{Consequences for the experiments}
+
+\begin{itemize}
+\item \textbf{Naming.} ``Expert'' in \file{dubins_expert.h5}, and in phrases such as ``expert windows'' or ``held-out expert episodes'', is a misnomer. Reports should say ``Dubins dataset'' or ``diffusion-policy rollouts plus MPPI demonstrations''.
+\item \textbf{Coverage.} Because starts cover the whole arena with arbitrary headings, the data visits most of the state space, including obstacle interiors. That is why the failure label is plentiful and why a margin function trained on encoded frames sees both classes across the arena.
+\item \textbf{Behavior bias.} Most trajectories still come from a policy cloned from gap-seeking MPPI, so the dynamics the world model learns reflect goal-directed, mostly through-the-gap behavior. This is consistent with the earlier observation that obstacle avoidance in CEM comes partly from behavior-biased world-model dynamics rather than goal placement.
+\item \textbf{Collisions are non-terminal.} The world model sees the car enter, cross and leave obstacles, so imagined rollouts can pass through an obstacle and come out the other side. This matters for any margin or value function evaluated on predicted latents.
+\item \textbf{Held-out windows.} Scripts that take ``the last 10\% of episodes'' (e.g.\ \file{diag_rollout_safety.py}, \file{diag_imag_steps.py}) select episode indices $3690$--$4099$: 210 late-checkpoint diffusion rollouts plus all 200 MPPI demonstrations. MPPI is therefore 49\% of those held-out episodes versus 5\% of the dataset, which makes them safer and more goal-directed than the training distribution.
+\end{itemize}
+
+\section{Files}
+
+\begin{itemize}
+\item LeWM dataset: \file{/data/seongbin/lewm/datasets/dubins_expert.h5}
+\item Dreamer buffer: \file{/home/seongbin/latent/latent_cbf/data/buffers/dreamer_buffer.h5}
+\item Source trajectories: \file{/data/seongbin/dreamer/trajs/dubins_gap.h5} and \file{diffusion_trajectories_<500..19500>.h5}
+\item Scripts (\file{latent_cbf/src/latent_cbf/scripts/}): \file{collect_trajs.py}, \file{collect_batch_diffusion.sh}, \file{combine_traj_to_buffer_dubins.py}, \file{train_diffusion.py}, \file{combine_trajectories.py}, \file{dump_dubins_to_swm.py}; presets in \file{latent_cbf/src/latent_cbf/configs/presets.py}.
+\end{itemize}
+
+\end{document}
