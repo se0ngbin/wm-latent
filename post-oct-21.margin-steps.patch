@@ -1,0 +1,142 @@
+--- /home/seongbin/latent/post-oct-21.md	2026-11-04 18:06:24.316225468 +0000
++++ post-oct-21.md	2026-11-04 20:07:04.731719187 +0000
+@@ -10,6 +10,10 @@
+ - Fixing the optimistic $h$ (red, replanning every 5 steps): training $h$ on predicted latents of CEM-style plans labelled in the simulator lowers collision on 6 of 8 jac-base models (jac 84.5 / 6.0); with a margin that grows with the imagined step it cuts the robust models' collision the most (jac+adv_h encoder-only 17.5 -> 6.0, jac+pull+adv_h 41.5 -> 17.5) at 5-10 points of success. No variant helps under purple: from a recolored start the predictor loses $h$'s ranking within 5-10 imagined steps on every model (AUC 0.40-0.59 over the horizon), although real purple frames keep it (0.885-0.963 on the robust models).
+ - Why purple imagined states fail (jac+pull+adv_h encoder-only): the predictor tracks the purple world about as well as the red one (error 0.57 vs 0.53 of the latent variance at step 10), but in the purple region $h$'s safe/unsafe gap is about 30 times smaller (0.06 vs 1.73), so one step of prediction noise already erases its ranking. The defect is the size of the safety gap under an appearance shift, not predictor drift.
+ - Free-running 5-step rollout loss (SLS-squared style; 15-epoch screens): imagined-state ranking on red improves by 10-18 AUC points at steps 10-25, but CEM ties on red (modest gain with replanning for one model) and raw CEM under purple gets worse in all 4 comparisons. 50-epoch versions pending.
++- Margin-function training length (Dubins, 1000-10000 steps): rotate and shape are unaffected, but color is not. jac, jac+pull and jac+pull+adv_h lose 0.2+ AUC with longer training and the ranking among them changes with the step count; only adv_λ is stable (0.982-0.989). The spread comes from the margin function being underdetermined by red data (a 0.5% latent perturbation moves color AUC by up to 0.049). On imagined latents a 2500-step $h$ changes little (jac false-safe 0.115 -> 0.109), so it will not change CEM much.
++- World-model training: Dubins models are still improving at epoch 50 (validation prediction loss fell 15-40% from epoch 30 to 49); they look flat at the end only because the cosine schedule ends. Cartpole has plateaued. `*_jaclam50` runs are unstable and several Point seed-2 runs stopped early.
++- Predictor gain: every predictor expands a latent perturbation 2-3× in one step, but over 25 steps the worst case is only 17-35× and a typical direction about 1×, and the most-amplifying models plan best. A non-expansion penalty would bind but there is no sign that amplification limits planning.
++- Data: the Dubins dataset is not expert data. 94% of frames are diffusion-policy rollouts from 39 training checkpoints with starts anywhere in the arena, 6% are the 200 MPPI demonstrations; collisions do not end episodes (16.7% failure frames), and "the last 10% of episodes" used for held-out windows is 49% MPPI. Write-up: `dubins_dataset.tex` (branch `worktree-dubins-dataset-doc`), with `point_dataset.tex` for the Safety Gym Point data.
+ - Safety regs and planning: on the same base, jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull over 3 WM seeds. The adversarial predictor term raises rollout error. Dropping it (encoder-only) helps planning, and keeps color robustness for adv_h on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but not for adv_λ (0.40-0.44 on every base). Best safety-reg models with the soft cost: jac+adv_h encoder-only and jac+adv_λ encoder-only (red 8% collision at about 80% success, matching jac).
+ 
+ Open:
+@@ -21,6 +25,7 @@
+ - Rollout loss: 50-epoch sigreg, jac, jac+pull, jac+pull+adv_h encoder-only training (branch `rollout-loss`), then the per-step test and the CEM screen; keep it only if red with replanning beats the original by about 10 points and purple is not worse (confirm key cells at 200 episodes).
+ - WM seeds 1 and 2 (original training) for sigreg, jac+adv_h encoder-only and jac+pull+adv_h encoder-only are training (`train_seeds_dubins.sh`).
+ - Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
++- Margin-function training length: color tables use an untuned 5000 steps; pick a red-only stopping rule (held-out balanced sign accuracy on a separate validation split) or report several lengths, and check whether the same holds on cartpole and Point.
+ 
+ # Regularizers
+ 
+@@ -38,6 +43,30 @@
+ 
+ Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the names say which readout the attack is aimed at. The report's "w/o h" model, which protects the whole latent, would be adv_latent.
+ 
++## Do the world models converge in 50 epochs?
++
++Every world model trains for 50 epochs with a cosine learning-rate schedule that reaches about 0 at epoch 50, so every loss curve is flat over the last few epochs by construction (0-2% change from epoch 45 to 49 on almost every run). The useful signal is how much validation prediction loss still fell from epoch 30, when the learning rate was still about 35% of its peak. Sources: wandb histories and, for runs with wandb off, the per-epoch validation tables in `run_logs/` (they match wandb exactly where both exist).
++
++Validation pred_loss, Dubins
++
++| Model | Epoch 10 | Epoch 20 | Epoch 30 | Epoch 40 | Epoch 49 | Drop 30 -> 49 | Drop 40 -> 49 |
++|---|---|---|---|---|---|---|---|
++| sigreg (same-config rerun `sigreg_dubins_sched50`) | 0.0139 | 0.0073 | 0.0047 | 0.0035 | 0.0033 | 30.6% | 6.4% |
++| jac (seed replicates `jacw1_s100` / `_s200`) | 0.0201 / 0.0202 | 0.0139 / 0.0136 | 0.0111 / 0.0097 | 0.0090 / 0.0083 | 0.0086 / 0.0081 | 22.4% / 16.2% | 5.0% / 2.5% |
++| jac+pull | 0.0256 | 0.0160 | 0.0120 | 0.0101 | 0.0099 | 17.2% | 1.4% |
++| adv_h | 0.0510 | 0.0164 | 0.0128 | 0.0091 | 0.0085 | 33.2% | 6.8% |
++| jac+adv_h | 0.0289 | 0.0178 | 0.0134 | 0.0113 | 0.0110 | 17.8% | 2.6% |
++| jac+pull+adv_h | 0.0362 | 0.0226 | 0.0167 | 0.0144 | 0.0142 | 15.3% | 1.9% |
++| adv_λ | 0.0424 | 0.0147 | 0.0132 | 0.0082 | 0.0080 | 39.5% | 2.0% |
++| jac+adv_λ | 0.0211 | 0.0143 | 0.0114 | 0.0096 | 0.0093 | 18.0% | 3.1% |
++| jac+pull+adv_λ | 0.0263 | 0.0187 | 0.0148 | 0.0125 | 0.0123 | 16.8% | 1.6% |
++
++- Dubins models are not converged in the strict sense: prediction loss still fell 15-40% between epochs 30 and 49 on every model (seed replicates 13-57%; encoder-only models 14-26%), and it flattens only because the learning rate runs out. A longer schedule would very likely lower prediction loss further, most for sigreg, adv_h and adv_λ. Whether that changes margin-function or planning results is untested; prediction loss is not what limits planning (Diagnostics).
++- The two models the tables use for sigreg and jac (`sigreg_only_dubins`, `jacobian_w1_dubins`) kept no history; the rows above are a same-config rerun and the seed replicates.
++- Cartpole (all 9 models) has plateaued: 4.5-9.3% from epoch 30, 0.2-1.9% from epoch 40. Safety Gym Point and Car runs are mostly plateaued, but several adversarial-λ runs reach their lowest validation loss at epoch 0-2 and some rise late, so prediction loss is not a reliable convergence signal for those.
++- Broken runs, not used in the tables: `lewm_dubins_jaclam50_*` and `sg_jaclam50_*` (validation loss spikes to 20-25 and ends 20-50× above jac+adv_λ; best epoch around 17-27).
++- Incomplete runs: several Point seed-2 runs (and one seed-1) stopped early, at epochs 2-49, and are not running; the Point seed tables need them rerun.
++
+ # Dubins
+ 
+ ![Dubins base vs OOD frames](figs/ood_frames_dubins.png)
+@@ -83,6 +112,38 @@
+ - Encoder-only ablations (adversarial penalty on the encoder term only): color AUC drops from 0.789 to 0.454 (adv_h) and from 0.982 to 0.440 (adv_λ), so the predictor term is where the color robustness comes from (see the CEM section for its planning cost).
+ - One WM seed per model; jac+adv_h's color inversion in particular needs a second seed before it is trusted. The earlier 3-WM-seed comparison was run on transposed frames and needs redoing.
+ 
++## Does the color result depend on how long the margin function is trained?
++
++Every margin function above is trained for a fixed 5000 AdamW steps at a constant learning rate of $3 \times 10^{-4}$ (no schedule, no validation split), constants copied from the Dreamer config and never tuned. We retrained it for 1000, 2500, 5000 and 10000 steps on the same latents, for 6 models × 3 axes × 3 margin-function seeds (`dub_fixed_margin.py` protocol; logs `/data/seongbin/lewm/safeadv_results/margin_steps/`). The 5000-step rows reproduce the tables above exactly (54 of 54 runs).
++
++Color AUC by margin-function training steps
++
++| Model | 1000 | 2500 | 5000 | 10000 |
++|---|---|---|---|---|
++| sigreg | 0.108 ± 0.023 | 0.098 ± 0.009 | 0.110 ± 0.019 | 0.094 ± 0.005 |
++| jac | 0.673 ± 0.022 | 0.620 ± 0.027 | 0.591 ± 0.019 | 0.475 ± 0.043 |
++| jac+pull | 0.758 ± 0.028 | 0.716 ± 0.054 | 0.787 ± 0.084 | 0.548 ± 0.144 |
++| adv_h | 0.613 ± 0.067 | 0.748 ± 0.130 | 0.789 ± 0.074 | 0.740 ± 0.131 |
++| jac+pull+adv_h | 0.965 ± 0.002 | 0.931 ± 0.018 | 0.782 ± 0.068 | 0.761 ± 0.030 |
++| adv_λ | 0.989 ± 0.002 | 0.982 ± 0.003 | 0.982 ± 0.001 | 0.987 ± 0.002 |
++
++In-distribution balanced sign accuracy by training steps (pooled over 3 axes × 3 seeds)
++
++| Model | 1000 | 2500 | 5000 | 10000 |
++|---|---|---|---|---|
++| sigreg | 0.940 | 0.939 | 0.939 | 0.932 |
++| jac | 0.965 | 0.967 | 0.956 | 0.942 |
++| jac+pull | 0.970 | 0.968 | 0.956 | 0.945 |
++| adv_h | 0.980 | 0.979 | 0.977 | 0.974 |
++| jac+pull+adv_h | 0.979 | 0.978 | 0.975 | 0.971 |
++| adv_λ | 0.979 | 0.977 | 0.977 | 0.978 |
++
++- Rotate and shape do not depend on training length: every model stays within ±0.003 AUC from 1000 to 10000 steps, except sigreg on shape (0.789, 0.540, 0.487, 0.453).
++- Color does. Longer training lowers it on jac (0.673 -> 0.475), jac+pull (0.758 -> 0.548) and jac+pull+adv_h (0.965 -> 0.761), raises it on adv_h (0.613 -> 0.789 at 5000), and leaves adv_λ flat (0.982-0.989). At 1000 steps jac+pull+adv_h nearly ties adv_λ; at 5000 it ties jac+pull and adv_h. So the color ranking among jac+pull, adv_h and jac+pull+adv_h in the main table depends on the step count; adv_λ's lead does not.
++- In-distribution AUC is flat at 0.982-0.999 for every length, so it cannot pick the length. Balanced sign accuracy can: it is best at 1000-2500 steps and falls by 5000-10000 (jac 0.967 -> 0.942), so the margin function starts to overfit red after about 2500 steps. A red-only stopping rule would therefore pick 1000-2500, not 5000.
++- The variance is mostly the margin function, not the latent. Feeding the encoder channels-last instead of contiguous tensors moves the latents by about 0.5% (max abs difference 0.004 on a latent scale of 0.77) and leaves in-distribution AUC unchanged (±0.0002), yet moves color AUC by up to 0.049 (jac+pull, 5000 steps, seed 0). Many margin functions fit red equally well and extrapolate to purple differently; nothing in the red data chooses between them. adv_λ is the exception (±0.001-0.003 across seeds and lengths): there the representation itself fixes how every red-fit margin function reads purple.
++- Implication for the tables: report color at more than one step count, or use a red-only stopping rule (e.g. stop when held-out balanced sign accuracy stops improving, on a validation split separate from the test states), or average several margin functions. Only adv_λ's color claim is robust to this choice.
++
+ # Safety Gym
+ 
+ ![Safety Gym Point base vs OOD frames](figs/ood_frames_sg_point.png)
+@@ -1197,6 +1258,50 @@
+ - Candidate fixes, all trained on red data only (OOD stays a test-only measure): keep the safety gap under generic appearance perturbations (an encoder-side penalty when perturbations shrink the safe/unsafe distance along the direction $h$ reads; the saved $\lambda$-projected invariance idea is one version); or weight the prediction loss by how much an error moves $h$, so the predictor is most accurate along the directions $h$ depends on.
+ - Caveats: one WM seed; 400 states; a single recolor (purple).
+ 
++### Would a shorter-trained margin function help CEM?
++
++The margin-function step sweep in the Dubins section shows that 2500 steps transfers better to purple frames than 5000 for some models. To see whether it would change planning, we trained 2500-step GP margin functions with exactly the protocol of the CEM's $h$ (`train_gp_margin_dubins_steps.py`: red, uniform states, seed 0; saved as `margin_gp_fail_red_s0_st2500.pt`) and scored them, next to the CEM's own 5000-step $h$, on imagined latents of CEM-style plans (`diag_imag_steps.py`: the setup of `diag_imag_color_dubins.py`, 600 starts from the last 10% of episodes, 25-step plans $a_t = b + 0.7\,\varepsilon_t$, simulator labels, 16.7% of imagined steps unsafe).
++
++Table 16. $h$ on imagined latents, margin function trained 2500 vs 5000 steps (one margin-function seed). False-safe = share of unsafe imagined steps with $h \ge 0$.
++
++| Model | Red AUC, 2500 | Red AUC, 5000 | Red false-safe, 2500 | Red false-safe, 5000 | Red false-safe at step 25, 2500 | Red false-safe at step 25, 5000 | Purple AUC, 2500 | Purple AUC, 5000 |
++| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
++| sigreg | 0.813 | 0.814 | 0.353 | 0.423 | 0.509 | 0.630 | 0.517 | 0.499 |
++| jac | 0.969 | 0.969 | 0.109 | 0.115 | 0.222 | 0.213 | 0.422 | 0.429 |
++| jac+pull | 0.961 | 0.961 | 0.204 | 0.281 | 0.315 | 0.435 | 0.512 | 0.504 |
++| adv_h | 0.645 | 0.661 | 0.789 | 0.796 | 0.981 | 0.981 | 0.419 | 0.409 |
++| jac+pull+adv_h | 0.923 | 0.927 | 0.330 | 0.351 | 0.417 | 0.435 | 0.551 | 0.586 |
++| adv_λ | 0.621 | 0.626 | 0.763 | 0.765 | 0.972 | 0.972 | 0.576 | 0.572 |
++
++- Training length does not change how $h$ ranks imagined states: red AUC is equal within 0.016 on every model.
++- On red, the 2500-step $h$ sits lower on unsafe imagined states, which cuts false-safe for sigreg (0.423 -> 0.353) and jac+pull (0.281 -> 0.204; at step 25 0.435 -> 0.315). jac, the best planner, does not move (0.115 -> 0.109); adv_h and adv_λ are unchanged and read imagined red states poorly either way.
++- On purple the ranking is near chance at both lengths (0.41-0.59), as in Table 6 and Table 15: the better real-frame transfer of the shorter margin function does not survive prediction.
++- Verdict: switching to 2500 steps will not change CEM much. The one cell worth a CEM run is jac+pull on red.
++- Unresolved: for sigreg and adv_h these 5000-step numbers do not match Table 1's "old" column (sigreg AUC 0.814 vs 0.642, false-safe 0.423 vs 0.968), although it is the same checkpoint and margin-function file; jac matches (false-safe 0.115 vs 0.112). The plan samples differ (600 vs 1000 plans, different seeds); the cause has not been checked.
++
++### Does the predictor amplify latent errors?
++
++A proposed predictor regularizer is a non-expansion penalty on the dynamics, $\max(0, \|\partial P/\partial z\| - 1)^2$, on the argument that with gain $L > 1$ per step a rollout error grows like $L^H$. Before adding it we measured the gain of the existing predictors (`pred_jacobian_gain.py`): 128 random windows of the Dubins dataset, 3 real context frames and real actions, rollout as in `JEPA.rollout`; per window, the largest singular value $\sigma_{\max}$ of the map from the 3-frame context window to the predicted latent $K$ steps later (power iteration, 15 steps; $Jv$ by central finite differences, $J^\top u$ by autograd), and the gain along one random direction. A gain above 1 means a perturbation grows.
++
++Table 17. Predictor gain, median over windows (p90 for 25 steps in parentheses). "Last frame" = gain with respect to the last context frame only.
++
++| Model | 1 step, window | 1 step, last frame | 5 steps | 10 steps | 25 steps | 25 steps, random direction |
++| --- | ---: | ---: | ---: | ---: | ---: | ---: |
++| sigreg | 3.14 | 3.11 | 10.1 | 14.5 | 20.4 (42.7) | 0.66 |
++| jac | 2.70 | 2.68 | 7.1 | 13.7 | 34.8 (63.4) | 1.03 |
++| jac+pull | 2.02 | 2.00 | 6.2 | 12.5 | 33.4 (51.3) | 1.11 |
++| adv_h | 2.55 | 2.51 | 6.9 | 13.1 | 23.3 (49.5) | 0.67 |
++| jac+pull+adv_h | 2.18 | 2.16 | 6.0 | 11.3 | 24.8 (51.4) | 0.81 |
++| adv_λ | 2.63 | 2.62 | 6.0 | 10.0 | 17.0 (41.8) | 0.60 |
++| sigreg, rollout loss from 3 frames | 2.91 | 1.48 | 5.4 | 6.1 | 4.7 (11.4) | 0.22 |
++| jac, rollout loss from 3 frames | 1.83 | 1.65 | 4.4 | 8.4 | 19.6 (25.9) | 0.61 |
++
++- Every predictor expands at one step ($\sigma_{\max}$ 1.8-3.1), so a non-expansion hinge at 1 would be active everywhere.
++- The growth is far from exponential: a one-step gain of 2-3 compounded over 25 steps would be $10^{8}$-$10^{12}$, the measured worst case is 17-35, and a typical direction is about neutral (0.60-1.11). The most-amplified directions change from step to step instead of stacking.
++- Amplification does not track planning: jac and jac+pull amplify the most at 25 steps and plan best, consistent with collision tracking goal-distance fidelity rather than 25-step rollout error (Diagnostics).
++- The two rollout-loss rows are the failed first version (rollout from 3 real frames), whose rollouts collapse after step 5 (Table 7). Their low long-horizon gain (sigreg 4.7, random direction 0.22) is that collapse, not stability; low amplification is not good by itself. The fixed version (`*_roll5b50`) is still training (epochs 5-34) and is pending.
++- As written the proposal also bounds the wrong norm: it uses the Frobenius norm via the same Hutchinson estimator as jac, but the error argument needs the spectral norm, and for a near-identity 192-dimensional map $\|J\|_F \approx \sqrt{192} \approx 14$, so a Frobenius bound of 1 would force strong contraction against the prediction loss. If tried, it should be a spectral-norm hinge (power iteration) on the full context window, and only after the fixed rollout-loss models are evaluated, since they attack the same compounding-error problem.
++
+ ### Do CEM's elites converge? Elite spread
+ 
+ CEM refits the sampling distribution to the 30 elites each iteration and executes the elite mean after 30 iterations, so the plan run is never scored itself. If the elites had not converged, or split between two routes (left and right of an obstacle), their mean could drive between them. Measured with a callback on every CEM solve (`SOFTCEM_SPREAD`, `elite_spread.sh`, `diag_elite_spread.py`): jac, red, open loop, final-step goal cost, about 240 solves per run. Std is in CEM's action units (initial std 1). The runs reproduce the main results (safety-first 79.0 / 8.5; raw 79.5 / 26.0 vs 81.5 / 22.5, within noise).
