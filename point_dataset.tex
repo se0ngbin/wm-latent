@@ -1,0 +1,101 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xurl}
+\usepackage{hyperref}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+
+\title{The Safety Gym Point world-model dataset (\file{sg_point_ovh224.h5}): provenance and composition}
+\author{}
+\date{2026-11-04}
+
+\begin{document}
+\maketitle
+
+\section{Summary}
+
+The current Safety Gym Point world models are trained on \file{/data/seongbin/lewm/datasets/sg_point_ovh224.h5}, loaded through \file{data=sg_point_ovh224_safety}. It holds every frame of 852 scripted-policy episodes of 200 steps in \file{SafetyPointGoal1-v0}, one random hazard layout per episode, rendered from an overhead camera at $224 \times 224$. The episodes are cut into non-overlapping 8-frame chunks and shuffled, so the file contains 21{,}300 ``episodes'' of exactly 8 frames each. The policy is not an expert and not a learned policy: on each episode it either drives at the goal at full thrust without braking (and overshoots through hazards) or dashes at the nearest hazard and brakes at a random distance from its edge. $19.3\%$ of frames have the robot inside a hazard. Collisions do not end an episode.
+
+\section{Environment}
+
+\file{SafetyPointGoal1-v0} from the vendored \file{safety-gymnasium} (task \file{safety_gymnasium/tasks/safe_navigation/goal/goal_level1.py}).
+
+\begin{itemize}
+\item Robot: Point, a planar MuJoCo body with momentum. Action $a = (\text{thrust}, \text{turn rate}) \in [-1, 1]^2$; thrust acts along $\pm$heading, so the robot keeps drifting after the thrust stops. The stored state is $(x, y, \theta)$, with the planar velocity stored separately (\file{velocity}).
+\item Layout: 8 circular hazards of radius 0.2 (placement keepout 0.18), 1 vase (not cost-constrained) and a goal, placed uniformly in $[-1.5, 1.5]^2$. A new layout is drawn at every \file{env.reset}, i.e.\ once per episode; hazards never move within an episode and do not affect the robot's motion.
+\item Failure label (\file{failures}): the robot's center is inside a hazard, i.e.\ $\min_h \lVert p - c_h \rVert - 0.2 < 0$ (\file{margin} in \file{collect_dataset.py}). Safety Gym's own cost is not used, and hazards do not stop the robot, so episodes never end on a collision.
+\item Rendering: safety-gym's \file{fixedfar} camera moved straight above the arena to $(0, 0, 4)$ with a field of view framing $[-1.8, 1.8]^2$, $224 \times 224$ RGB, ``clean'': no lidar ring and no cost-indicator sphere (that sphere is drawn exactly when the cost is positive, so it would leak the label). Because the camera looks straight down at the arena center, a $90^\circ$ camera turn is an exact image rotation.
+\end{itemize}
+
+\section{Collection}
+
+\file{safety_gym_port/collect_overhead_train.sh} (branch \file{point-dynamics-probe}; main's \file{collect_dataset.py} predates the overhead camera) runs four shards in parallel:
+
+\begin{center}
+\file{collect_dataset.py --agent Point --clean --cam overhead --size 224 --ep_steps 200 --p_loiter 0.6 --frames 42500 --seed 20..23}
+\end{center}
+
+and merges them with \file{merge_shards.py}, which concatenates the shards and renumbers episodes and offsets.
+
+\begin{enumerate}
+\item \textbf{Episodes.} Each episode resets the environment with a fresh random seed (new layout) and runs exactly 200 steps, ignoring the environment's termination signal. A per-episode coin flip picks the policy:
+\begin{itemize}
+\item with probability 0.6, \textbf{dash-then-brake} (\file{point_dash_action}): steer and thrust at the nearest hazard; once within \file{brake_at} $\sim U(0, 0.4)$ of its edge (drawn once per episode) and moving faster than 0.05, thrust against the velocity. A small \file{brake_at} hits the hazard at speed; a large one stops short. Gaussian action noise $\sigma = 0.2$.
+\item with probability 0.4, \textbf{goal seek} (\file{point_goal_action}): steer and thrust at the goal at full thrust, never braking, so momentum makes it overshoot and drift through hazards. Noise $\sigma = 0.3$.
+\end{itemize}
+Steering (\file{point_steer}) turns toward the target direction at rate $\mathrm{clip}(3e, -1, 1)$ for heading error $e$, thrusts only when $|e| < 0.6$, and uses reverse thrust when the target is behind.
+\item \textbf{Chunking and filtering.} Each 200-step episode is split into 25 non-overlapping 8-frame chunks. The collector is designed to keep every chunk that contains a failure frame and subsample all-safe chunks to reach a 17\% failure rate. Here the natural failure rate (17--22\% per shard) is already above the target, so every chunk is kept: each shard is exactly 213 episodes $\times$ 200 steps $= 42{,}600$ frames $= 5{,}325$ chunks. The chunks are shuffled within the shard before writing.
+\item \textbf{Matching fixedfar set.} \file{sg_point_clean.h5} ($128 \times 128$, \file{fixedfar} camera, \file{data=sg_point_safety}) uses the same seeds 20--23 and collector arguments. Rendering does not consume the random stream, so its trajectories, layouts and labels are identical; only the camera and resolution differ.
+\end{enumerate}
+
+\section{Composition}
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrr}
+\toprule
+Shard (seed) & Source episodes & Frames & Chunks & Failure frames \\
+\midrule
+0 (20) & 213 & 42{,}600 & 5{,}325 & 0.221 \\
+1 (21) & 213 & 42{,}600 & 5{,}325 & 0.186 \\
+2 (22) & 213 & 42{,}600 & 5{,}325 & 0.171 \\
+3 (23) & 213 & 42{,}600 & 5{,}325 & 0.196 \\
+\midrule
+All & 852 & 170{,}400 & 21{,}300 & 0.193 \\
+\bottomrule
+\end{tabular}}
+\caption{Composition of \file{sg_point_ovh224.h5}, from the collection logs (\file{run_logs/sg_point/collect_ovh224_s*.log}) and the merged file.}
+\end{table}
+
+\begin{itemize}
+\item Chunks: 20.8\% contain at least one failure frame and 17.8\% are failures throughout, so unsafe frames come mostly as whole chunks of the robot sitting inside a hazard rather than brief crossings.
+\item Speed: mean $\lVert v \rVert = 0.535$ on safe frames and $0.198$ on failure frames (90th percentile overall 1.23). The robot is slow when inside a hazard, consistent with the dash-then-brake policy braking at or inside the edge.
+\item Actions: mean $(0.006, -0.003)$, standard deviation $(0.79, 0.67)$; thrust is saturated at $\pm 1$ on 37\% of frames and turn rate on 22\%.
+\item Positions cover the arena: $x \in [-1.47, 1.54]$, $y \in [-1.46, 1.48]$.
+\item The per-episode policy choice and \file{brake_at} are not stored, so the split between dash and goal-seek frames cannot be recovered from the file; by construction about 60\% of source episodes are dash-then-brake.
+\end{itemize}
+
+\section{Consequences for the experiments}
+
+\begin{itemize}
+\item \textbf{Short windows.} LeWM trains on 4-frame windows (history 3 + 1 prediction, frameskip 1), which fit inside the 8-frame chunks (5 windows per chunk). No window spans a chunk boundary, but no training sample is longer than 8 steps either, so anything longer than 8 steps (e.g.\ a 5-step rollout loss on a 3-frame history needs $3 + 5 = 8$ frames, exactly one chunk) is at the limit of what the data supports.
+\item \textbf{Layouts change between chunks.} Consecutive chunks in the file generally come from different layouts. The world model must read the hazards from each frame; the dynamics never depend on them. This is the reason the earlier fixedfar models barely encoded hazards and why the margin-function evaluation is layout-disjoint.
+\item \textbf{Velocity matters.} Because the Point has momentum, safety depends on velocity as well as position, and a single frame does not show velocity. The 3-frame history the world model sees during training carries it; the 1-frame planning history does not.
+\item \textbf{Policy, not expert.} Both policies are scripted heuristics with noise; the goal-seek one deliberately overshoots. As with the Dubins data, the dataset should not be called expert.
+\item \textbf{Margin-function training and evaluation.} The margin function is trained on 50k frames of this file and scored on a separate 5{,}000-pose collection (\file{collect_point_multi.py}, overhead camera, about 17\% unsafe) whose layouts are all unseen, with every pose rendered in the base, purple-hazard, rotated, box-hazard and Car-robot views.
+\end{itemize}
+
+\section{Files}
+
+\begin{itemize}
+\item LeWM dataset: \file{/data/seongbin/lewm/datasets/sg_point_ovh224.h5}; shards \file{/data/seongbin/lewm/datasets/sg_shards/point_ovh224_s{0..3}.h5}
+\item Matching fixedfar set: \file{/data/seongbin/lewm/datasets/sg_point_clean.h5} (shards \file{point_clean_s{0..3}.h5})
+\item Data configs: \file{le-wm/config/train/data/sg_point_ovh224_safety.yaml} (in the code snapshot \file{/data/seongbin/lewm/code_point_92e7589})
+\item Scripts (branch \file{point-dynamics-probe}, \file{safety_gym_port/}): \file{collect_overhead_train.sh}, \file{collect_dataset.py}, \file{policy.py}, \file{merge_shards.py}, \file{collect_point_multi.py}
+\item Collection logs: \file{/home/seongbin/latent/run_logs/sg_point/collect_ovh224_s{0..3}.log}
+\end{itemize}
+
+\end{document}
