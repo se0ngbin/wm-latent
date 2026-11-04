@@ -1075,11 +1075,11 @@ Question: does training the predictor on its own multi-step rollouts make CEM pl
 
 The first version started each rollout from 3 real latents and scored only the last position. CEM never trains on this case: its rollouts start from 1 frame and grow to 3, so predictions from 1-2 frames of context lost their training signal. After 50 epochs the rollouts collapse after step 5 (imagined latents converge to one region; median $h$ on safe and unsafe states both 0.70), and planning breaks.
 
-Table 7. Per-step AUC of $h$ on imagined latents from a red start (as Table 6), jac, original vs first rollout-loss version (both 50 epochs).
+Table 7. Per-step AUC of $h$ on imagined latents from a red start (as Table 6), jac, original vs first rollout-loss version (both 50 epochs). The original row is from `diag_purple_drift.py` (400 held-out states), the rollout-loss row from `diag_imag_color_dubins.py` (600); same plan distribution.
 
 | jac | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| original | 1.00 | 1.00 | 1.00 | 0.98 | 0.93 | 0.88 |
+| original | 1.00 | 1.00 | 0.99 | 0.99 | 0.97 | 0.88 |
 | rollout loss from 3 frames | 0.98 | 0.91 | 0.88 | 0.43 | 0.42 | 0.51 |
 
 Table 8. CEM, replanning every 5 steps, goal cost at every imagined step, success / collision (%). Original: 200 episodes; first rollout-loss version: 100 episodes.
