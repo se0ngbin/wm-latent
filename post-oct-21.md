@@ -1490,6 +1490,23 @@ Table 22. CEM, linear vs GP margin function as $h$, success / collision (%). Bla
 - This is what Tables 19-21 predict: the fixed-margin cost needs $h$'s sign, and under purple the sign is wrong for every model and both margin functions; the linear margin function fixes only the ranking. A rank-based cost (the dynamic threshold, `HQ`) is the cost that could use the recovered ranking, provided it survives prediction (Table 15 shows the gap on imagined purple latents is within one step of prediction noise for the GP $h$; not yet measured for the linear one).
 - Caveats: one WM seed, one margin-function seed, 50-episode CEM cells.
 
+#### Threshold-free costs: dynamic threshold and a cost relative to the current frame
+
+Two costs that need only $h$'s ranking, each with the GP and the linear margin function, safety cost on the first 5 imagined steps only (the window where a linear readout still ranks purple rollouts, 0.99 / 0.95 / 0.85 at steps 1 / 3 / 5, and the only steps executed with replanning every 5). Dynamic threshold: per-replan rank-normalized $h$ with $p = 0.05$, $C = 10^4$ (`HQ`). Relative cost: $w \sum_{t \le 5} \mathrm{relu}\big(h(z_0) - h(\hat z_t)\big)$ with $z_0$ the current real encoded frame, so a constant shift of $h$ cancels (`h_rel` in `safe_solver.py`, `HREL`); $C = 0$, since nearly every candidate lowers $h$ at some step. Both: $w = 1000$, replan every 5, goal cost at every imagined step (`lin_h_rank_cem_queue.sh`, `gp_h_rel_cem_queue.sh`).
+
+Table 23. CEM with threshold-free costs, success / collision (%). GP dynamic threshold: 200 episodes; others: 50 episodes. Reference, GP $h$ with the fixed margin on all 25 steps (200 episodes): jac red 84.0 / 8.0, purple 34.5 / 43.0; jac+pull+adv_h encoder-only red 76.0 / 20.5, purple 30.5 / 47.5.
+
+| Model | Scenario | GP $h$, dynamic threshold | Linear $h$, dynamic threshold | GP $h$, relative cost | Linear $h$, relative cost |
+| --- | --- | --- | --- | --- | --- |
+| jac | red | 78.0 / 38.5 | 82.0 / 32.0 | 66.0 / 34.0 | 74.0 / 24.0 |
+| jac | purple | 23.5 / 72.0 | 18.0 / 58.0 | 36.0 / 54.0 | 18.0 / 72.0 |
+| jac+pull+adv_h, encoder-only | red | 73.0 / 33.0 | 80.0 / 38.0 | 62.0 / 28.0 | 64.0 / 38.0 |
+| jac+pull+adv_h, encoder-only | purple | 29.0 / 68.0 | 26.0 / 74.0 | 34.0 / 58.0 | 26.0 / 58.0 |
+
+- Purple: every threshold-free variant collides more (54-74%) than the fixed margin on all 25 steps (43-47.5%). The linear margin function is no better than the GP one, although it ranks real purple frames far better (Table 19).
+- Red: restricting the safety cost to 5 steps costs 16-30 points of collision against the fixed margin, as the 5-step GP runs did before.
+- Recovering the ranking on real frames does not carry into planning: on imagined purple latents $h$'s variation over the executed steps is within prediction noise (Table 15), whichever readout or cost form reads it. The remaining lever is the encoder, keeping the safe/unsafe gap under appearance change with a red-only training term.
+
 ### Do CEM's elites converge? Elite spread
 
 CEM refits the sampling distribution to the 30 elites each iteration and executes the elite mean after 30 iterations, so the plan run is never scored itself. If the elites had not converged, or split between two routes (left and right of an obstacle), their mean could drive between them. Measured with a callback on every CEM solve (`SOFTCEM_SPREAD`, `elite_spread.sh`, `diag_elite_spread.py`): jac, red, open loop, final-step goal cost, about 240 solves per run. Std is in CEM's action units (initial std 1). The runs reproduce the main results (safety-first 79.0 / 8.5; raw 79.5 / 26.0 vs 81.5 / 22.5, within noise).
