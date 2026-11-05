@@ -15,3 +15,4 @@ unsafe_const: 0.0   # + const * 1[any h < margin]; > max goal cost (~130) => lex
 goal_cost: final   # final (last imagined step, JEPA.criterion) | mean (every imagined step)
 h_quantile: null   # p: per-replan rank-normalized h (bottom p of imagined latents read unsafe); null = raw h
 h_steps: null   # n: safety cost on the first n imagined steps only; null = all
+h_rel: false   # true: margin = h(current real frame) + unsafe_margin (threshold-free; penalize going lower on h than now)

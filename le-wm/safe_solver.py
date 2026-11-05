@@ -282,7 +282,7 @@ class _SoftCostJEPA:
     """Model proxy: goal cost + w * sum_t relu(m - h(z_t)) over the imagined
     rollout. Unsafe-looking candidates just rank badly; no action map."""
 
-    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None):
+    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None, h_rel=False):
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
         self.const = const  # flat cost for ANY violation: safe beats unsafe lexicographically
         # "final": JEPA.criterion, goal distance of the last imagined step only (receding-horizon replanning
@@ -296,6 +296,9 @@ class _SoftCostJEPA:
         # h_steps=n: safety cost on the first n imagined steps only (under purple, h ranks imagined latents for ~5
         # steps, then the predictor drifts to chance; with replanning every 5 only those steps are executed)
         self.h_steps = h_steps
+        # h_rel: penalize relu(h(z_0) - h(z_t)), z_0 = current real frame: plans that go lower on h than where the agent
+        # is now. Needs only h's ranking along the plan, not its sign (purple keeps the ranking, loses the sign).
+        self.h_rel = h_rel
 
     def parameters(self):
         return self.jepa.parameters()
@@ -321,6 +324,8 @@ class _SoftCostJEPA:
         m = torch.as_tensor(list(self.margin) if hasattr(self.margin, "__len__") else self.margin,
                             device=h.device, dtype=h.dtype)
         m = m if m.dim() == 0 else m[:h.size(-1)]
+        if self.h_rel:   # threshold-free: margin = h of the current (real, encoded) frame; a constant OOD shift of h cancels
+            m = m + self.head(info_dict["predicted_emb"][:, :, H - 1].float())[..., None]
         pen = torch.relu(m - h).sum(-1)
         viol = (h < m).any(-1)
         self.last_h = h
@@ -361,11 +366,11 @@ class SoftSafeCEMSolver(CEMSolver):
 
     def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
                  unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final",
-                 h_quantile: float | None = None, h_steps: int | None = None, **kwargs):
+                 h_quantile: float | None = None, h_steps: int | None = None, h_rel: bool = False, **kwargs):
         device = kwargs.get("device", "cuda")
         head = _load_margin_head(margin_ckpt, device)
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost,
-                                       h_quantile, h_steps),
+                                       h_quantile, h_steps, h_rel),
                          **kwargs)
         self._trace = []
         if os.environ.get("SOFTCEM_SPREAD"):
