@@ -7,9 +7,9 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..")); sys.path.insert(0, os.path.dirname(__file__))
 import numpy as np, torch, h5py
 from sklearn.metrics import roc_auc_score
+from safe_solver import _load_margin_head   # before E: ood_margin_gp_jepa puts the MAIN checkout's le-wm first on sys.path
 import ood_margin_gp_jepa as E
 import stable_worldmodel as swm
-from safe_solver import _MarginHead
 
 ck, heads = sys.argv[1], sys.argv[2:]
 K, N, DEV = 25, 600, E.DEV
@@ -33,7 +33,7 @@ safe = ~y if not os.environ.get("DOOM") else ~np.maximum.accumulate(y, 1)
 m = swm.wm.utils.load_pretrained(f"{ck}/weights_epoch_50.pt").to(DEV).eval()
 Hs = []
 for p in heads:
-    hd = _MarginHead().to(DEV); hd.load_state_dict(torch.load(p, map_location=DEV)["margin_gp"]); Hs.append(hd.eval())
+    Hs.append(_load_margin_head(p, DEV).eval())   # GP (MLP) or linear margin function
 for cond in E.AXES["color"][:2]:
     with torch.no_grad():
         emb = E.encode(m, E.render_cond(E.DubinsSwmEnv(), st0, cond, tf_fixed)).to(DEV).unsqueeze(1)
