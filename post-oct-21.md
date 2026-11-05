@@ -9,7 +9,12 @@ What is established, with pointers to the sections below. All margin-function nu
 - Planning (main results: $h$ = GP margin function; full and encoder-only safety regs both reported on all four conditions): raw CEM collapses for every model under a consistent recolor (7.5-34% success). A safety-first soft cost cuts collision on every jac-base model on every condition (jac: 5-27%) and never helps the sigreg-base models. Encoder-only is at least as safe as full on every jac-base safety-reg model on every condition; jac+adv_h encoder-only is the safest model under purple. The label-free GP margin function matches the oracle value function. 85-100% of the remaining collisions are false-safe: $h$ on imagined latents is optimistic, more so further ahead.
 - Fixing the optimistic $h$ (red, replanning every 5 steps): training $h$ on predicted latents of CEM-style plans labelled in the simulator lowers collision on 6 of 8 jac-base models (jac 84.5 / 6.0); with a margin that grows with the imagined step it cuts the robust models' collision the most (jac+adv_h encoder-only 17.5 -> 6.0, jac+pull+adv_h 41.5 -> 17.5) at 5-10 points of success. No variant helps under purple: from a recolored start the predictor loses $h$'s ranking within 5-10 imagined steps on every model (AUC 0.40-0.59 over the horizon), although real purple frames keep it (0.885-0.963 on the robust models).
 - Why purple imagined states fail (jac+pull+adv_h encoder-only): the predictor tracks the purple world about as well as the red one (error 0.57 vs 0.53 of the latent variance at step 10), but in the purple region $h$'s safe/unsafe gap is about 30 times smaller (0.06 vs 1.73), so one step of prediction noise already erases its ranking. The defect is the size of the safety gap under an appearance shift, not predictor drift.
+- Linear margin function (all 13 Dubins models, red-trained): every safety reg keeps at most 26% of its red safe/unsafe gap under purple, but on the robust models the scale-free separation survives (Table 18). A linear $h$ equals the GP margin function on red and ranks real purple frames much better (jac 0.575 -> 0.972, jac+adv_h 0.174 -> 0.991; Table 19), with higher sign accuracy under diamond and rotation; under purple both still put every state on one side of 0, and linear $h$ does not change CEM (Table 22).
 - Free-running 5-step rollout loss (SLS-squared style; 15-epoch screens): imagined-state ranking on red improves by 10-18 AUC points at steps 10-25, but CEM ties on red (modest gain with replanning for one model) and raw CEM under purple gets worse in all 4 comparisons. 50-epoch versions pending.
+- Margin-function training length (Dubins, 1000-10000 steps): rotate and shape are unaffected, but color is not. jac, jac+pull and jac+pull+adv_h lose 0.2+ AUC with longer training and the ranking among them changes with the step count; only adv_λ is stable (0.982-0.989). The spread comes from the margin function being underdetermined by red data (a 0.5% latent perturbation moves color AUC by up to 0.049). On imagined latents a 2500-step $h$ changes little (jac false-safe 0.115 -> 0.109), so it will not change CEM much.
+- World-model training: Dubins models are still improving at epoch 50 by prediction loss (validation fell 15-40% from epoch 30 to 49; it looks flat at the end only because the cosine schedule ends). Downstream metrics mostly are not: at the epoch-30/40/50 checkpoints of 11 models the headline margin-function and imagined-$h$ results hold throughout, and every jac-base model (with or without a safety reg) plus jac+pull and adv_λ is flat. Still improving at epoch 50: imagined-rollout quality of the sigreg-base models and of jac+pull+adv_h and jac+pull+adv_λ, which weakens the "safety regs plan worse on the jac+pull base" comparison until that pair is retrained longer. Cartpole has plateaued. `*_jaclam50` runs are unstable and several Point seed-2 runs stopped early.
+- Predictor gain: every predictor expands a latent perturbation 2-3× in one step, but over 25 steps the worst case is only 17-35× and a typical direction about 1×, and the most-amplifying models plan best. A non-expansion penalty would bind but there is no sign that amplification limits planning.
+- Data: the Dubins dataset is not expert data. 94% of frames are diffusion-policy rollouts from 39 training checkpoints with starts anywhere in the arena, 6% are the 200 MPPI demonstrations; collisions do not end episodes (16.7% failure frames), and "the last 10% of episodes" used for held-out windows is 49% MPPI. Write-up: `dubins_dataset.tex` (branch `worktree-dubins-dataset-doc`), with `point_dataset.tex` for the Safety Gym Point data.
 - Safety regs and planning: on the same base, jac+pull+adv_h loses 6.2 ± 1.8 points of raw-CEM success against jac+pull over 3 WM seeds. The adversarial predictor term raises rollout error. Dropping it (encoder-only) helps planning, and keeps color robustness for adv_h on the jac base (jac+adv_h 0.167 -> 0.808, jac+pull+adv_h 0.782 -> 0.891) but not for adv_λ (0.40-0.44 on every base). Best safety-reg models with the soft cost: jac+adv_h encoder-only and jac+adv_λ encoder-only (red 8% collision at about 80% success, matching jac).
 
 Open:
@@ -17,10 +22,11 @@ Open:
 - One WM seed per model except the jac+pull pair; jac+adv_h's color inversion (0.167) in particular needs a second seed.
 - Fair replanning (goal cost at every imagined step): red done for the full models plus two encoder-only models; OOD done (all 108 cells). Not run: the other encoder-only models, and encoder-only on OOD.
 - Why adding a full safety reg to jac weakens the soft cost: executed-plan traces show the extra collisions are false-safe (85-100% in all 9 models traced). A growing margin and $h$ on predicted latents help on red, not under purple (see "Fixing the optimistic $h$").
-- Purple planning: the failure is $h$'s collapsed safe/unsafe gap in the recolored region (Table 15), not predictor drift. Next: a red-only training term that keeps that gap under generic appearance perturbations.
+- Purple planning: the failure is $h$'s collapsed safe/unsafe gap in the recolored region (Table 15), not predictor drift. Next: a red-only training term that keeps that gap under generic appearance perturbations. A linear $h$ recovers the ranking on real purple frames but not the sign (Tables 19-20), so the remaining test is a rank-based cost (dynamic threshold) with the linear $h$.
 - Rollout loss: 50-epoch sigreg, jac, jac+pull, jac+pull+adv_h encoder-only training (branch `rollout-loss`), then the per-step test and the CEM screen; keep it only if red with replanning beats the original by about 10 points and purple is not worse (confirm key cells at 200 episodes).
 - WM seeds 1 and 2 (original training) for sigreg, jac+adv_h encoder-only and jac+pull+adv_h encoder-only are training (`train_seeds_dubins.sh`).
 - Rerun on correct frames: the hidden cartpole and support-vs-aliasing sections, and the 3-WM-seed comparison.
+- Margin-function training length: color tables use an untuned 5000 steps; pick a red-only stopping rule (held-out balanced sign accuracy on a separate validation split) or report several lengths, and check whether the same holds on cartpole and Point.
 
 # Regularizers
 
@@ -37,6 +43,88 @@ Every model is the same le-wm world model (ViT-tiny encoder $f$, transformer pre
   with the direction $\hat\lambda = \lambda/\|\lambda\|$ detached and the length $\|\lambda\|$ keeping its gradient. No head and no AUC gate. Called "λ batch-detached" in the report.
 
 Both safety regs use the same $L_\infty$ attack ($\varepsilon = 8/255$); the names say which readout the attack is aimed at. The report's "w/o h" model, which protects the whole latent, would be adv_latent.
+
+Where the code is: jac is `JacobianNormReg` (`le-wm/module.py:467`) and pull is `ActionSeparationReg` with `pull_target` set (`module.py:347`; the two-sided term at `:397`; without `pull_target` the class is a one-sided hinge $\mathrm{relu}(L^2\|\Delta a\|^2 - \|\Delta z\|^2)$, not used in any reported model). adv_h and adv_λ are `SafetyAdvInvarianceReg` (`attack=linf`, `target=head` vs `target=lambda, lambda_mode=batch_detached`), which is not on main: it is on branch `safety-adv-reg` and in the code snapshot `/data/seongbin/lewm/code_safeadv_92e7589/module.py:316` that trained every adv model. Flag recipes: `le-wm/scripts/train_dubins_jacadv.sh`.
+
+Why pull targets exactly 1: never tuned. It copies jac's $L = 1$ as the predictor-side analogue (one latent unit per action standard deviation; SIGReg keeps the latent near unit scale and actions are z-scored). The free ratio without the term is about 1.7 at frameskip 1, and a ratio of norms between a 192-dimensional latent and the action is not dimensionally principled; the always-on two-sided form was chosen over hinges on the frameskip-5 collapse, but the target value was not swept.
+
+## Setup relative to upstream LeWM
+
+- Architecture unchanged from the imported le-wm (`config/train/model/lewm.yaml`): ViT-tiny encoder (patch 14, 12 layers, 3 heads, width 192), CLS token through a BatchNorm MLP projector, 6-layer 16-head AdaLN-zero predictor with dropout 0.1 and its own projector. Only the JEPA+GRU ablation swaps the predictor.
+- Training differs from the upstream default in length only: 50 epochs instead of 100 (cosine schedule fitted to 50), frameskip 1 for Dubins and cartpole. The predictor sees 3 frames of history and is trained one step ahead with teacher forcing (4-frame windows), with no multi-step loss except the rollout-loss variants.
+- Planning is much deeper than upstream. The upstream benchmarks (pushT, cube, reacher, tworoom) use frameskip 5, `action_block` 5, a 5-step predictor horizon and replanning every 5 steps, with a 1-frame planning history. Our Dubins protocol (sg25clean) rolls the predictor out 25 steps from 1 real frame, 5 times deeper into the free-running regime that one-step training never covers.
+
+## Do the world models converge in 50 epochs?
+
+Every world model trains for 50 epochs with a cosine learning-rate schedule that reaches about 0 at epoch 50, so every loss curve is flat over the last few epochs by construction (0-2% change from epoch 45 to 49 on almost every run). The useful signal is how much validation prediction loss still fell from epoch 30, when the learning rate was still about 35% of its peak. Sources: wandb histories and, for runs with wandb off, the per-epoch validation tables in `run_logs/` (they match wandb exactly where both exist).
+
+Validation pred_loss, Dubins
+
+| Model | Epoch 10 | Epoch 20 | Epoch 30 | Epoch 40 | Epoch 49 | Drop 30 -> 49 | Drop 40 -> 49 |
+|---|---|---|---|---|---|---|---|
+| sigreg (same-config rerun `sigreg_dubins_sched50`) | 0.0139 | 0.0073 | 0.0047 | 0.0035 | 0.0033 | 30.6% | 6.4% |
+| jac (seed replicates `jacw1_s100` / `_s200`) | 0.0201 / 0.0202 | 0.0139 / 0.0136 | 0.0111 / 0.0097 | 0.0090 / 0.0083 | 0.0086 / 0.0081 | 22.4% / 16.2% | 5.0% / 2.5% |
+| jac+pull | 0.0256 | 0.0160 | 0.0120 | 0.0101 | 0.0099 | 17.2% | 1.4% |
+| adv_h | 0.0510 | 0.0164 | 0.0128 | 0.0091 | 0.0085 | 33.2% | 6.8% |
+| jac+adv_h | 0.0289 | 0.0178 | 0.0134 | 0.0113 | 0.0110 | 17.8% | 2.6% |
+| jac+pull+adv_h | 0.0362 | 0.0226 | 0.0167 | 0.0144 | 0.0142 | 15.3% | 1.9% |
+| adv_λ | 0.0424 | 0.0147 | 0.0132 | 0.0082 | 0.0080 | 39.5% | 2.0% |
+| jac+adv_λ | 0.0211 | 0.0143 | 0.0114 | 0.0096 | 0.0093 | 18.0% | 3.1% |
+| jac+pull+adv_λ | 0.0263 | 0.0187 | 0.0148 | 0.0125 | 0.0123 | 16.8% | 1.6% |
+
+- Dubins models are not converged in the strict sense: prediction loss still fell 15-40% between epochs 30 and 49 on every model (seed replicates 13-57%; encoder-only models 14-26%), and it flattens only because the learning rate runs out. A longer schedule would very likely lower prediction loss further, most for sigreg, adv_h and adv_λ. Whether that changes margin-function or planning results is untested; prediction loss is not what limits planning (Diagnostics).
+- The two models the tables use for sigreg and jac (`sigreg_only_dubins`, `jacobian_w1_dubins`) kept no history; the rows above are a same-config rerun and the seed replicates.
+- Cartpole (all 9 models) has plateaued: 4.5-9.3% from epoch 30, 0.2-1.9% from epoch 40. Safety Gym Point and Car runs are mostly plateaued, but several adversarial-λ runs reach their lowest validation loss at epoch 0-2 and some rise late, so prediction loss is not a reliable convergence signal for those.
+- Broken runs, not used in the tables: `lewm_dubins_jaclam50_*` and `sg_jaclam50_*` (validation loss spikes to 20-25 and ends 20-50× above jac+adv_λ; best epoch around 17-27).
+- Incomplete runs: several Point seed-2 runs (and one seed-1) stopped early, at epochs 2-49, and are not running; the Point seed tables need them rerun.
+
+### Are the downstream metrics still moving?
+
+Prediction loss is not what the conclusions rest on, so we re-measured the downstream quantities at the saved epoch-10/20/30/40/50 checkpoints of 6 Dubins models, and at epochs 30/40/50 of 5 more (the jac-base safety-reg models, full and encoder-only, and jac+pull+adv_λ) (`epoch_downstream.py`, results `epoch_downstream.results.txt`). Per checkpoint: the GP margin function (5000 steps, red uniform states, seed-0 states) and its zero-shot AUC on color (mean ± std over 3 margin-function seeds), rotate and shape (seed 0); the same seed-0 margin function on imagined latents of 600 CEM-style plans (as Table 16); and goal-distance fidelity near the goal (Spearman between latent distance to the goal frame and true $(x, y)$ distance, true distance < 0.5, 400 held-out windows × 25 steps), on real and on imagined latents. The epoch-50 rows reproduce Table 16 (e.g. sigreg 0.814 / 0.423, jac+pull 0.961 / 0.281). Caveat: an epoch-30 checkpoint is not a model trained for 30 epochs, since the learning rate is still about 35% of its peak there.
+
+| Model | Epoch | Color AUC | Rotate AUC | Shape AUC | Imagined red AUC | Imagined red false-safe | Goal fidelity, real | Goal fidelity, imagined |
+|---|---|---|---|---|---|---|---|---|
+| sigreg | 30 | 0.124 ± 0.007 | 0.100 | 0.715 | 0.801 | 0.260 | 0.570 | 0.235 |
+| sigreg | 40 | 0.100 ± 0.004 | 0.059 | 0.566 | 0.811 | 0.383 | 0.566 | 0.368 |
+| sigreg | 50 | 0.101 ± 0.004 | 0.086 | 0.464 | 0.814 | 0.423 | 0.570 | 0.448 |
+| jac | 30 | 0.553 ± 0.049 | 0.994 | 0.995 | 0.960 | 0.129 | 0.654 | 0.509 |
+| jac | 40 | 0.522 ± 0.023 | 0.991 | 0.995 | 0.966 | 0.129 | 0.659 | 0.496 |
+| jac | 50 | 0.558 ± 0.017 | 0.990 | 0.994 | 0.968 | 0.113 | 0.659 | 0.522 |
+| jac+pull | 30 | 0.776 ± 0.062 | 0.990 | 0.994 | 0.938 | 0.290 | 0.658 | 0.386 |
+| jac+pull | 40 | 0.786 ± 0.053 | 0.983 | 0.994 | 0.952 | 0.285 | 0.683 | 0.437 |
+| jac+pull | 50 | 0.833 ± 0.100 | 0.979 | 0.993 | 0.961 | 0.281 | 0.686 | 0.445 |
+| adv_h | 30 | 0.961 ± 0.018 | 0.995 | 0.998 | 0.662 | 0.881 | 0.518 | 0.205 |
+| adv_h | 40 | 0.853 ± 0.026 | 0.995 | 0.998 | 0.669 | 0.793 | 0.524 | 0.244 |
+| adv_h | 50 | 0.764 ± 0.056 | 0.995 | 0.998 | 0.661 | 0.796 | 0.526 | 0.298 |
+| jac+pull+adv_h | 30 | 0.889 ± 0.040 | 0.997 | 0.997 | 0.891 | 0.384 | 0.635 | 0.237 |
+| jac+pull+adv_h | 40 | 0.774 ± 0.073 | 0.996 | 0.997 | 0.907 | 0.382 | 0.651 | 0.326 |
+| jac+pull+adv_h | 50 | 0.817 ± 0.096 | 0.996 | 0.997 | 0.927 | 0.351 | 0.653 | 0.375 |
+| adv_λ | 30 | 0.972 ± 0.009 | 0.997 | 0.998 | 0.612 | 0.754 | 0.482 | 0.009 |
+| adv_λ | 40 | 0.985 ± 0.002 | 0.998 | 0.998 | 0.593 | 0.833 | 0.486 | 0.168 |
+| adv_λ | 50 | 0.985 ± 0.003 | 0.998 | 0.998 | 0.628 | 0.764 | 0.487 | 0.183 |
+| jac+adv_h | 30 | 0.272 ± 0.102 | 0.997 | 0.997 | 0.934 | 0.298 | 0.659 | 0.499 |
+| jac+adv_h | 40 | 0.177 ± 0.059 | 0.996 | 0.997 | 0.946 | 0.298 | 0.668 | 0.469 |
+| jac+adv_h | 50 | 0.102 ± 0.043 | 0.996 | 0.997 | 0.951 | 0.266 | 0.670 | 0.504 |
+| jac+adv_h, encoder-only | 30 | 0.717 ± 0.092 | 0.996 | 0.996 | 0.954 | 0.147 | 0.643 | 0.482 |
+| jac+adv_h, encoder-only | 40 | 0.728 ± 0.053 | 0.995 | 0.996 | 0.963 | 0.151 | 0.653 | 0.482 |
+| jac+adv_h, encoder-only | 50 | 0.808 ± 0.073 | 0.995 | 0.996 | 0.969 | 0.109 | 0.655 | 0.515 |
+| jac+adv_λ | 30 | 0.851 ± 0.148 | 0.997 | 0.997 | 0.948 | 0.197 | 0.659 | 0.490 |
+| jac+adv_λ | 40 | 0.970 ± 0.015 | 0.996 | 0.997 | 0.959 | 0.221 | 0.679 | 0.492 |
+| jac+adv_λ | 50 | 0.970 ± 0.012 | 0.996 | 0.997 | 0.968 | 0.173 | 0.678 | 0.527 |
+| jac+adv_λ, encoder-only | 30 | 0.273 ± 0.020 | 0.996 | 0.997 | 0.949 | 0.152 | 0.658 | 0.516 |
+| jac+adv_λ, encoder-only | 40 | 0.514 ± 0.165 | 0.996 | 0.997 | 0.961 | 0.131 | 0.673 | 0.511 |
+| jac+adv_λ, encoder-only | 50 | 0.482 ± 0.135 | 0.996 | 0.997 | 0.961 | 0.129 | 0.676 | 0.536 |
+| jac+pull+adv_λ | 30 | 0.957 ± 0.044 | 0.996 | 0.997 | 0.917 | 0.356 | 0.621 | 0.355 |
+| jac+pull+adv_λ | 40 | 0.957 ± 0.035 | 0.996 | 0.997 | 0.935 | 0.300 | 0.651 | 0.395 |
+| jac+pull+adv_λ | 50 | 0.944 ± 0.047 | 0.995 | 0.997 | 0.949 | 0.294 | 0.653 | 0.429 |
+
+- By base: every jac-base model, with or without a safety reg and full or encoder-only (jac, jac+adv_h, jac+adv_λ and both encoder-only versions), has flat imagined-$h$ and goal-fidelity metrics from epoch 40 to 50 (imagined red AUC within 0.01, goal fidelity within 0.04). The jac+pull models with a safety reg (jac+pull+adv_h, jac+pull+adv_λ) are still improving on imagined rollouts at epoch 50 (imagined goal fidelity +0.03-0.05 per 10 epochs), as are the sigreg-base models.
+- Stable from epoch 30: rotate and shape on every regularized model, real-frame goal fidelity on every model (at most +0.03 from epoch 30 to 50), and everything for jac. The headline claims hold at every checkpoint from epoch 30: sigreg fails every shift, every regularized model handles rotate and shape, adv_λ has the best color AUC (0.972-0.985), and jac reads imagined states best.
+- Still moving at epoch 50: imagined goal fidelity on sigreg (0.368 -> 0.448 from epoch 40 to 50), adv_h (0.244 -> 0.298) and jac+pull+adv_h (0.326 -> 0.375), and jac+pull+adv_h's imagined red AUC (0.891 -> 0.927 from epoch 30). These are the models with the most prediction loss left (previous table). jac, jac+pull and adv_λ are flat from epoch 40 to 50.
+- Consequence for one claim: "jac+pull+adv_h loses 6.2 points of raw-CEM success against jac+pull" and "the adversarial predictor term raises rollout error" compare a model whose imagined rollouts are still improving (imagined goal fidelity 0.375 at epoch 50) with one that has flattened (0.445). Part of that gap may be the 50-epoch budget rather than the regularizer; a 100-epoch retrain of that pair would settle it.
+- adv_h's color robustness falls with training (0.961 -> 0.853 -> 0.764 from epoch 30 to 50); its color number depends on the training budget as well as on the margin-function length. jac+adv_h's color inversion deepens with training (0.272 -> 0.177 -> 0.102), so the main table's 0.167 is not an artifact of the epoch-50 snapshot. jac+adv_λ settles at 0.970 from epoch 40; the encoder-only models' color AUC is noisy across margin-function seeds (± 0.07-0.17).
+- sigreg is still moving, but in the direction that strengthens its conclusion: shape 0.715 -> 0.464 and imagined false-safe 0.260 -> 0.423.
+- Framing: report the models as trained for an equal 50-epoch budget with the learning rate annealed to zero, not as converged.
 
 # Dubins
 
@@ -82,6 +170,38 @@ Reading:
 - No threshold survives color: every model is near 0.500. Predicted-safe fraction on purple: jac, jac+pull and jac+pull+adv_h call everything safe; adv_h and adv_λ call everything unsafe.
 - Encoder-only ablations (adversarial penalty on the encoder term only): color AUC drops from 0.789 to 0.454 (adv_h) and from 0.982 to 0.440 (adv_λ), so the predictor term is where the color robustness comes from (see the CEM section for its planning cost).
 - One WM seed per model; jac+adv_h's color inversion in particular needs a second seed before it is trusted. The earlier 3-WM-seed comparison was run on transposed frames and needs redoing.
+
+## Does the color result depend on how long the margin function is trained?
+
+Every margin function above is trained for a fixed 5000 AdamW steps at a constant learning rate of $3 \times 10^{-4}$ (no schedule, no validation split), constants copied from the Dreamer config and never tuned. We retrained it for 1000, 2500, 5000 and 10000 steps on the same latents, for 6 models × 3 axes × 3 margin-function seeds (`dub_fixed_margin.py` protocol; logs `/data/seongbin/lewm/safeadv_results/margin_steps/`). The 5000-step rows reproduce the tables above exactly (54 of 54 runs).
+
+Color AUC by margin-function training steps
+
+| Model | 1000 | 2500 | 5000 | 10000 |
+|---|---|---|---|---|
+| sigreg | 0.108 ± 0.023 | 0.098 ± 0.009 | 0.110 ± 0.019 | 0.094 ± 0.005 |
+| jac | 0.673 ± 0.022 | 0.620 ± 0.027 | 0.591 ± 0.019 | 0.475 ± 0.043 |
+| jac+pull | 0.758 ± 0.028 | 0.716 ± 0.054 | 0.787 ± 0.084 | 0.548 ± 0.144 |
+| adv_h | 0.613 ± 0.067 | 0.748 ± 0.130 | 0.789 ± 0.074 | 0.740 ± 0.131 |
+| jac+pull+adv_h | 0.965 ± 0.002 | 0.931 ± 0.018 | 0.782 ± 0.068 | 0.761 ± 0.030 |
+| adv_λ | 0.989 ± 0.002 | 0.982 ± 0.003 | 0.982 ± 0.001 | 0.987 ± 0.002 |
+
+In-distribution balanced sign accuracy by training steps (pooled over 3 axes × 3 seeds)
+
+| Model | 1000 | 2500 | 5000 | 10000 |
+|---|---|---|---|---|
+| sigreg | 0.940 | 0.939 | 0.939 | 0.932 |
+| jac | 0.965 | 0.967 | 0.956 | 0.942 |
+| jac+pull | 0.970 | 0.968 | 0.956 | 0.945 |
+| adv_h | 0.980 | 0.979 | 0.977 | 0.974 |
+| jac+pull+adv_h | 0.979 | 0.978 | 0.975 | 0.971 |
+| adv_λ | 0.979 | 0.977 | 0.977 | 0.978 |
+
+- Rotate and shape do not depend on training length: every model stays within ±0.003 AUC from 1000 to 10000 steps, except sigreg on shape (0.789, 0.540, 0.487, 0.453).
+- Color does. Longer training lowers it on jac (0.673 -> 0.475), jac+pull (0.758 -> 0.548) and jac+pull+adv_h (0.965 -> 0.761), raises it on adv_h (0.613 -> 0.789 at 5000), and leaves adv_λ flat (0.982-0.989). At 1000 steps jac+pull+adv_h nearly ties adv_λ; at 5000 it ties jac+pull and adv_h. So the color ranking among jac+pull, adv_h and jac+pull+adv_h in the main table depends on the step count; adv_λ's lead does not.
+- In-distribution AUC is flat at 0.982-0.999 for every length, so it cannot pick the length. Balanced sign accuracy can: it is best at 1000-2500 steps and falls by 5000-10000 (jac 0.967 -> 0.942), so the margin function starts to overfit red after about 2500 steps. A red-only stopping rule would therefore pick 1000-2500, not 5000.
+- The variance is mostly the margin function, not the latent. Feeding the encoder channels-last instead of contiguous tensors moves the latents by about 0.5% (max abs difference 0.004 on a latent scale of 0.77) and leaves in-distribution AUC unchanged (±0.0002), yet moves color AUC by up to 0.049 (jac+pull, 5000 steps, seed 0). Many margin functions fit red equally well and extrapolate to purple differently; nothing in the red data chooses between them. adv_λ is the exception (±0.001-0.003 across seeds and lengths): there the representation itself fixes how every red-fit margin function reads purple.
+- Implication for the tables: report color at more than one step count, or use a red-only stopping rule (e.g. stop when held-out balanced sign accuracy stops improving, on a validation split separate from the test states), or average several margin functions. Only adv_λ's color claim is robust to this choice.
 
 # Safety Gym
 
@@ -146,6 +266,7 @@ reason to encode them.
   now an exact image rotation.
 - Training data: `sg_point_ovh224.h5`, 170,400 clean frames, about 850 random layouts, same trajectories and labels as the
   fixedfar set.
+- How it was collected (`collect_overhead_train.sh`, branch `point-dynamics-probe`): 852 scripted 200-step episodes, one random layout each (8 hazards of radius 0.2), 4 shards with seeds 20-23. Per episode, with probability 0.6 the robot dashes at the nearest hazard and brakes at a random distance 0-0.4 from its edge, otherwise it drives at the goal at full thrust without braking and overshoots; both with action noise. Episodes are cut into 8-frame chunks and shuffled, so the file holds 21,300 "episodes" of 8 frames and no training sample is longer than 8 steps. 19.3% failure frames (no chunk was dropped: the natural rate already exceeded the 17% target), mostly the robot sitting inside a hazard (mean speed 0.20 when unsafe vs 0.54 when safe). Not expert data. Write-up: `point_dataset.tex` (branch `worktree-dubins-dataset-doc`).
 - Eval: margin function (margin_gp) trained on 50k frames of the training set, scored on 5000 poses of a separate collection (every
   layout unseen). Views: base, purple hazards (color), 90 degree camera rotation (rotate), box-shaped hazards (shape), Car
   robot instead of Point (agent).
@@ -1196,6 +1317,178 @@ Table 15. $h$'s signal vs prediction noise, jac+pull+adv_h encoder-only. Gap = m
 - So the defect is the size of $h$'s safe/unsafe gap under an appearance shift, not predictor drift. This explains why a better predictor (the rollout loss) does not help purple, and why $h$-side fixes (margin, retraining on predicted latents, dynamic threshold) cannot either.
 - Candidate fixes, all trained on red data only (OOD stays a test-only measure): keep the safety gap under generic appearance perturbations (an encoder-side penalty when perturbations shrink the safe/unsafe distance along the direction $h$ reads; the saved $\lambda$-projected invariance idea is one version); or weight the prediction loss by how much an error moves $h$, so the predictor is most accurate along the directions $h$ depends on.
 - Caveats: one WM seed; 400 states; a single recolor (purple).
+
+### Would a shorter-trained margin function help CEM?
+
+The margin-function step sweep in the Dubins section shows that 2500 steps transfers better to purple frames than 5000 for some models. To see whether it would change planning, we trained 2500-step GP margin functions with exactly the protocol of the CEM's $h$ (`train_gp_margin_dubins_steps.py`: red, uniform states, seed 0; saved as `margin_gp_fail_red_s0_st2500.pt`) and scored them, next to the CEM's own 5000-step $h$, on imagined latents of CEM-style plans (`diag_imag_steps.py`: the setup of `diag_imag_color_dubins.py`, 600 starts from the last 10% of episodes, 25-step plans $a_t = b + 0.7\,\varepsilon_t$, simulator labels, 16.7% of imagined steps unsafe).
+
+Table 16. $h$ on imagined latents, margin function trained 2500 vs 5000 steps (one margin-function seed). False-safe = share of unsafe imagined steps with $h \ge 0$.
+
+| Model | Red AUC, 2500 | Red AUC, 5000 | Red false-safe, 2500 | Red false-safe, 5000 | Red false-safe at step 25, 2500 | Red false-safe at step 25, 5000 | Purple AUC, 2500 | Purple AUC, 5000 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sigreg | 0.813 | 0.814 | 0.353 | 0.423 | 0.509 | 0.630 | 0.517 | 0.499 |
+| jac | 0.969 | 0.969 | 0.109 | 0.115 | 0.222 | 0.213 | 0.422 | 0.429 |
+| jac+pull | 0.961 | 0.961 | 0.204 | 0.281 | 0.315 | 0.435 | 0.512 | 0.504 |
+| adv_h | 0.645 | 0.661 | 0.789 | 0.796 | 0.981 | 0.981 | 0.419 | 0.409 |
+| jac+pull+adv_h | 0.923 | 0.927 | 0.330 | 0.351 | 0.417 | 0.435 | 0.551 | 0.586 |
+| adv_λ | 0.621 | 0.626 | 0.763 | 0.765 | 0.972 | 0.972 | 0.576 | 0.572 |
+
+- Training length does not change how $h$ ranks imagined states: red AUC is equal within 0.016 on every model.
+- On red, the 2500-step $h$ sits lower on unsafe imagined states, which cuts false-safe for sigreg (0.423 -> 0.353) and jac+pull (0.281 -> 0.204; at step 25 0.435 -> 0.315). jac, the best planner, does not move (0.115 -> 0.109); adv_h and adv_λ are unchanged and read imagined red states poorly either way.
+- On purple the ranking is near chance at both lengths (0.41-0.59), as in Table 6 and Table 15: the better real-frame transfer of the shorter margin function does not survive prediction.
+- Verdict: switching to 2500 steps will not change CEM much. The one cell worth a CEM run is jac+pull on red.
+- Why sigreg and adv_h differ from Table 1's "old" column (same checkpoint and margin-function file): the start frame. Table 1 (`train_gp_margin_imag_dubins.py`) starts each rollout from the stored dataset frame, whose goal marker sits where it was during collection (jittered around $(1.3, 0)$); this table, Table 6 and Table 15 (`diag_imag_color_dubins.py`, `diag_purple_drift.py`) re-render the start state with the swm environment, which draws the marker at its default $(1.3, 0)$, as in the margin function's own training frames. The two frames differ only in the marker (about 0.3% of pixels). An A/B on identical starts, plans and labels (`imag_startframe_ab.py`, CEM's 5000-step $h$):
+
+| Model | Start frame | Imagined AUC | False-safe |
+| --- | --- | ---: | ---: |
+| sigreg | re-rendered | 0.814 | 0.423 |
+| sigreg | dataset frame | 0.664 | 0.967 |
+| adv_h | re-rendered | 0.661 | 0.796 |
+| adv_h | dataset frame | 0.584 | 0.983 |
+| jac | re-rendered | 0.969 | 0.115 |
+| jac | dataset frame | 0.968 | 0.115 |
+
+  The dataset-frame rows reproduce Table 1 (sigreg 0.642 / 0.968, adv_h 0.637 / 0.971); jac is unaffected. So $h$ on sigreg and adv_h is sensitive to where the goal marker is drawn, which the real-frame check (marker nuisance, Diagnostics) had found for sigreg only (AUC 0.985 -> 0.901), not for adv_h. In CEM the marker is drawn at each episode's goal, a third placement, so neither row is exactly CEM's input for these two models; this sensitivity may be part of why the soft cost never helps the sigreg-base models (not tested). The jac-base conclusions do not depend on the choice.
+
+### Does the predictor amplify latent errors?
+
+A proposed predictor regularizer is a non-expansion penalty on the dynamics, $\max(0, \|\partial P/\partial z\| - 1)^2$, on the argument that with gain $L > 1$ per step a rollout error grows like $L^H$. Before adding it we measured the gain of the existing predictors (`pred_jacobian_gain.py`): 128 random windows of the Dubins dataset, 3 real context frames and real actions, rollout as in `JEPA.rollout`; per window, the largest singular value $\sigma_{\max}$ of the map from the 3-frame context window to the predicted latent $K$ steps later (power iteration, 15 steps; $Jv$ by central finite differences, $J^\top u$ by autograd), and the gain along one random direction. A gain above 1 means a perturbation grows.
+
+Table 17. Predictor gain, median over windows (p90 for 25 steps in parentheses). "Last frame" = gain with respect to the last context frame only.
+
+| Model | 1 step, window | 1 step, last frame | 5 steps | 10 steps | 25 steps | 25 steps, random direction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sigreg | 3.14 | 3.11 | 10.1 | 14.5 | 20.4 (42.7) | 0.66 |
+| jac | 2.70 | 2.68 | 7.1 | 13.7 | 34.8 (63.4) | 1.03 |
+| jac+pull | 2.02 | 2.00 | 6.2 | 12.5 | 33.4 (51.3) | 1.11 |
+| adv_h | 2.55 | 2.51 | 6.9 | 13.1 | 23.3 (49.5) | 0.67 |
+| jac+pull+adv_h | 2.18 | 2.16 | 6.0 | 11.3 | 24.8 (51.4) | 0.81 |
+| adv_λ | 2.63 | 2.62 | 6.0 | 10.0 | 17.0 (41.8) | 0.60 |
+| sigreg, rollout loss from 3 frames | 2.91 | 1.48 | 5.4 | 6.1 | 4.7 (11.4) | 0.22 |
+| jac, rollout loss from 3 frames | 1.83 | 1.65 | 4.4 | 8.4 | 19.6 (25.9) | 0.61 |
+
+- Every predictor expands at one step ($\sigma_{\max}$ 1.8-3.1), so a non-expansion hinge at 1 would be active everywhere.
+- The growth is far from exponential: a one-step gain of 2-3 compounded over 25 steps would be $10^{8}$-$10^{12}$, the measured worst case is 17-35, and a typical direction is about neutral (0.60-1.11). The most-amplified directions change from step to step instead of stacking.
+- Amplification does not track planning: jac and jac+pull amplify the most at 25 steps and plan best, consistent with collision tracking goal-distance fidelity rather than 25-step rollout error (Diagnostics).
+- The two rollout-loss rows are the failed first version (rollout from 3 real frames), whose rollouts collapse after step 5 (Table 7). Their low long-horizon gain (sigreg 4.7, random direction 0.22) is that collapse, not stability; low amplification is not good by itself. The fixed version (`*_roll5b50`) is still training (epochs 5-34) and is pending.
+- As written the proposal also bounds the wrong norm: it uses the Frobenius norm via the same Hutchinson estimator as jac, but the error argument needs the spectral norm, and for a near-identity 192-dimensional map $\|J\|_F \approx \sqrt{192} \approx 14$, so a Frobenius bound of 1 would force strong contraction against the prediction loss. If tried, it should be a spectral-norm hinge (power iteration) on the full context window, and only after the fixed rollout-loss models are evaluated, since they attack the same compounding-error problem.
+
+### Linear margin function and the safety gap under recolor
+
+Table 15 located the purple failure in the size of $h$'s safe/unsafe gap, not in the predictor. Two follow-ups on that, both trained on red only (OOD stays a test-only measure). First, does each safety reg keep the safe/unsafe separation along the direction a red-trained readout uses (real latents, no prediction)? Second, does a linear readout $h(z) = w^\top z + b$ transfer better than the GP margin function's 192-512-512-1 MLP? The linear margin function uses exactly the GP recipe (`train_lin_margin_dubins.py`: margin_gp loss on the failure label, 8000 uniform red states, training orientation, same steps, learning rate and batch) and is loaded by the soft-cost CEM through `_load_margin_head` (`safe_solver.py`); saved as `margin_lin_fail_red_s0.pt` next to each WM.
+
+#### Does the safety reg keep the gap?
+
+`diag_gap_ratio_dubins.py`: 4000 uniform states (seed 1, disjoint from the margin functions' training draws) rendered with red and with purple circles. The safety direction $u$ = mean latent of safe states minus mean latent of unsafe states, fit on red and normalized. Per color, $d' = (\bar p_\text{safe} - \bar p_\text{unsafe}) / s$ with $p = u^\top z$ and $s$ the pooled within-class standard deviation of $p$ (scale-free separation); raw gap ratio = purple gap / red gap along $u$.
+
+Table 18. Safe/unsafe separation along the red safety direction, real latents, red vs purple.
+
+| Model | $d'$ red | $d'$ purple | $d'$ ratio | Raw gap ratio | AUC of $u^\top z$, red | AUC of $u^\top z$, purple |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sigreg | 2.62 | 0.39 | 0.150 | 0.017 | 0.985 | 0.707 |
+| adv_h | 5.65 | 1.56 | 0.276 | 0.078 | 0.998 | 0.992 |
+| adv_λ | 6.66 | 3.79 | 0.569 | 0.100 | 0.998 | 0.993 |
+| jac | 4.19 | 2.39 | 0.572 | 0.044 | 0.995 | 0.967 |
+| jac+adv_h | 4.50 | 2.33 | 0.519 | 0.199 | 0.996 | 0.986 |
+| jac+adv_h, encoder-only | 4.70 | 1.71 | 0.365 | 0.039 | 0.996 | 0.905 |
+| jac+adv_λ | 5.35 | 4.20 | 0.786 | 0.260 | 0.997 | 0.996 |
+| jac+adv_λ, encoder-only | 5.03 | 0.48 | 0.095 | 0.055 | 0.996 | 0.735 |
+| jac+pull | 3.85 | 2.86 | 0.744 | 0.159 | 0.994 | 0.988 |
+| jac+pull+adv_h | 4.80 | 4.27 | 0.891 | 0.227 | 0.997 | 0.992 |
+| jac+pull+adv_h, encoder-only | 4.71 | 4.45 | 0.945 | 0.195 | 0.996 | 0.996 |
+| jac+pull+adv_λ | 5.40 | 4.19 | 0.776 | 0.166 | 0.997 | 0.996 |
+| jac+pull+adv_λ, encoder-only | 5.31 | 0.05 | 0.010 | 0.093 | 0.996 | 0.271 |
+
+- Every model keeps at most 26% of its red gap along $u$ under purple (raw gap ratio 0.017-0.260): the latent compresses along the safety direction.
+- The within-class spread shrinks with it, so the scale-free separation survives on the robust models ($d'$ ratio 0.945 for jac+pull+adv_h encoder-only, 0.891 jac+pull+adv_h, 0.786 jac+adv_λ) and the single direction $u$ still ranks purple states at AUC 0.99+ on 7 models. A readout that only needs the ordering could work; one that needs the absolute scale (a fixed margin) cannot.
+- The live-gap term in the safety reg (the $g$ floor in the adv_h / adv_λ penalty) does keep more gap when the reg also trains the predictor path: jac+adv_h 0.199 vs its encoder-only version 0.039, jac+adv_λ 0.260 vs 0.055, jac+pull+adv_λ 0.166 vs 0.093, jac+pull+adv_h 0.227 vs 0.195. It is computed on red batches, so it does not stop the shrinkage under a shift it never sees.
+- jac+adv_λ encoder-only and jac+pull+adv_λ encoder-only lose the separation entirely ($d'$ ratio 0.095 and 0.010).
+
+#### Linear vs GP margin function on real frames
+
+`eval_head_color_dubins.py`, extended to all three axes: the same 4000 seed-1 states rendered red (in-distribution), purple, diamond (labels follow the diamond shape) and rotated 90°; both margin functions of each WM scored on the same latents. GP columns match Table 5 where they overlap.
+
+Table 19. AUC on real latents, linear vs GP margin function, both trained on red.
+
+| Model | Red, linear | Red, GP | Purple, linear | Purple, GP | Diamond, linear | Diamond, GP | Rot 90°, linear | Rot 90°, GP |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sigreg | 0.986 | 0.987 | 0.631 | 0.082 | 0.973 | 0.433 | 0.056 | 0.097 |
+| adv_h | 0.998 | 0.999 | 0.991 | 0.692 | 0.998 | 0.998 | 0.990 | 0.993 |
+| adv_λ | 0.999 | 0.999 | 0.992 | 0.980 | 0.998 | 0.999 | 0.997 | 0.996 |
+| jac | 0.997 | 0.998 | 0.972 | 0.575 | 0.996 | 0.995 | 0.989 | 0.989 |
+| jac+adv_h | 0.998 | 0.999 | 0.991 | 0.174 | 0.996 | 0.997 | 0.994 | 0.995 |
+| jac+adv_h, encoder-only | 0.998 | 0.998 | 0.877 | 0.885 | 0.996 | 0.997 | 0.995 | 0.994 |
+| jac+adv_λ | 0.998 | 0.999 | 0.997 | 0.981 | 0.997 | 0.998 | 0.994 | 0.995 |
+| jac+adv_λ, encoder-only | 0.997 | 0.999 | 0.734 | 0.336 | 0.996 | 0.997 | 0.994 | 0.994 |
+| jac+pull | 0.997 | 0.998 | 0.991 | 0.862 | 0.995 | 0.994 | 0.978 | 0.978 |
+| jac+pull+adv_h | 0.998 | 0.999 | 0.993 | 0.896 | 0.997 | 0.998 | 0.994 | 0.994 |
+| jac+pull+adv_h, encoder-only | 0.997 | 0.998 | 0.996 | 0.954 | 0.996 | 0.997 | 0.995 | 0.995 |
+| jac+pull+adv_λ | 0.998 | 0.998 | 0.996 | 0.986 | 0.997 | 0.997 | 0.994 | 0.994 |
+| jac+pull+adv_λ, encoder-only | 0.998 | 0.998 | 0.271 | 0.581 | 0.996 | 0.997 | 0.994 | 0.993 |
+
+Table 20. Balanced sign accuracy on real latents (0.500 = every state on one side of 0), same states and heads as Table 19.
+
+| Model | Red, linear | Red, GP | Purple, linear | Purple, GP | Diamond, linear | Diamond, GP | Rot 90°, linear | Rot 90°, GP |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sigreg | 0.948 | 0.947 | 0.500 | 0.500 | 0.641 | 0.484 | 0.407 | 0.489 |
+| adv_h | 0.981 | 0.981 | 0.502 | 0.502 | 0.978 | 0.966 | 0.712 | 0.566 |
+| adv_λ | 0.980 | 0.982 | 0.500 | 0.500 | 0.982 | 0.981 | 0.975 | 0.960 |
+| jac | 0.978 | 0.971 | 0.500 | 0.500 | 0.954 | 0.928 | 0.899 | 0.862 |
+| jac+adv_h | 0.980 | 0.976 | 0.500 | 0.499 | 0.970 | 0.955 | 0.963 | 0.916 |
+| jac+adv_h, encoder-only | 0.979 | 0.975 | 0.500 | 0.500 | 0.973 | 0.947 | 0.958 | 0.905 |
+| jac+adv_λ | 0.982 | 0.977 | 0.500 | 0.500 | 0.976 | 0.965 | 0.962 | 0.937 |
+| jac+adv_λ, encoder-only | 0.981 | 0.975 | 0.500 | 0.500 | 0.975 | 0.959 | 0.960 | 0.919 |
+| jac+pull | 0.977 | 0.969 | 0.500 | 0.500 | 0.950 | 0.919 | 0.878 | 0.830 |
+| jac+pull+adv_h | 0.980 | 0.975 | 0.500 | 0.500 | 0.975 | 0.957 | 0.947 | 0.898 |
+| jac+pull+adv_h, encoder-only | 0.977 | 0.973 | 0.500 | 0.500 | 0.960 | 0.943 | 0.934 | 0.895 |
+| jac+pull+adv_λ | 0.981 | 0.978 | 0.500 | 0.500 | 0.978 | 0.961 | 0.960 | 0.925 |
+| jac+pull+adv_λ, encoder-only | 0.980 | 0.973 | 0.405 | 0.500 | 0.969 | 0.946 | 0.951 | 0.907 |
+
+Table 21. Median $h$ on safe / unsafe states, red and purple.
+
+| Model | Red, linear | Red, GP | Purple, linear | Purple, GP |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 1.06 / −0.42 | 1.53 / −0.39 | −1.06 / −1.06 | 0.20 / 0.24 |
+| adv_h | 1.22 / −0.84 | 1.91 / −0.83 | −0.84 / −0.98 | −0.52 / −0.54 |
+| adv_λ | 0.77 / −1.29 | 1.12 / −1.27 | −1.00 / −1.21 | −0.64 / −0.76 |
+| jac | 0.32 / −0.31 | 1.54 / −0.45 | −0.47 / −0.50 | 0.17 / 0.17 |
+| jac+adv_h | 0.29 / −0.36 | 1.71 / −0.56 | −0.61 / −0.75 | 0.12 / 0.20 |
+| jac+adv_h, encoder-only | 0.32 / −0.34 | 1.65 / −0.54 | −0.12 / −0.14 | 0.29 / 0.26 |
+| jac+adv_λ | 0.40 / −0.43 | 1.67 / −0.58 | −0.32 / −0.54 | 0.17 / 0.05 |
+| jac+adv_λ, encoder-only | 0.40 / −0.38 | 1.69 / −0.55 | 6.09 / 6.02 | 0.77 / 0.77 |
+| jac+pull | 0.33 / −0.29 | 1.47 / −0.42 | −0.33 / −0.44 | 0.36 / 0.33 |
+| jac+pull+adv_h | 0.31 / −0.37 | 1.65 / −0.59 | −0.19 / −0.36 | 0.34 / 0.22 |
+| jac+pull+adv_h, encoder-only | 0.33 / −0.36 | 1.56 / −0.53 | −0.11 / −0.25 | 0.38 / 0.32 |
+| jac+pull+adv_λ | 0.45 / −0.43 | 1.62 / −0.55 | −0.21 / −0.36 | 0.19 / 0.08 |
+| jac+pull+adv_λ, encoder-only | 0.38 / −0.43 | 1.55 / −0.49 | −0.20 / −0.10 | 0.26 / 0.25 |
+
+- Red: the two margin functions are equivalent (AUC within 0.002, sign accuracy within 0.008).
+- Purple ranking: the linear margin function matches or beats the GP one on 11 of 13 models, with large gains exactly where the GP one collapses or inverts: jac 0.575 -> 0.972, jac+adv_h 0.174 -> 0.991, adv_h 0.692 -> 0.991, jac+pull 0.862 -> 0.991, jac+pull+adv_h 0.896 -> 0.993. The MLP's extra nonlinear features are what break under recolor; the linear direction survives, as Table 18's AUC of $u^\top z$ predicted. Exceptions: jac+adv_h encoder-only (tie, 0.877 vs 0.885) and jac+pull+adv_λ encoder-only (0.271 vs 0.581); both adv_λ encoder-only models stay poor with either readout, as their lost separation in Table 18 predicts.
+- Purple sign: balanced sign accuracy is 0.500 for every model and both margin functions (0.405 once). Purple moves every state to one side of 0: the linear margin function mostly reads all purple states as unsafe (medians below 0), the GP one on the jac-base models as safe (medians just above 0, the dangerous side), and the linear one's safe-unsafe median distance is at most 0.22 on purple vs 0.6-0.9 on red for the jac-base models. For jac+adv_λ encoder-only the linear margin function sits at +6 on all purple states.
+- Diamond and rotated 90°: equal AUC, and the linear margin function has higher sign accuracy on every jac-base model (rotated 90°: +0.03 to +0.05, e.g. jac 0.862 -> 0.899, jac+adv_h encoder-only 0.905 -> 0.958). Its red values are symmetric around 0 (about ±0.35) where the GP one's are not (about +1.6 / −0.5).
+- sigreg is beyond either readout: rotated 90° is inverted for both (0.056, 0.097), the support failure of Diagnostics.
+
+#### Linear $h$ in CEM
+
+Safety-first soft cost ($w = 1000$, $C = 10^4$), goal cost at every imagined step, `lin_h_cem_queue.sh`, 50 episodes per cell (the screen size); GP cells are the 200-episode runs of Tables 2-3.
+
+Table 22. CEM, linear vs GP margin function as $h$, success / collision (%). Blank = not run.
+
+| Model | Setting | Scenario | Linear $h$ (50 episodes) | GP $h$ (200 episodes) |
+| --- | --- | --- | --- | --- |
+| jac | replan every 5 | red | 86.0 / 10.0 | 84.0 / 8.0 |
+| jac | replan every 5 | purple | 22.0 / 52.0 | 34.5 / 43.0 |
+| jac | open loop | red | 82.0 / 14.0 | 76.0 / 22.0 |
+| jac | open loop | purple | 44.0 / 24.0 | 43.0 / 26.5 |
+| jac+pull+adv_h, encoder-only | replan every 5 | red | 74.0 / 20.0 | 76.0 / 20.5 |
+| jac+pull+adv_h, encoder-only | replan every 5 | purple | 24.0 / 36.0 | 30.5 / 47.5 |
+| jac+pull+adv_h, encoder-only | open loop | red | 60.0 / 38.0 | |
+| jac+pull+adv_h, encoder-only | open loop | purple | 40.0 / 30.0 | |
+
+- Red: a tie within the noise of 50 episodes (about ±7 points at these rates).
+- Purple: no consistent gain. jac with replanning collides more (52 vs 43), jac+pull+adv_h encoder-only collides less but also succeeds less (36 vs 47.5 collision, 24 vs 30.5 success), open loop is a tie.
+- This is what Tables 19-21 predict: the fixed-margin cost needs $h$'s sign, and under purple the sign is wrong for every model and both margin functions; the linear margin function fixes only the ranking. A rank-based cost (the dynamic threshold, `HQ`) is the cost that could use the recovered ranking, provided it survives prediction (Table 15 shows the gap on imagined purple latents is within one step of prediction noise for the GP $h$; not yet measured for the linear one).
+- Caveats: one WM seed, one margin-function seed, 50-episode CEM cells.
 
 ### Do CEM's elites converge? Elite spread
 
