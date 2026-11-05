@@ -20,7 +20,7 @@ Experiments and findings that were dropped or are not in the main reports, kept 
 
 ### Marker sensitivity of $h$ (start-frame A/B)
 
-Found while explaining why `diag_imag_steps.py` disagreed with Table 1 of post-oct-21.md for sigreg and adv_h. Table 1 (`train_gp_margin_imag_dubins.py`) starts imagined rollouts from the stored dataset frame (marker jittered on the 1.3 line); `diag_imag_steps.py`, `diag_imag_color_dubins.py` and `diag_purple_drift.py` re-render the start state (marker at the default). The two frames differ only in the marker (about 0.3% of pixels). Same starts, plans, labels and margin function (CEM's 5000-step $h$), `imag_startframe_ab.py`:
+Found while explaining why `diag_imag_steps.py` disagreed with Table 5 of post-oct-21.md for sigreg and adv_h. Table 5 (`train_gp_margin_imag_dubins.py`) starts imagined rollouts from the stored dataset frame (marker jittered on the 1.3 line); `diag_imag_steps.py`, `diag_imag_color_dubins.py` and `diag_purple_drift.py` re-render the start state (marker at the default). The two frames differ only in the marker (about 0.3% of pixels). Same starts, plans, labels and margin function (CEM's 5000-step $h$), `imag_startframe_ab.py`:
 
 | Model | Start frame | Imagined AUC | False-safe |
 | --- | --- | ---: | ---: |
@@ -31,7 +31,7 @@ Found while explaining why `diag_imag_steps.py` disagreed with Table 1 of post-o
 | jac | re-rendered | 0.969 | 0.115 |
 | jac | dataset frame | 0.968 | 0.115 |
 
-- The dataset-frame rows reproduce Table 1 (sigreg 0.642 / 0.968, adv_h 0.637 / 0.971).
+- The dataset-frame rows reproduce Table 5 (sigreg 0.642 / 0.968, adv_h 0.637 / 0.971).
 - $h$ on sigreg and adv_h reads the marker height as if it carried safety information; jac ignores it. The earlier real-frame check (post-oct-21.md, Diagnostics) had found the marker to be a nuisance for sigreg only (AUC 0.985 -> 0.901 when the marker moves).
 
 ### Default-marker CEM experiment
@@ -77,7 +77,7 @@ What is saved:
 
 Tables in this section are numbered R1-R7; "Table N" alone refers to post-oct-21.md, numbered as after this section was moved out of it.
 
-Question: does training the predictor on its own multi-step rollouts make CEM plan better, in-distribution and under OOD shifts? Code on branch `rollout-loss` (`train.py`, `rollout_steps = K`); scripts `train_rollout5_dubins.sh`, `roll5b_check.sh` (per-step test of Table 6), `roll5b_quick_cem.sh`, `roll5b50_eval_queue.sh`.
+Question: does training the predictor on its own multi-step rollouts make CEM plan better, in-distribution and under OOD shifts? Code on branch `rollout-loss` (`train.py`, `rollout_steps = K`); scripts `train_rollout5_dubins.sh`, `roll5b_check.sh` (per-step test of Table 10), `roll5b_quick_cem.sh`, `roll5b50_eval_queue.sh`.
 
 ### How le-wm and SLS-squared train the predictor
 
@@ -89,7 +89,7 @@ Question: does training the predictor on its own multi-step rollouts make CEM pl
 
 The first version started each rollout from 3 real latents and scored only the last position. CEM never trains on this case: its rollouts start from 1 frame and grow to 3, so predictions from 1-2 frames of context lost their training signal. After 50 epochs the rollouts collapse after step 5 (imagined latents converge to one region; median $h$ on safe and unsafe states both 0.70), and planning breaks.
 
-Table R1. Per-step AUC of $h$ on imagined latents from a red start (as Table 6), jac, original vs first rollout-loss version (both 50 epochs). The original row is from `diag_purple_drift.py` (400 held-out states), the rollout-loss row from `diag_imag_color_dubins.py` (600); same plan distribution.
+Table R1. Per-step AUC of $h$ on imagined latents from a red start (as Table 10), jac, original vs first rollout-loss version (both 50 epochs). The original row is from `diag_purple_drift.py` (400 held-out states), the rollout-loss row from `diag_imag_color_dubins.py` (600); same plan distribution.
 
 | jac | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -111,7 +111,7 @@ Table R2. CEM, replanning every 5 steps, goal cost at every imagined step, succe
 
 The fixed version starts every training rollout from one real frame and lets the context grow to 3, exactly as CEM does, so every context length is trained. To get an answer fast, jac and jac+pull+adv_h encoder-only were trained for 15 epochs (learning-rate schedule fitted to 15) and compared with the original models' checkpoints at a similar number of epochs.
 
-Table R3. Per-step AUC of $h$ on imagined latents (as Table 6), red and purple starts, at matched training length. The original jac only kept every 10th checkpoint.
+Table R3. Per-step AUC of $h$ on imagined latents (as Table 10), red and purple starts, at matched training length. The original jac only kept every 10th checkpoint.
 
 | Model | Epoch | Start | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -161,7 +161,7 @@ Table R5. Same screen for jac+pull+adv_h encoder-only, original vs rollout loss,
 
 Same per-step test and CEM screen as the 15-epoch versions, on the fully trained models (50 epochs, cosine schedule fitted to 50). CEM: 50 episodes per rollout-loss cell; originals are the 200-episode runs of the main report.
 
-Table R6. Per-step AUC of $h$ on imagined latents (as Table 6), 50 epochs. Original rows from Table 6 of post-oct-21.md and Table R1; blank = not measured. Held-out AUC of the GP margin function on real red latents: sigreg 0.902 with the rollout loss (the original sigreg margin function reaches 0.987 on the Table 14 states), jac 0.992, jac+pull+adv_h encoder-only 0.999.
+Table R6. Per-step AUC of $h$ on imagined latents (as Table 10), 50 epochs. Original rows from Table 10 of post-oct-21.md and Table R1; blank = not measured. Held-out AUC of the GP margin function on real red latents: sigreg 0.902 with the rollout loss (the original sigreg margin function reaches 0.987 on the Table 2 states), jac 0.992, jac+pull+adv_h encoder-only 0.999.
 
 | Model | Start | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -196,4 +196,350 @@ Table R7. CEM at 50 epochs, goal cost at every imagined step, success / collisio
 - Purple, safety-first with replanning: mixed. jac collides more (43.0 -> 60.0); jac+pull+adv_h encoder-only collides less (47.5 -> 38.0, 50 episodes, about 1.2 binomial SDs), although its early-step ranking on purple, the only window where the original had any signal (0.80-0.88 at steps 1-5), drops to 0.50-0.59. Worth a 200-episode confirmation if the rollout loss is picked up again.
 - The one large gain is raw CEM, open loop, purple for jac (16.0 / 80.5 -> 48.0 / 56.0, 50 episodes), consistent with better long-horizon rollouts; it disappears once the safety cost is on.
 - sigreg: the rollout loss with only SIGReg on the latent made the encoder less informative (margin function 0.902 held-out AUC on real red latents; imagined red AUC 0.87 at step 1) and planning collapsed (red success 60-63 -> 12-22). The jac-base encoders were unaffected (0.992, 0.999).
-- If picked up again: longer rollouts ($K = 10$ or 25) would matter mainly for open loop; the purple failure is the size of $h$'s gap, not prediction (Table 10), so a predictor-side loss is not expected to fix it.
+- If picked up again: longer rollouts ($K = 10$ or 25) would matter mainly for open loop; the purple failure is the size of $h$'s gap, not prediction (Table 14), so a predictor-side loss is not expected to fix it.
+
+## Cartpole: why viewpoint fails, value functions, caveats (transposed frames, superseded 2026-10-28)
+
+Moved from `post-oct-21.md` (it was hidden there in an HTML comment). Computed with `eval_cartpole.encode_pixels`, which passed numpy HWC frames to `ToImage` and so transposed them; the cartpole OOD tables in the main report were rerun on correct frames, these sections were not. Rerun before using any number here.
+
+### Why viewpoint fails: the latent moves, the information stays
+
+Test episodes split in half: heads trained on one half, scored on the other, either zero-shot (trained on base frames) or
+retrained on the shifted frames (`shift_diag.py`). "latent move" = mean ‖z_shift(s) - z(s)‖ over paired states divided by
+the mean distance between two random states. Four of the models.
+
+| Model | shift | latent move | margin zero-shot | margin retrained | supervised V zero-shot | supervised V retrained |
+|---|---|---|---|---|---|---|
+| sigreg | zoom_out | 1.372 | 0.612 ± 0.006 | 0.995 ± 0.001 | 0.599 ± 0.019 | 0.943 ± 0.001 |
+| jac+pull | zoom_out | 0.919 | 0.699 ± 0.003 | 0.984 ± 0.000 | 0.604 ± 0.002 | 0.936 ± 0.004 |
+| jac+pull+adv_λ | zoom_out | 1.310 | 0.575 ± 0.006 | 0.971 ± 0.004 | 0.647 ± 0.026 | 0.930 ± 0.001 |
+| jac+adv_h | zoom_out | 0.951 | 0.587 ± 0.013 | 0.981 ± 0.003 | 0.570 ± 0.034 | 0.933 ± 0.001 |
+| sigreg | color | 0.597 | 0.637 ± 0.012 | 0.991 ± 0.000 | 0.703 ± 0.004 | 0.934 ± 0.003 |
+| jac+pull | color | 0.598 | 0.780 ± 0.005 | 0.987 ± 0.000 | 0.663 ± 0.010 | 0.931 ± 0.002 |
+| jac+pull+adv_λ | color | 0.340 | 0.904 ± 0.004 | 0.981 ± 0.001 | 0.893 ± 0.003 | 0.930 ± 0.001 |
+| jac+adv_h | color | 0.441 | 0.777 ± 0.014 | 0.984 ± 0.004 | 0.830 ± 0.004 | 0.933 ± 0.002 |
+
+- Nothing is lost: a margin retrained on zoomed frames is as good as in-distribution (0.971-0.995).
+- A 0.8× zoom moves the latent about as far as the distance between two random states (0.92-1.37), roughly twice the color
+  shift. Every zoomed frame lands where the head never saw data. A likely reason, not tested: in training only the cart and
+  pole move, while zoom also moves and rescales the walls, track and background, which never changed.
+- adv_λ's color invariance is specific to color: it has the smallest color move (0.340) but a zoom move as large
+  as sigreg's (1.310).
+
+### Value functions: critic and supervised
+
+The margin is "currently safe"; doomed states need a separate value function. Two heads, both on the last three latents
+[z_{t-2}, z_{t-1}, z_t] (one frame carries no velocity):
+
+- critic: trained by RL on the learned margin, the discounted safety Bellman backup, with no value labels. This version is
+  offline fitted Q-iteration on dataset transitions; it will be replaced by the Dubins setup (avoid-DDPG in WM imagination,
+  `wm_ddpg.py`).
+- supervised value function: regression on the oracle V, a diagnostic for whether the information is in the latent at all.
+
+Scored by doomed AUC: among not-failed frames, doomed vs safe. The same critic on the true state reaches 0.985 ± 0.004.
+
+Critic doomed AUC
+
+| Model | base | color | zoom_out | pan_x | pan_y |
+|---|---|---|---|---|---|
+| sigreg | 0.953 ± 0.002 | 0.785 ± 0.014 | 0.681 ± 0.048 | 0.689 ± 0.040 | 0.770 ± 0.014 |
+| jac | 0.962 ± 0.002 | 0.797 ± 0.008 | 0.699 ± 0.015 | 0.735 ± 0.020 | 0.618 ± 0.024 |
+| jac+pull | 0.962 ± 0.002 | 0.850 ± 0.011 | 0.617 ± 0.006 | 0.666 ± 0.013 | 0.670 ± 0.033 |
+| adv_h | 0.940 ± 0.001 | 0.788 ± 0.023 | 0.740 ± 0.005 | 0.591 ± 0.014 | 0.732 ± 0.022 |
+| jac+adv_h | 0.952 ± 0.004 | 0.893 ± 0.007 | 0.692 ± 0.060 | 0.687 ± 0.079 | 0.770 ± 0.035 |
+| jac+pull+adv_h | 0.948 ± 0.002 | 0.863 ± 0.004 | 0.669 ± 0.078 | 0.692 ± 0.057 | 0.748 ± 0.031 |
+| adv_λ | 0.939 ± 0.003 | 0.843 ± 0.020 | 0.646 ± 0.019 | 0.512 ± 0.017 | 0.705 ± 0.019 |
+| jac+adv_λ | 0.947 ± 0.003 | 0.913 ± 0.004 | 0.563 ± 0.057 | 0.587 ± 0.052 | 0.589 ± 0.016 |
+| jac+pull+adv_λ | 0.958 ± 0.002 | 0.947 ± 0.003 | 0.642 ± 0.007 | 0.584 ± 0.019 | 0.626 ± 0.009 |
+
+Supervised value function doomed AUC
+
+| Model | base | color | zoom_out | pan_x | pan_y |
+|---|---|---|---|---|---|
+| sigreg | 0.953 ± 0.001 | 0.772 ± 0.022 | 0.625 ± 0.020 | 0.616 ± 0.017 | 0.662 ± 0.023 |
+| jac | 0.949 ± 0.001 | 0.701 ± 0.020 | 0.663 ± 0.017 | 0.730 ± 0.017 | 0.603 ± 0.015 |
+| jac+pull | 0.950 ± 0.002 | 0.750 ± 0.008 | 0.672 ± 0.002 | 0.702 ± 0.008 | 0.703 ± 0.028 |
+| adv_h | 0.946 ± 0.001 | 0.772 ± 0.015 | 0.672 ± 0.005 | 0.559 ± 0.009 | 0.790 ± 0.005 |
+| jac+adv_h | 0.946 ± 0.001 | 0.863 ± 0.006 | 0.665 ± 0.027 | 0.625 ± 0.042 | 0.793 ± 0.019 |
+| jac+pull+adv_h | 0.947 ± 0.002 | 0.814 ± 0.010 | 0.629 ± 0.016 | 0.638 ± 0.011 | 0.693 ± 0.035 |
+| adv_λ | 0.943 ± 0.002 | 0.834 ± 0.009 | 0.605 ± 0.001 | 0.501 ± 0.004 | 0.682 ± 0.007 |
+| jac+adv_λ | 0.942 ± 0.003 | 0.878 ± 0.007 | 0.556 ± 0.011 | 0.551 ± 0.038 | 0.556 ± 0.005 |
+| jac+pull+adv_λ | 0.944 ± 0.001 | 0.924 ± 0.003 | 0.666 ± 0.006 | 0.632 ± 0.022 | 0.617 ± 0.016 |
+
+Reading:
+
+- In distribution the critic finds doomed states without doomed labels (0.939-0.962), as well as the supervised value function
+  (0.942-0.953). The margin alone ranks doomed below safe at only about 0.70, so the separate value function is needed.
+- Under the shifts the critic follows the margin's pattern: adv_λ best on color (jac+pull+adv_λ 0.947), every
+  model weak on viewpoint (0.512-0.770). The supervised value function drops just as much, so the failure is in the latent, not the critic.
+
+### Caveats and next steps
+
+- One training seed per model. Single-seed color results on Dubins did not hold over 3 seeds, so the color ranking here
+  needs reseeds.
+- The critic above is the offline version; the Dubins-style imagination critic is next.
+- The oracle is slightly optimistic near V = 0 (9% of V > 0.02 states fail under the greedy policy). Doomed labels are clean.
+- A viewpoint fix probably needs geometric training (zoom/pan augmentation, or an adversary over small camera shifts)
+  rather than appearance invariance.
+
+## Support vs. aliasing (transposed frames, superseded 2026-10-28)
+
+Moved from `post-oct-21.md` (hidden there in an HTML comment). All three benchmarks' latents here came from the transposed-frame evals; rerun before using any number.
+
+### Support vs. aliasing: where does an OOD shift send the latent?
+
+An OOD shift can fail a frozen safety head in two different ways:
+- Off support: the shifted latent leaves the region the training latents occupy. The head's value there is
+  extrapolation. A support- or uncertainty-based OOD detector can catch it, and a head retrained on the new
+  appearance can recover.
+- Aliasing: the shifted latent stays inside the training support but lands among training latents of the other class.
+  The frame looks like a different, real state. No support-based detector can flag it.
+
+Method (`ood_diag/support_alias.py` on branch `worktree-support-aliasing`; WM frozen; same paired renders, margin_gp
+head and train/test split as each benchmark's main eval; one head seed):
+- Support: mean distance to the 10 nearest training latents. "Off support" = above the 99th percentile of the same
+  distance for native test frames, so about 0.01 off support by construction in distribution.
+- Sign flips: the head's sign on the shifted frame differs from its sign on the native frame of the same state.
+- kNN-neighbourhood AUC: AUC of "fraction of safe training neighbours", a head-free read of whether a frame's
+  neighbourhood carries its class. Unsafe aliasing rate: unsafe states whose 10 nearest training latents are mostly safe.
+- Point: "native" is the base view on unseen layouts (the eval set); the layout table compares those frames with
+  held-out episodes of the training layouts.
+
+#### Dubins
+
+Off-support fraction (kNN distance above the 99th percentile of native test frames)
+
+| model | color | rotate | shape |
+|---|---|---|---|
+| sigreg | 1.000 | 1.000 | 0.997 |
+| jac | 0.000 | 0.063 | 0.003 |
+| jac+pull | 0.000 | 0.073 | 0.004 |
+| adv_h | 0.999 | 0.244 | 0.011 |
+| jac+pull+adv_h | 0.000 | 0.068 | 0.009 |
+| adv_λ | 1.000 | 0.928 | 0.009 |
+
+Sign flips vs the native frame: inside support / off support
+
+| model | color | rotate | shape |
+|---|---|---|---|
+| sigreg | 0.000 / 0.814 | 0.000 / 0.186 | 0.000 / 0.608 |
+| jac | 0.839 / 0.000 | 0.036 / 0.005 | 0.045 / 0.001 |
+| jac+pull | 0.163 / 0.000 | 0.061 / 0.013 | 0.054 / 0.001 |
+| adv_h | 0.001 / 0.825 | 0.003 / 0.016 | 0.052 / 0.004 |
+| jac+pull+adv_h | 0.164 / 0.000 | 0.017 / 0.004 | 0.058 / 0.002 |
+| adv_λ | 0.000 / 0.823 | 0.000 / 0.022 | 0.057 / 0.000 |
+
+kNN-neighbourhood AUC (fraction of safe training neighbours as the score)
+
+| model | native | color | rotate | shape |
+|---|---|---|---|---|
+| sigreg | 0.962 | 0.500 | 0.646 | 0.844 |
+| jac | 0.983 | 0.662 | 0.990 | 0.987 |
+| jac+pull | 0.974 | 0.500 | 0.980 | 0.955 |
+| adv_h | 0.997 | 0.572 | 0.996 | 0.997 |
+| jac+pull+adv_h | 0.994 | 0.500 | 0.990 | 0.979 |
+| adv_λ | 0.996 | 0.493 | 0.997 | 0.994 |
+
+Unsafe states whose nearest training latents are mostly safe
+
+| model | native | color | rotate | shape |
+|---|---|---|---|---|
+| sigreg | 0.217 | 0.000 | 0.994 | 0.000 |
+| jac | 0.165 | 1.000 | 0.193 | 0.155 |
+| jac+pull | 0.275 | 1.000 | 0.217 | 0.311 |
+| adv_h | 0.031 | 0.000 | 0.080 | 0.087 |
+| jac+pull+adv_h | 0.125 | 1.000 | 0.107 | 0.183 |
+| adv_λ | 0.037 | 0.000 | 0.128 | 0.114 |
+
+#### Cartpole
+
+Off-support fraction (kNN distance above the 99th percentile of native test frames)
+
+| model | purple | zoom_out | pan_x | pan_y |
+|---|---|---|---|---|
+| sigreg | 0.828 | 1.000 | 1.000 | 1.000 |
+| jac | 0.887 | 1.000 | 1.000 | 1.000 |
+| jac+pull | 0.892 | 1.000 | 1.000 | 1.000 |
+| adv_h | 0.430 | 0.947 | 1.000 | 0.970 |
+| jac+adv_h | 0.731 | 1.000 | 1.000 | 1.000 |
+| jac+pull+adv_h | 0.692 | 1.000 | 1.000 | 1.000 |
+| adv_λ | 0.383 | 0.774 | 0.802 | 0.937 |
+| jac+adv_λ | 0.355 | 1.000 | 1.000 | 1.000 |
+| jac+pull+adv_λ | 0.311 | 1.000 | 1.000 | 1.000 |
+
+Sign flips vs the native frame: inside support / off support
+
+| model | purple | zoom_out | pan_x | pan_y |
+|---|---|---|---|---|
+| sigreg | 0.039 / 0.309 | 0.000 / 0.649 | 0.000 / 0.639 | 0.000 / 0.715 |
+| jac | 0.012 / 0.493 | 0.000 / 0.563 | 0.000 / 0.541 | 0.000 / 0.360 |
+| jac+pull | 0.008 / 0.268 | 0.000 / 0.503 | 0.000 / 0.473 | 0.000 / 0.362 |
+| adv_h | 0.149 / 0.127 | 0.001 / 0.305 | 0.000 / 0.482 | 0.000 / 0.248 |
+| jac+adv_h | 0.034 / 0.122 | 0.000 / 0.590 | 0.000 / 0.394 | 0.000 / 0.336 |
+| jac+pull+adv_h | 0.036 / 0.140 | 0.000 / 0.345 | 0.000 / 0.295 | 0.000 / 0.474 |
+| adv_λ | 0.095 / 0.140 | 0.061 / 0.333 | 0.080 / 0.347 | 0.024 / 0.277 |
+| jac+adv_λ | 0.039 / 0.079 | 0.000 / 0.804 | 0.000 / 0.791 | 0.000 / 0.452 |
+| jac+pull+adv_λ | 0.080 / 0.073 | 0.000 / 0.774 | 0.000 / 0.787 | 0.000 / 0.750 |
+
+kNN-neighbourhood AUC (fraction of safe training neighbours as the score)
+
+| model | native | purple | zoom_out | pan_x | pan_y |
+|---|---|---|---|---|---|
+| sigreg | 0.988 | 0.585 | 0.650 | 0.655 | 0.771 |
+| jac | 0.996 | 0.707 | 0.747 | 0.751 | 0.745 |
+| jac+pull | 0.995 | 0.730 | 0.673 | 0.688 | 0.739 |
+| adv_h | 0.986 | 0.649 | 0.753 | 0.615 | 0.774 |
+| jac+adv_h | 0.994 | 0.705 | 0.569 | 0.606 | 0.668 |
+| jac+pull+adv_h | 0.993 | 0.737 | 0.599 | 0.639 | 0.759 |
+| adv_λ | 0.988 | 0.767 | 0.710 | 0.672 | 0.579 |
+| jac+adv_λ | 0.986 | 0.871 | 0.509 | 0.501 | 0.587 |
+| jac+pull+adv_λ | 0.985 | 0.831 | 0.527 | 0.503 | 0.602 |
+
+Unsafe states whose nearest training latents are mostly safe
+
+| model | native | purple | zoom_out | pan_x | pan_y |
+|---|---|---|---|---|---|
+| sigreg | 0.145 | 0.670 | 0.703 | 0.686 | 0.531 |
+| jac | 0.152 | 0.567 | 0.176 | 0.167 | 0.529 |
+| jac+pull | 0.141 | 0.626 | 0.596 | 0.572 | 0.584 |
+| adv_h | 0.231 | 0.699 | 0.635 | 0.724 | 0.363 |
+| jac+adv_h | 0.182 | 0.673 | 0.648 | 0.713 | 0.727 |
+| jac+pull+adv_h | 0.186 | 0.612 | 0.626 | 0.603 | 0.390 |
+| adv_λ | 0.255 | 0.583 | 0.622 | 0.702 | 0.738 |
+| jac+adv_λ | 0.266 | 0.455 | 0.495 | 0.547 | 0.561 |
+| jac+pull+adv_λ | 0.267 | 0.571 | 0.639 | 0.583 | 0.391 |
+
+#### Point (overhead@224)
+
+Layout shift (base view, unseen layouts vs held-out frames of training layouts)
+
+| model | off support | distance ratio | head sign error | kNN class mismatch (in support) |
+|---|---|---|---|---|
+| sigreg | 0.967 | 49.77 | 0.209 | 0.518 |
+| jac | 0.076 | 1.25 | 0.114 | 0.104 |
+| jac+pull | 0.110 | 1.36 | 0.159 | 0.166 |
+| adv_h | 0.717 | 26.10 | 0.076 | 0.093 |
+| jac+adv_h | 0.049 | 1.14 | 0.049 | 0.071 |
+| jac+pull+adv_h | 0.112 | 1.43 | 0.152 | 0.154 |
+| adv_λ | 0.543 | 325.29 | 0.122 | 0.141 |
+| jac+adv_λ | 0.023 | 1.11 | 0.083 | 0.090 |
+| jac+pull+adv_λ | 0.026 | 1.12 | 0.072 | 0.084 |
+
+Off-support fraction (kNN distance above the 99th percentile of native test frames)
+
+| model | color | rotate | shape | agent |
+|---|---|---|---|---|
+| sigreg | 0.973 | 0.001 | 0.000 | 0.010 |
+| jac | 0.036 | 0.006 | 0.008 | 0.027 |
+| jac+pull | 0.066 | 0.011 | 0.032 | 0.019 |
+| adv_h | 0.000 | 0.007 | 0.307 | 0.009 |
+| jac+adv_h | 0.017 | 0.002 | 0.012 | 0.301 |
+| jac+pull+adv_h | 0.000 | 0.003 | 0.002 | 0.000 |
+| adv_λ | 0.041 | 0.003 | 0.002 | 0.010 |
+| jac+adv_λ | 0.268 | 0.006 | 0.015 | 0.939 |
+| jac+pull+adv_λ | 0.304 | 0.008 | 0.015 | 0.970 |
+
+Sign flips vs the native frame: inside support / off support
+
+| model | color | rotate | shape | agent |
+|---|---|---|---|---|
+| sigreg | 0.000 / 0.046 | 0.060 / 0.000 | 0.048 / 0.000 | 0.005 / 0.000 |
+| jac | 0.545 / 0.009 | 0.051 / 0.001 | 0.022 / 0.000 | 0.101 / 0.018 |
+| jac+pull | 0.099 / 0.000 | 0.035 / 0.003 | 0.035 / 0.000 | 0.043 / 0.000 |
+| adv_h | 0.869 / 0.000 | 0.052 / 0.000 | 0.128 / 0.000 | 0.063 / 0.000 |
+| jac+adv_h | 0.110 / 0.002 | 0.100 / 0.000 | 0.030 / 0.001 | 0.058 / 0.041 |
+| jac+pull+adv_h | 0.081 / 0.000 | 0.067 / 0.001 | 0.031 / 0.000 | 0.056 / 0.000 |
+| adv_λ | 0.170 / 0.000 | 0.056 / 0.000 | 0.009 / 0.000 | 0.053 / 0.000 |
+| jac+adv_λ | 0.258 / 0.038 | 0.087 / 0.001 | 0.047 / 0.001 | 0.005 / 0.152 |
+| jac+pull+adv_λ | 0.150 / 0.023 | 0.097 / 0.003 | 0.036 / 0.001 | 0.001 / 0.173 |
+
+kNN-neighbourhood AUC (fraction of safe training neighbours as the score)
+
+| model | native | color | rotate | shape | agent |
+|---|---|---|---|---|---|
+| sigreg | 0.502 | 0.410 | 0.470 | 0.334 | 0.473 |
+| jac | 0.908 | 0.679 | 0.829 | 0.887 | 0.722 |
+| jac+pull | 0.692 | 0.642 | 0.727 | 0.719 | 0.494 |
+| adv_h | 0.929 | 0.528 | 0.881 | 0.391 | 0.853 |
+| jac+adv_h | 0.967 | 0.867 | 0.924 | 0.970 | 0.791 |
+| jac+pull+adv_h | 0.708 | 0.556 | 0.754 | 0.808 | 0.601 |
+| adv_λ | 0.738 | 0.343 | 0.878 | 0.775 | 0.515 |
+| jac+adv_λ | 0.953 | 0.771 | 0.905 | 0.962 | 0.799 |
+| jac+pull+adv_λ | 0.940 | 0.791 | 0.920 | 0.960 | 0.720 |
+
+Unsafe states whose nearest training latents are mostly safe
+
+| model | native | color | rotate | shape | agent |
+|---|---|---|---|---|---|
+| sigreg | 0.818 | 0.825 | 0.979 | 0.975 | 0.819 |
+| jac | 0.578 | 0.151 | 0.696 | 0.709 | 0.925 |
+| jac+pull | 0.948 | 0.568 | 0.819 | 0.875 | 0.984 |
+| adv_h | 0.282 | 0.000 | 0.321 | 0.804 | 0.408 |
+| jac+adv_h | 0.218 | 0.513 | 0.398 | 0.098 | 0.638 |
+| jac+pull+adv_h | 0.869 | 0.904 | 0.799 | 0.788 | 0.953 |
+| adv_λ | 0.642 | 0.835 | 0.160 | 0.547 | 0.958 |
+| jac+adv_λ | 0.321 | 0.134 | 0.401 | 0.062 | 0.551 |
+| jac+pull+adv_λ | 0.291 | 0.286 | 0.389 | 0.066 | 0.626 |
+
+#### Reading
+
+- On Dubins color, the failure type splits by base, not by safety reg. The sigreg-base models (sigreg, adv_h,
+  adv_λ) send 100% of purple frames off support, and every sign flip happens there. The jac-base models
+  (jac, jac+pull, jac+pull+adv_h) keep 100% in support, and every unsafe purple state sits among mostly safe
+  training latents (1.000): the purple obstacle encodes like free space. That is aliasing.
+- Neighbourhood aliasing is not the same as information loss. jac+pull+adv_h has kNN AUC 0.500 on purple, but its head
+  still ranks at 0.965 (main table). The color shift moves latents along a low-variance direction that Euclidean
+  neighbours ignore and the head reads. Whether the information survives still needs the retrain test. Earlier
+  results: jac retrained on purple recovers (0.969); jac+pull's retrain was unstable (0.48 ± 0.10).
+- Dubins rotation and shape: the jac-base latents stay in support with 2-7% flips. sigreg leaves the support on
+  all three shifts. On rotation its head still ranks at 0.956 anyway, so extrapolation can go well.
+- Cartpole viewpoint is pure extrapolation. Every model sends 77-100% of zoomed or panned frames off support, at
+  several times the normal kNN distance. That fits "the latent moves, the information stays" in the cartpole section:
+  heads retrained on the shifted view recover, as expected when the latent leaves the support instead of aliasing. On the
+  purple pole the adv_λ models stay closest (31-38% off support) and keep the best neighbourhood AUC
+  (0.77-0.87). That matches adv_λ being the color winner there.
+- Point, unseen layouts: the sigreg-base models put new layouts off support (sigreg 97%, adv_h 72%, adv_λ 54%). The jac
+  base keeps them in support (2-11%), and those are the models whose margin functions generalize. Under color, failures happen in
+  support: adv_h flips 87% of frames without leaving the support, jac 55%. The Car-robot (agent) shift sends the
+  jac+adv_λ and jac+pull+adv_λ latents off support (94-97%).
+- Net: the Jacobian penalty keeps OOD frames on the training manifold, so its remaining failures are aliasing, which a
+  support-based OOD detector (e.g. uncertainty-aware latent safety filters) cannot see. The sigreg-base models fail by
+  leaving the manifold, which such a detector would catch.
+
+#### Caveats
+
+- One WM training seed and one head seed per row. Dubins has only the six trained recipes.
+- Distances are Euclidean on the raw 192-d projector output, k = 10. The 99th-percentile threshold is relative to each
+  model's own latent scale.
+- Dubins latent neighbourhoods are not pose-local even in distribution: the nearest training latent's state is a median
+  0.8-1.3 away (position plus heading on the unit circle), against 0.25-0.28 on cartpole. So the Dubins kNN numbers
+  describe neighbourhoods in the latent's own geometry, not pose retrieval.
+- Point layout distance ratios (up to 325×) partly reflect that training layouts recur across episodes, so held-out
+  training frames have same-layout neighbours.
+
+## Dubins CEM: replanning every 5 steps with the final-step goal cost (superseded)
+
+Moved from `post-oct-21.md`, Secondary results. Superseded by the every-step goal cost ("fair replanning"), which is what every replanning result in the report uses.
+
+Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`) with the original final-step goal cost. Superseded by the every-step goal cost above. Purple with a consistent goal frame:
+
+| Model | red, raw | red, GP safety-first | purple, raw | purple, GP safety-first |
+| --- | ---: | ---: | ---: | ---: |
+| sigreg | 47.5 / 61.5 | 45.5 / 61.5 | 18.0 / 68.0 | 17.5 / 69.5 |
+| adv_h | 48.5 / 55.5 | 50.0 / 55.0 | 29.0 / 66.0 | 29.5 / 67.0 |
+| adv_λ | 33.0 / 70.5 | 39.5 / 66.5 | 20.5 / 68.5 | 22.0 / 63.5 |
+| jac | 43.5 / 56.5 | 60.5 / 11.0 | 32.5 / 66.5 | 27.5 / 40.0 |
+| jac+adv_h | 52.5 / 43.0 | 55.0 / 27.5 | 19.5 / 73.0 | 23.5 / 49.0 |
+| jac+adv_λ | 57.5 / 39.5 | 57.5 / 16.5 | 29.5 / 54.0 | 26.5 / 47.0 |
+| jac+pull | 60.5 / 46.0 | 66.5 / 11.5 | 26.0 / 57.0 | 21.5 / 48.5 |
+| jac+pull+adv_h | 62.5 / 36.5 | 64.5 / 26.0 | 26.5 / 70.5 | 37.0 / 44.5 |
+| jac+pull+adv_λ | 56.0 / 37.0 | 58.5 / 23.5 | 27.0 / 68.5 | 22.0 / 44.0 |
+
+- Frequent replanning lowers raw CEM for every model (e.g. jac 81.5 / 22.5 -> 43.5 / 56.5 on red), because the goal cost scores only the final predicted step and each replan pushes arrival later.
+- Within this setting the GP safety-first cost cuts collision on every jac-base model (red: jac 56.5 -> 11.0, jac+pull 46.0 -> 11.5) and still does nothing on the sigreg base.
+
+## Dubins: the "predictor drift" reading of the purple failure (superseded 2026-11-04)
+
+Moved from the conclusions of "Fixing the optimistic $h$" in `post-oct-21.md`. Superseded by "Why purple imagined states fail" there: the predictor tracks the purple world about as well as the red one, and the failure is $h$'s safe/unsafe gap. The original bullet:
+
+- The encoder is color-robust (real purple frames: 0.885-0.963 AUC, Table 9), and $h$ on imagined purple latents is near chance after 5-10 steps. At the time we read this as the predictor failing to carry the safety information forward. The two sections below revise that: the predictor tracks the purple world about as well as the red one, and the failure is $h$'s tiny safe/unsafe gap in the purple region (Table 14).
