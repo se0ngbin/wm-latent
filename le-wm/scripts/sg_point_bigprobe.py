@@ -42,6 +42,11 @@ for name in names:
             si, ui = rng.choice(s_idx, E.BS), rng.choice(u_idx, E.BS)
             loss = E.gp_loss(head, Z[si], Z[ui]); opt.zero_grad(); loss.backward(); opt.step()
         head.eval()
+        if os.environ.get("SAVE_HEADS"):   # for CEM: mlp in safe_solver._MarginHead naming ({"margin_gp": ...}), linear as {"linear": ...}
+            sd = head.state_dict()
+            if hk == "mlp": sd = {"margin_gp": {k.replace("l.l", "layers.Margin GP_linear").replace("l.n", "layers.Margin GP_norm").replace("m.", "mean_layer."): v for k, v in sd.items()}}
+            else: sd = {"linear": sd}
+            os.makedirs(f"{os.environ['SAVE_HEADS']}/{name}", exist_ok=True); torch.save(sd, f"{os.environ['SAVE_HEADS']}/{name}/{hk}_s{SEED}.pt")
         sub = rng.choice(len(ytr), 5000, replace=False); fit_auc = E.score(head, Z[sub].cpu(), ytr[sub])[1]   # does it fit the training layouts?
         res = {}
         for ax, z in Zev.items():
