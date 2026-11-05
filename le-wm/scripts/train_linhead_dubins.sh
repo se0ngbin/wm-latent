@@ -19,6 +19,7 @@ declare -A RUN=(
   [lewm_dubins_jac_safeadv_linf_enc_linhead50]="$JAC $SAW ${SA},pred_weight:0.0,auc_gate:0.95}"
   [lewm_dubins_jacpull_safeadv_linf_linhead50]="$JAC $PULL $SAW ${SA},auc_gate:0.95}"
   [lewm_dubins_safeadv_linf_linhead50]="$SAW ${SA},auc_gate:0.95}"
+  [lewm_dubins_sa_enc_linhead50]="$SAW ${SA},pred_weight:0.0,auc_gate:0.95}"
 )
 pick_gpu () {   # GPU env, else the GPU with the most free memory once it has >= 30 GB
   [ -n "${GPU:-}" ] && { echo "$GPU"; return; }
