@@ -21,6 +21,7 @@ What is established, with pointers to the sections below. All margin-function nu
 - Fixing the optimistic $h$ (red, replanning every 5 steps): training $h$ on predicted latents of CEM-style plans labelled in the simulator lowers collision on 6 of 8 jac-base models (jac 84.5 / 6.0); with a margin that grows with the imagined step it cuts the robust models' collision the most (jac+adv_h encoder-only 17.5 -> 6.0, jac+pull+adv_h 41.5 -> 17.5) at 5-10 points of success. No variant helps under purple: from a recolored start $h$'s ranking on imagined latents is gone within 5-10 steps on every model (AUC 0.40-0.59 over the horizon), although real purple frames keep it (0.885-0.963 on the robust models); the next bullet gives the cause.
 - Why purple imagined states fail (jac+pull+adv_h encoder-only): the predictor tracks the purple world about as well as the red one (error 0.57 vs 0.53 of the latent variance at step 10), but in the purple region $h$'s safe/unsafe gap is about 30 times smaller (0.06 vs 1.73), so one step of prediction noise already erases its ranking. The defect is the size of the safety gap under an appearance shift, not predictor drift.
 - Planning-side fixes for purple give no consistent gain: a linear $h$ ties the GP margin function (Table 17), and the threshold-free costs (dynamic threshold, a cost relative to the current frame) collide more under purple (54-74%) than the fixed margin (43-47.5%, Table 18).
+- adv_h with a linear internal head (the adversary attacks a linear readout; epoch 30, preliminary, Table 21): for jac+adv_h it removes most of the full safety reg's planning cost on red (collision with replanning 44.0-47.5 -> 16.0) and stabilizes the GP margin function's purple AUC (0.412 -> 0.876 at epoch 30); for jac+pull+adv_h encoder-only it raises collision. It does not lengthen the imagined-purple window.
 - Predictor gain: every predictor expands a latent perturbation 2-3× in one step, but over 25 steps the worst case is only 17-35× and a typical direction about 1×, and the most-amplifying models plan best. A non-expansion penalty would bind but there is no sign that amplification limits planning.
 - Free-running 5-step rollout loss (SLS-squared style): paused and moved to `archive.md`. At 50 epochs it keeps the imagined-state ranking on red longer, but safety-first CEM is no better on red and mixed under purple, and it degraded the sigreg encoder.
 
@@ -913,6 +914,51 @@ Table 18. CEM with threshold-free costs, success / collision (%). GP dynamic thr
 - Red: restricting the safety cost to 5 steps costs 16-30 points of collision against the fixed margin, as the 5-step GP runs did before.
 - Recovering the ranking on real frames does not carry into planning: on imagined purple latents $h$'s variation over the executed steps is within prediction noise (Table 14), whichever readout or cost form reads it. The remaining lever is the encoder, keeping the safe/unsafe gap under appearance change with a red-only training term.
 
+## adv_h with a linear internal head (2026-11-05, epoch 30, preliminary)
+
+adv_h trains an internal safety head alongside the world model on the failure labels, and its adversary searches for the pixel perturbation that moves that head's output most. In the original adv_h this internal head is an MLP (192-512-512-1, the GP margin function's architecture), so the invariance it buys targets an MLP readout, while the linear margin function above reads the latent through a direction the adversary never attacked. The variant makes the internal head linear, $h_\text{adv}(z) = w^\top z + b$ (`head_layers: 0`), everything else identical: code snapshot `code_safeadv_92e7589_linhead` (the original snapshot plus that option), `train_linhead_dubins.sh`. Naming: "MLP / linear internal head" is the world model; "GP / linear margin function" is the downstream $h$ trained afterwards on the frozen latents. All four use the same GP loss. Trained so far: jac+adv_h and jac+pull+adv_h encoder-only (seed 3072, 50 epochs, at epoch 30-35 here); adv_h, jac+adv_h encoder-only and jac+pull+adv_h are queued. Each checkpoint is scored at epochs 10, 15, 20 and 30 (`epoch_head_check.sh`), the original models at the same epochs, since the adv term only reaches full strength around epoch 12.
+
+Table 19. Purple AUC on real latents (4000 uniform states, as Table 2), by training epoch. Red, diamond and rotated 90° are 0.995-0.998 for every entry.
+
+| Model | Internal head | Linear $h$, ep 10 | ep 15 | ep 20 | ep 30 | GP $h$, ep 10 | ep 15 | ep 20 | ep 30 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| jac+adv_h | MLP | 0.177 | 0.976 | 0.985 | 0.990 | 0.146 | 0.906 | 0.584 | 0.412 |
+| jac+adv_h | linear | 0.396 | 0.945 | 0.990 | 0.993 | 0.666 | 0.916 | 0.932 | 0.876 |
+| jac+pull+adv_h, encoder-only | MLP | 0.945 | 0.980 | 0.991 | 0.996 | 0.641 | 0.797 | 0.784 | 0.958 |
+| jac+pull+adv_h, encoder-only | linear | 0.725 | 0.984 | 0.990 | 0.994 | 0.756 | 0.908 | 0.988 | 0.968 |
+
+Table 20. AUC on imagined latents from a purple start, epoch 30 (as Table 10), by imagined step.
+
+| Model | Internal head | Margin function | Step 1 | Step 3 | Step 5 | Step 10 |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| jac+adv_h | MLP | linear | 0.93 | 0.78 | 0.66 | 0.57 |
+| jac+adv_h | linear | linear | 0.97 | 0.79 | 0.29 | 0.31 |
+| jac+adv_h | MLP | GP | 0.23 | 0.63 | 0.68 | 0.57 |
+| jac+adv_h | linear | GP | 0.34 | 0.48 | 0.28 | 0.28 |
+| jac+pull+adv_h, encoder-only | MLP | linear | 0.99 | 0.94 | 0.85 | 0.51 |
+| jac+pull+adv_h, encoder-only | linear | linear | 0.99 | 0.90 | 0.76 | 0.46 |
+| jac+pull+adv_h, encoder-only | MLP | GP | 0.80 | 0.54 | 0.49 | 0.43 |
+| jac+pull+adv_h, encoder-only | linear | GP | 0.98 | 0.60 | 0.50 | 0.46 |
+
+Table 21. Safety-first CEM ($w = 1000$, $C = 10^4$, goal cost at every imagined step), success / collision (%). Linear internal head: epoch-30 checkpoint, 50 episodes (`linhead_cem_queue.sh`). MLP internal head: the 50-epoch models; linear-$h$ cells 50 episodes (Table 17 and this screen), GP-$h$ cells 200 episodes. Blank = not run.
+
+| Model | Setting | Scenario | Linear internal head, linear $h$ | Linear internal head, GP $h$ | MLP internal head, linear $h$ | MLP internal head, GP $h$ |
+| --- | --- | --- | --- | --- | --- | --- |
+| jac+adv_h | replan every 5 | red | 76.0 / 16.0 | 70.0 / 32.0 | 64.0 / 44.0 | 60.5 / 47.5 |
+| jac+adv_h | replan every 5 | purple | 28.0 / 56.0 | 10.0 / 56.0 | 24.0 / 62.0 | 33.5 / 56.0 |
+| jac+adv_h | open loop | red | 62.0 / 36.0 | 60.0 / 34.0 | 54.0 / 50.0 | 57.5 / 47.5 |
+| jac+adv_h | open loop | purple | 30.0 / 44.0 | 24.0 / 42.0 | 18.0 / 58.0 | 33.0 / 56.5 |
+| jac+pull+adv_h, encoder-only | replan every 5 | red | 84.0 / 30.0 | 70.0 / 30.0 | 74.0 / 20.0 | 76.0 / 20.5 |
+| jac+pull+adv_h, encoder-only | replan every 5 | purple | 26.0 / 56.0 | 30.0 / 68.0 | 24.0 / 36.0 | 30.5 / 47.5 |
+| jac+pull+adv_h, encoder-only | open loop | red | 74.0 / 40.0 | 64.0 / 46.0 | 60.0 / 38.0 | |
+| jac+pull+adv_h, encoder-only | open loop | purple | 42.0 / 52.0 | 40.0 / 54.0 | 40.0 / 30.0 | |
+
+- Real frames: the linear internal head does not change the linear margin function, which reads purple at 0.98-0.99 from epoch 15-20 with either internal head. It does stabilize the GP margin function on jac+adv_h, whose purple AUC with the MLP internal head swings and falls with training (0.906, 0.584, 0.412 at epochs 15, 20, 30) and with the linear internal head stays at 0.88-0.93. Purple sign accuracy stays 0.500 in almost every cell (exceptions: jac+adv_h, linear internal head, GP margin function 0.705 and 0.800 at epochs 15 and 30; jac+pull+adv_h encoder-only, linear internal head, linear margin function 0.903 at epoch 20).
+- Imagined purple: no longer window. For jac+adv_h the linear internal head shortens it (linear margin function at step 5: 0.66 -> 0.29).
+- CEM, jac+adv_h: the largest effect is on red. With replanning, collision falls from 44.0-47.5 to 16.0 with the linear margin function (32.0 with the GP one), so most of what the full safety reg cost the soft cost on the jac base (jac: 84.0 / 8.0) is recovered. Under purple, open loop improves (56.5-58.0 -> 42.0-44.0); with replanning it does not (56.0).
+- CEM, jac+pull+adv_h encoder-only: more success but more collision (red with replanning 30.0 vs 20.0-20.5; purple 52.0-68.0 vs 30.0-47.5).
+- Caveats: epoch-30 checkpoints against 50-epoch originals (the learning rate is still about 35% of its peak at epoch 30); 50-episode cells, about ±7 points; one WM seed and one margin-function seed. The same screen reruns on the epoch-50 checkpoints, and the other three bases are queued.
+
 ## Do CEM's elites converge? Elite spread
 
 CEM refits the sampling distribution to the 30 elites each iteration and executes the elite mean after 30 iterations, so the plan run is never scored itself. If the elites had not converged, or split between two routes (left and right of an obstacle), their mean could drive between them. Measured with a callback on every CEM solve (`SOFTCEM_SPREAD`, `elite_spread.sh`, `diag_elite_spread.py`): jac, red, open loop, final-step goal cost, about 240 solves per run. Std is in CEM's action units (initial std 1). The runs reproduce the main results (safety-first 79.0 / 8.5; raw 79.5 / 26.0 vs 81.5 / 22.5, within noise).
@@ -1113,74 +1159,3 @@ Reading:
   used as a target; `point_doomed.py` can generate Monte Carlo value labels.
 - Possible variant: a fixed-layout Point benchmark (Dubins-like), which would also make an exact HJ value oracle feasible.
 - No Point Dreamer has been trained.
-
-# Cartpole
-
-![Cartpole base vs OOD frames](figs/ood_frames_cartpole.png)
-
-Goal: a benchmark where safety is coupled to dynamics and the safe set can be computed exactly. A cart can be inside the
-track with the pole upright and still be lost, because it is moving too fast to stop. Classic Gym CartPole-v1 (Euler step,
-τ = 0.02 s, ±10 N push); failure = |x| > 2.4 or |θ| > 12°. Code and logs: branch `worktree-cartpole-port` (`cartpole_port/`,
-`run_logs/cartpole_eval/`); eval outputs in `/data/seongbin/lewm/cartpole_eval/`.
-
-## Setup
-
-- Rendering: frames are drawn from the state (`render.py`, 128 px) rather than with gym's renderer, whose anti-aliased
-  edges would keep the old color after a recolor. Every frame is a function of the state alone, so each OOD frame is the
-  same state as its base frame and labels are exact under every shift. The pole is drawn 2.5 m long (physics keeps 1.0 m);
-  otherwise a 12° lean is about 4 px wide.
-- Value oracle (`value_dp.py`): safety value iteration on the env's own step, V(s) = min(ℓ(s), max_a V(f(s, a))), on a 61⁴
-  grid. A state is doomed if ℓ ≥ 0 (not failed yet) but V < 0 (no action sequence avoids failure). No state with V < -0.02
-  is saved by any tested policy; 91% of states with V > 0.02 survive 500 steps under the greedy-V policy.
-- Training data: `cartpole_expert.h5`, 170,040 frames in 5,175 episodes. Policy = greedy-V with random actions at a
-  per-episode rate ε ~ U(0, 0.6); half the episodes start near upright, half anywhere not yet failed (including doomed
-  starts); episodes end 8 frames after failure. Filtered like Dubins to 17.0% failed frames (plus 15.7% doomed).
-  Rollouts: `figs/cartpole_rollouts/cartpole_{greedy,noisy_eps0.4,doomed_start}.gif`.
-- Eval: margin_gp head (Dubins loss, 50/50 safe/failed batches) on the frozen encoder, trained on the failure label on base
-  frames of 70% of episodes, scored on the other 30% (51,282 frames) re-rendered under each shift. Views: base, purple pole
-  (color; tan in training), 0.8× zoom out (zoom_out), 0.5 m horizontal pan at the zoom_out scale (pan_x), 0.3 m vertical pan
-  (pan_y). Samples: `figs/cartpole_rollouts/cartpole_ood_samples.png`. Zooming in or panning sideways at native scale was
-  dropped: the native view only just fits a pole leaning out at the wall, so it would crop the pole in 24-40% of failed
-  frames.
-
-## Results: 9 world models
-
-le-wm, 50 epochs, seed 3072, same recipes and code snapshots as the Dubins runs (the adv_h gate opened: in-training head AUC
-0.991). ± = std over 3 margin-function seeds (init only; the episode split is fixed) on one WM per model.
-
-Frames are fed in the training orientation (fixed 2026-10-28). The earlier cartpole numbers came from `eval_cartpole.encode_pixels`, which passes numpy HWC frames to `ToImage` and so transposes them (the cart lying on its side); a rerun of that path reproduces the old table (AUC within 0.001, sign accuracy within 0.004). Scripts `cp_bal/margin_ood_bal_fixed.py`, outputs `/data/seongbin/lewm/cartpole_eval_balanced/fixed_orient/`.
-
-AUC
-
-| Model | base | color | zoom_out | pan_x | pan_y |
-|---|---|---|---|---|---|
-| sigreg | 1.000 ± 0.000 | 0.853 ± 0.006 | 0.984 ± 0.000 | 0.978 ± 0.001 | 0.971 ± 0.001 |
-| jac | 1.000 ± 0.000 | 0.978 ± 0.001 | 0.977 ± 0.002 | 0.971 ± 0.002 | 0.928 ± 0.000 |
-| jac+pull | 1.000 ± 0.000 | 0.971 ± 0.001 | 0.994 ± 0.000 | 0.986 ± 0.000 | 0.938 ± 0.001 |
-| adv_h | 1.000 ± 0.000 | 0.983 ± 0.001 | 0.970 ± 0.000 | 0.964 ± 0.001 | 0.865 ± 0.006 |
-| jac+adv_h | 1.000 ± 0.000 | 0.944 ± 0.001 | 0.991 ± 0.001 | 0.993 ± 0.000 | 0.939 ± 0.001 |
-| jac+pull+adv_h | 1.000 ± 0.000 | 0.855 ± 0.001 | 0.989 ± 0.001 | 0.991 ± 0.000 | 0.950 ± 0.003 |
-| adv_λ | 1.000 ± 0.000 | 0.983 ± 0.000 | 0.985 ± 0.000 | 0.977 ± 0.001 | 0.874 ± 0.006 |
-| jac+adv_λ | 1.000 ± 0.000 | 0.973 ± 0.000 | 0.979 ± 0.001 | 0.988 ± 0.000 | 0.953 ± 0.001 |
-| jac+pull+adv_λ | 0.999 ± 0.000 | 0.967 ± 0.001 | 0.980 ± 0.000 | 0.985 ± 0.001 | 0.944 ± 0.002 |
-
-Sign accuracy, balanced: (TPR_safe + TPR_unsafe) / 2 on the full test set, i.e. the expected accuracy on a 50/50 safe/failed split (0.500 = everything called one class). The margin function is trained on the natural split.
-
-| Model | base | color | zoom_out | pan_x | pan_y |
-|---|---|---|---|---|---|
-| sigreg | 0.992 ± 0.001 | 0.658 ± 0.001 | 0.877 ± 0.009 | 0.873 ± 0.009 | 0.880 ± 0.002 |
-| jac | 0.990 ± 0.001 | 0.914 ± 0.003 | 0.864 ± 0.009 | 0.847 ± 0.011 | 0.679 ± 0.008 |
-| jac+pull | 0.992 ± 0.001 | 0.780 ± 0.006 | 0.894 ± 0.006 | 0.905 ± 0.005 | 0.801 ± 0.007 |
-| adv_h | 0.992 ± 0.001 | 0.802 ± 0.003 | 0.889 ± 0.001 | 0.894 ± 0.001 | 0.747 ± 0.003 |
-| jac+adv_h | 0.992 ± 0.001 | 0.650 ± 0.002 | 0.846 ± 0.005 | 0.820 ± 0.005 | 0.768 ± 0.003 |
-| jac+pull+adv_h | 0.992 ± 0.002 | 0.648 ± 0.001 | 0.827 ± 0.004 | 0.829 ± 0.003 | 0.821 ± 0.002 |
-| adv_λ | 0.993 ± 0.000 | 0.724 ± 0.010 | 0.872 ± 0.003 | 0.894 ± 0.006 | 0.748 ± 0.001 |
-| jac+adv_λ | 0.989 ± 0.001 | 0.651 ± 0.001 | 0.827 ± 0.009 | 0.819 ± 0.010 | 0.808 ± 0.008 |
-| jac+pull+adv_λ | 0.988 ± 0.001 | 0.669 ± 0.010 | 0.830 ± 0.002 | 0.842 ± 0.003 | 0.829 ± 0.007 |
-
-Reading:
-
-- Viewpoint is mostly easy for every model (AUC 0.865-0.994). The earlier "viewpoint breaks every model" came from the transpose.
-- Color: sigreg is the weakest (0.853); jac, adv_h and adv_λ reach 0.978-0.983; jac+pull+adv_h is low (0.855).
-- Thresholds: OOD sign errors almost all lean toward calling states safe (balanced predicted-safe fraction > 0.5). On color only jac keeps its threshold (0.914); sigreg calls 83% of frames safe despite AUC 0.853. adv_h is the only model calibrated (predicted-safe about 0.50) on all three viewpoint shifts.
-- Why viewpoint fails, the value functions, and support vs aliasing were computed on the transposed frames; they are in `archive.md` until rerun.
