@@ -15,7 +15,9 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4} MKL_NUM_THREADS=${OMP_NUM_THREADS:-
 LOG=/home/seongbin/latent/run_logs; PY=/home/seongbin/latent/le-wm/.venv/bin/python
 GPU=$1 WM=$2 HEAD=$3 TAG=$4 W=$5; shift 5
 C=${CONST:-0}; SUF=w${W}; [ "$C" != 0 ] && SUF=${SUF}_c${C}   # CONST env: lexicographic flat cost
-[ "${REC:-25}" != 25 ] && SUF=${SUF}_rec${REC}             # REC env: replan every REC steps (default 25 = open loop)
+K=${GOALK:-25}                                             # GOALK env: goal K steps ahead, plan horizon K, budget 2K (default 25)
+[ "$K" != 25 ] && SUF=${SUF}_k${K}
+[ "${REC:-$K}" != "$K" ] && SUF=${SUF}_rec${REC}         # REC env: replan every REC steps (default K = open loop)
 [ "${GOALCOST:-final}" != final ] && SUF=${SUF}_g${GOALCOST}   # GOALCOST env: final (default) | mean (goal distance at every imagined step)
 [ "${NEVAL:-200}" != 200 ] && SUF=${SUF}_n${NEVAL}   # NEVAL env: episodes per run (default 200)
 [ -n "${HSTEPS:-}" ] && SUF=${SUF}_hs${HSTEPS}   # HSTEPS env: solver.h_steps (safety cost on the first n imagined steps)
@@ -30,8 +32,8 @@ for scen in "${@:-red}"; do
     grep -q "'collision_rate'" "$lg" 2>/dev/null && break
     env ${ENVS[$scen]} CUDA_VISIBLE_DEVICES=$GPU $PY eval.py --config-name=dubins solver=soft_cem \
       solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C solver.goal_cost=${GOALCOST:-final} solver.unsafe_margin="${MARGIN:-0.0}" solver.h_quantile=${HQ:-null} solver.h_steps=${HSTEPS:-null} solver.h_rel=${HREL:-false} solver.batch_size=${BS:-16} policy="$WM/weights_epoch_50.pt" \
-      eval.num_eval=${NEVAL:-200} eval.goal_offset_steps=25 eval.goal_at_episode_end=false eval.eval_budget=50 \
-      plan_config.horizon=25 plan_config.action_block=1 plan_config.receding_horizon=${REC:-25} \
+      eval.num_eval=${NEVAL:-200} eval.goal_offset_steps=$K eval.goal_at_episode_end=false eval.eval_budget=$((2 * K)) \
+      plan_config.horizon=$K plan_config.action_block=1 plan_config.receding_horizon=${REC:-$K} \
       '+eval.goal_avoid_obstacles=[[0.25,0.65,0.5],[0.25,-0.65,0.5]]' +eval.goal_avoid_margin=0.05 \
       +eval.goal_near_margin=0.5 +eval.goal_clean_source=true hydra.run.dir="outputs/softcem_${TAG}_${SUF}_${scen}" > "$lg" 2>&1
     grep -q OutOfMemoryError "$lg" || break
