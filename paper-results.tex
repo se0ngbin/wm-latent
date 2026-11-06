@@ -196,66 +196,99 @@ Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \clearpage
 \section{CEM planners}\label{sec:cem}
 
+Both planners choose the car's next $H$ steering commands by imagining their outcome with the world model. They share
+everything (episodes, world model, goal cost, CEM loop) and differ in one step: which candidates are kept as elites.
 Paths are relative to the \texttt{le-wm} directory unless noted; \texttt{stable\_worldmodel} is version 0.1.1
 (\texttt{le-wm/.venv/lib/python3.10/site-packages/stable\_worldmodel}).
 
-\paragraph{Episodes.} A start state $s_0$ and goal $s_g$ are taken from one recorded episode of
-\texttt{dubins\_expert.h5}: $s_g$ is the state $K$ steps after $s_0$ ($K = 25$ here). Pairs are kept
-only if the source episode never collides and ends in the goal region, the goal is outside every obstacle, and the
-straight segment from the start position to the goal position intersects an obstacle disk, so driving straight at the
-goal collides (\texttt{eval.py}:150--246, options \texttt{goal\_clean\_source}, \texttt{goal\_crosses\_obstacle}). The
-recorded episode is therefore a collision-free solution in $K$ steps. The episode budget is $2K$ environment steps.
-Success: the agent's position comes within $0.2$ of the goal position (the episode then ends); collision: the agent's
-center is inside an obstacle disk at any step (the episode continues) (\texttt{dubins\_swm\_env.py}:117--130, 179--183).
-Both are reported in \% of 50 episodes per world-model seed. Overrides: \texttt{scripts/soft\_cem.sh}.
+\subsection{Task}
 
-\paragraph{World model and rollout.} The current observation $o_t$ and the goal frame $o_g$ are encoded,
-$z_0 = f(o_t)$, $z_g = f(o_g)$ (one real frame of context). A candidate is a sequence of $H = K$ steering commands
-$a = (a_0, \dots, a_{H-1})$ in the dataset's normalized action units. The predictor rolls out autoregressively,
-$\hat z_0 = z_0$, $\hat z_{k+1} = P\big(\hat z_{\max(0,k-2):k},\, a_{\max(0,k-2):k}\big)$, $k = 0, \dots, H-1$, with at
-most 3 frames of history (\texttt{jepa.py}:61--110).
+A start state and a goal state are taken from one recorded episode of \texttt{dubins\_expert.h5}: the goal is where that
+episode was $K$ steps after the start ($K = 25$ here). A pair is used only if (i) the recorded
+episode never collides and finishes in the goal region, (ii) the goal is outside every obstacle, and (iii) the straight
+line from start to goal passes through an obstacle, so steering straight at the goal crashes and the planner must detour.
+The recorded episode is thus a collision-free solution in $K$ steps (\texttt{eval.py}:150--246; options
+\texttt{goal\_clean\_source}, \texttt{goal\_crosses\_obstacle}). The car gets $2K$ steps. \emph{Success}: its position comes
+within $0.2$ of the goal position (the episode then ends). \emph{Collision}: its center is inside an obstacle at any step
+(the episode continues) (\texttt{dubins\_swm\_env.py}:117--130, 179--183). Both are \% of 50 episodes per world-model
+seed. Settings: \texttt{scripts/soft\_cem.sh}.
 
-\paragraph{Goal cost (LeWM).} $J(a) = \lVert \hat z_H - z_g \rVert_2^2$, summed over the 192 latent dimensions; only the
-last imagined state counts (\texttt{jepa.py}:112--131).
+\subsection{Imagining a plan}
 
-\paragraph{CEM (LeWM).} \texttt{stable\_worldmodel/solver/cem.py}:95--283, settings
-\texttt{config/eval/solver/cem.yaml} (identical in \texttt{soft\_cem.yaml}). Initialize $\mu = 0$, $\sigma = 1$
-($\mu, \sigma \in \mathbb{R}^{H \times 1}$). For $i = 1, \dots, 30$: draw $N = 300$ candidates
-$a^{(n)} = \mu + \sigma \odot \varepsilon^{(n)}$, $\varepsilon^{(n)} \sim \mathcal N(0, I)$, with $a^{(1)} = \mu$;
-score each, $s_n$; let $E$ be the indices of the $M = 30$ smallest scores; set $\mu \leftarrow \frac{1}{M}\sum_{n \in E}
-a^{(n)}$ and $\sigma \leftarrow \mathrm{std}_{n \in E}\, a^{(n)}$ (elementwise, unbiased), with no momentum and no clipping.
-The plan is the final $\mu$. The policy executes its first $H$ actions open loop and then replans
-(\texttt{receding\_horizon} $= H$; \texttt{stable\_worldmodel/policy.py}:379--431); nothing of the previous plan is left,
-so every plan starts from $\mu = 0$. Actions are de-normalized and the steering rate is clipped to $[-2, 2]$ by the
-environment.
+A candidate plan is a sequence of $H = K$ steering commands $a = (a_0, \dots, a_{H-1})$ (in the dataset's normalized
+action units). The planner sees only images. It encodes the current image and the goal image,
+\[ z_0 = f(o_t), \qquad z_g = f(o_g), \]
+and rolls the predictor forward one step at a time from $z_0$, feeding back its own predictions:
+\[ \hat z_0 = z_0, \qquad \hat z_{k+1} = P\big(\hat z_{\max(0,k-2):k},\ a_{\max(0,k-2):k}\big), \quad k = 0, \dots, H-1, \]
+using at most the last 3 latents and actions (\texttt{jepa.py}:61--110). $\hat z_k$ is the predicted latent after $k$
+commands.
 
-\paragraph{Raw CEM.} $s_n = J(a^{(n)})$: LeWM's planner, unchanged (\texttt{solver=cem} semantics; run as
-\texttt{soft\_cem} with weight 0 and no constraint).
+\subsection{Goal cost $J$}
 
-\paragraph{CCEM.} The constrained elite rule of SafeDreamer's online safety-reward planner (OSRP,
-\texttt{SafeDreamer/SafeDreamer/behaviors.py}:316--391), inside LeWM's CEM above. This is a planner: CEM searches over
-action sequences, and each candidate's cost is that of its own imagined trajectory. The same elite rule appears in the
-constrained cross-entropy method of Wen \& Topcu (2018), which is a policy-search method (CEM over policy parameters, with
-a constraint on each policy's expected cumulative cost estimated from rollouts); we use only the rule, in SafeDreamer's
-trajectory-search form, and the constraint here is on the predicted cost of a single plan, not an expected cost.
-The cost model is the margin function $h : \mathbb{R}^{192} \to \mathbb{R}$, $h \ge 0$ read as safe (MLP 192-512-512-1,
-trained on red frames, frozen; \texttt{scripts/train\_gp\_margin\_dubins.py}, loss \texttt{scripts/ood\_margin\_gp\_jepa.py}:96).
-Per state $c_k = \mathbb 1[h(\hat z_k) < 0]$, $k = 0, \dots, H$ (the current, real state included, as in SafeDreamer's
-imagined trajectory), and per candidate
-\[ C(a) = \frac{1000}{H} \sum_{k=0}^{H} c_k, \qquad \mathcal F = \{\, n : C(a^{(n)}) < d \,\},\quad d = 2 . \]
-If $|\mathcal F| \ge M$, the elites are the $M$ members of $\mathcal F$ with the smallest $J$; otherwise they are the $M$
-candidates with the smallest $C$ (ties: lower index first, as \texttt{jax.lax.top\_k}). The mean/std update and execution
-are unchanged. Implemented as the score CEM minimizes (\texttt{safe\_solver.py}:323--334; check:
-\texttt{test\_ccem.py}):
-\[ s_n = \begin{cases} J_n & |\mathcal F| \ge M,\ n \in \mathcal F \\ J_n + 10^9 & |\mathcal F| \ge M,\ n \notin \mathcal F \\
-C_n + 10^{-6}\, n & |\mathcal F| < M . \end{cases} \]
-Because $c_k \in \{0, 1\}$ and $1000/H \ge 40 > d$ for $H \le 25$, a candidate is feasible exactly when $h \ge 0$ on every
-state of its plan. Kept from SafeDreamer: the binary per-state cost, the $1000/H$ scaling, $d = 2$ (its \texttt{osrp}
-default), and the elite rule. Different, because our world models have no reward, critic or cost head: the objective is
-$-J$ (SafeDreamer: the critic's $\lambda$-return) and $c_k$ comes from the margin function (SafeDreamer: a learned cost
-model). LeWM's CEM settings are kept, so the safe and raw planners differ only in the elite rule (SafeDreamer uses 500
-samples, 50 elites, 6 iterations, mean momentum 0.1, actions clipped to $[-1, 1]$, warm start, and executes only the first
-action). SafeDreamer pads its feasible-index list with index 0, which can repeat candidate 0 among the elites; this is not
-reproduced.
+$J$ scores how far from the goal a plan ends, measured in latent space: the squared Euclidean distance between the
+predicted latent after all $H$ commands and the latent of the goal image,
+\[ J(a) = \big\lVert \hat z_H - z_g \big\rVert_2^2 = \sum_{d=1}^{192} \big(\hat z_{H,d} - z_{g,d}\big)^2 . \]
+Lower is better. Only the end of the plan counts; the path to it is not scored, and $J$ knows nothing about obstacles.
+This is LeWM's planning cost, unchanged (\texttt{jepa.py}:112--131).
+
+\subsection{CEM loop (shared)}
+
+LeWM's cross-entropy method (\texttt{stable\_worldmodel/solver/cem.py}:95--283; settings
+\texttt{config/eval/solver/cem.yaml}, identical in \texttt{soft\_cem.yaml}). It keeps a Gaussian over plans, one mean
+$\mu_k$ and standard deviation $\sigma_k$ per step $k$, and repeats 30 times:
+\begin{enumerate}
+\item Sample $N = 300$ plans $a^{(n)} = \mu + \sigma \odot \varepsilon^{(n)}$, $\varepsilon^{(n)} \sim \mathcal N(0, I)$;
+      plan 1 is the current mean, $a^{(1)} = \mu$.
+\item Imagine each plan and score it.
+\item Keep $M = 30$ elites (\textbf{this is the only step where the two planners differ}).
+\item Refit: $\mu \leftarrow$ mean of the elites, $\sigma \leftarrow$ standard deviation of the elites (per step, unbiased;
+      no momentum, no clipping).
+\end{enumerate}
+It starts from $\mu = 0$, $\sigma = 1$. The plan is the final $\mu$. The car executes all $H$ commands open loop, then
+the planner runs again from the new image (\texttt{receding\_horizon} $= H$, \texttt{stable\_worldmodel/policy.py}:379--431;
+nothing of the old plan remains, so every plan starts from $\mu = 0$). The environment de-normalizes commands and clips
+the steering rate to $[-2, 2]$.
+
+\subsection{Raw CEM}
+
+Elites are the 30 plans with the smallest $J$: LeWM's planner as published. Safety plays no role; any obstacle avoidance
+comes from what the world model learned from the data.
+
+\subsection{CCEM: CEM with a safety constraint}
+
+\paragraph{Safety check.} The margin function $h : \mathbb{R}^{192} \to \mathbb{R}$ reads a latent and says
+\emph{safe} if $h \ge 0$, \emph{unsafe} if $h < 0$ (MLP 192-512-512-1, trained on red frames with failure labels, then
+frozen; \texttt{scripts/train\_gp\_margin\_dubins.py}, loss \texttt{scripts/ood\_margin\_gp\_jepa.py}:96). A plan's
+cost counts how many of its states $h$ calls unsafe, the current state included:
+\[ C(a) = \frac{1000}{H} \sum_{k=0}^{H} \mathbb 1\big[h(\hat z_k) < 0\big], \qquad
+\text{plan is \emph{feasible} if } C(a) < 2 . \]
+For $H \le 25$ one unsafe state already gives $C \ge 40$, so \emph{feasible} simply means $h$ calls every state of the
+plan safe.
+
+\paragraph{Elite rule.} Let $\mathcal F$ be the feasible plans among the 300.
+\begin{itemize}
+\item If at least 30 plans are feasible: the elites are the 30 feasible plans with the smallest $J$ (closest to the goal
+      among plans predicted safe; unsafe plans are ignored).
+\item Otherwise: the elites are the 30 plans with the smallest $C$, i.e.\ the fewest predicted-unsafe states, regardless
+      of $J$ (ties: lower index first, as \texttt{jax.lax.top\_k}). The search first moves toward safety, then toward the
+      goal.
+\end{itemize}
+Everything else is the shared loop. In code the rule is a score that the unchanged CEM minimizes
+(\texttt{safe\_solver.py}:323--334; check: \texttt{test\_ccem.py}):
+\[ s_n = \begin{cases} J_n & |\mathcal F| \ge 30,\ n \in \mathcal F \\ J_n + 10^9 & |\mathcal F| \ge 30,\ n \notin \mathcal F \\
+C_n + 10^{-6}\, n & |\mathcal F| < 30 . \end{cases} \]
+
+\paragraph{Source.} The cost, its $1000/H$ scaling, the limit $2$ (its \texttt{osrp} default) and the elite rule are
+SafeDreamer's online safety-reward planner (OSRP; \texttt{SafeDreamer/SafeDreamer/behaviors.py}:316--391), which
+searches over action sequences in a world model as we do. The same elite rule appears in the constrained cross-entropy
+method of Wen \& Topcu (2018), but there it is policy search (CEM over policy parameters, constraining each policy's
+expected cumulative cost estimated from rollouts); we use only the rule, in SafeDreamer's trajectory-search form, so the
+constraint is on the predicted cost of one plan. Differences from SafeDreamer, because our world models have no reward,
+critic or cost head: the objective is $J$ instead of the critic's return, and the per-state cost comes from $h$ instead
+of a learned cost model. LeWM's CEM settings are kept so raw and constrained planning differ only in the elite rule
+(SafeDreamer: 500 samples, 50 elites, 6 iterations, mean momentum 0.1, actions clipped to $[-1, 1]$, warm start, executes
+only the first action). SafeDreamer pads its feasible-index list with index 0, which can repeat plan 0 among the elites;
+not reproduced. This is a \emph{constrained} CEM, not a robust one: the world model and $h$ are trusted as they are, with
+no hedging against their errors.
 
 \end{document}
