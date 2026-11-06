@@ -38,7 +38,7 @@ for scen in "${@:-red}"; do
       plan_config.horizon=$K plan_config.action_block=1 plan_config.receding_horizon=${REC:-$K} \
       '+eval.goal_avoid_obstacles=[[0.25,0.65,0.5],[0.25,-0.65,0.5]]' +eval.goal_avoid_margin=0.05 \
       +eval.goal_near_margin=0.5 +eval.goal_clean_source=true ${CROSS:+'+eval.goal_crosses_obstacle=true'} hydra.run.dir="outputs/softcem_${TAG}_${SUF}_${scen}" > "$lg" 2>&1
-    grep -q OutOfMemoryError "$lg" || break
+    grep -qE "OutOfMemoryError|CUDA error: out of memory" "$lg" || break
     echo "$(date +%H:%M) $TAG $SUF $scen OOM (try $try), retrying in 5 min"; sleep 300
   done
   echo "$(date +%H:%M) $TAG $SUF $scen $(grep -oE "'success_rate': [0-9.]+|'collision_rate': [0-9.]+" "$lg" | tr '\n' ' ')"
