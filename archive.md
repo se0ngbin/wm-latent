@@ -20,7 +20,7 @@ Experiments and findings that were dropped or are not in the main reports, kept 
 
 ### Marker sensitivity of $h$ (start-frame A/B)
 
-Found while explaining why `diag_imag_steps.py` disagreed with Table 5 of post-oct-21.md for sigreg and adv_h. Table 5 (`train_gp_margin_imag_dubins.py`) starts imagined rollouts from the stored dataset frame (marker jittered on the 1.3 line); `diag_imag_steps.py`, `diag_imag_color_dubins.py` and `diag_purple_drift.py` re-render the start state (marker at the default). The two frames differ only in the marker (about 0.3% of pixels). Same starts, plans, labels and margin function (CEM's 5000-step $h$), `imag_startframe_ab.py`:
+Found while explaining why `diag_imag_steps.py` disagreed with Table 8 of post-oct-21.md for sigreg and adv_h. Table 8 (`train_gp_margin_imag_dubins.py`) starts imagined rollouts from the stored dataset frame (marker jittered on the 1.3 line); `diag_imag_steps.py`, `diag_imag_color_dubins.py` and `diag_purple_drift.py` re-render the start state (marker at the default). The two frames differ only in the marker (about 0.3% of pixels). Same starts, plans, labels and margin function (CEM's 5000-step $h$), `imag_startframe_ab.py`:
 
 | Model | Start frame | Imagined AUC | False-safe |
 | --- | --- | ---: | ---: |
@@ -31,7 +31,7 @@ Found while explaining why `diag_imag_steps.py` disagreed with Table 5 of post-o
 | jac | re-rendered | 0.969 | 0.115 |
 | jac | dataset frame | 0.968 | 0.115 |
 
-- The dataset-frame rows reproduce Table 5 (sigreg 0.642 / 0.968, adv_h 0.637 / 0.971).
+- The dataset-frame rows reproduce Table 8 (sigreg 0.642 / 0.968, adv_h 0.637 / 0.971).
 - $h$ on sigreg and adv_h reads the marker height as if it carried safety information; jac ignores it. The earlier real-frame check (post-oct-21.md, Diagnostics) had found the marker to be a nuisance for sigreg only (AUC 0.985 -> 0.901 when the marker moves).
 
 ### Default-marker CEM experiment
@@ -77,7 +77,7 @@ What is saved:
 
 Tables in this section are numbered R1-R7; "Table N" alone refers to post-oct-21.md, numbered as after this section was moved out of it.
 
-Question: does training the predictor on its own multi-step rollouts make CEM plan better, in-distribution and under OOD shifts? Code on branch `rollout-loss` (`train.py`, `rollout_steps = K`); scripts `train_rollout5_dubins.sh`, `roll5b_check.sh` (per-step test of Table 10), `roll5b_quick_cem.sh`, `roll5b50_eval_queue.sh`.
+Question: does training the predictor on its own multi-step rollouts make CEM plan better, in-distribution and under OOD shifts? Code on branch `rollout-loss` (`train.py`, `rollout_steps = K`); scripts `train_rollout5_dubins.sh`, `roll5b_check.sh` (per-step test of Table 13), `roll5b_quick_cem.sh`, `roll5b50_eval_queue.sh`.
 
 ### How le-wm and SLS-squared train the predictor
 
@@ -89,7 +89,7 @@ Question: does training the predictor on its own multi-step rollouts make CEM pl
 
 The first version started each rollout from 3 real latents and scored only the last position. CEM never trains on this case: its rollouts start from 1 frame and grow to 3, so predictions from 1-2 frames of context lost their training signal. After 50 epochs the rollouts collapse after step 5 (imagined latents converge to one region; median $h$ on safe and unsafe states both 0.70), and planning breaks.
 
-Table R1. Per-step AUC of $h$ on imagined latents from a red start (as Table 10), jac, original vs first rollout-loss version (both 50 epochs). The original row is from `diag_purple_drift.py` (400 held-out states), the rollout-loss row from `diag_imag_color_dubins.py` (600); same plan distribution.
+Table R1. Per-step AUC of $h$ on imagined latents from a red start (as Table 13), jac, original vs first rollout-loss version (both 50 epochs). The original row is from `diag_purple_drift.py` (400 held-out states), the rollout-loss row from `diag_imag_color_dubins.py` (600); same plan distribution.
 
 | jac | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -111,7 +111,7 @@ Table R2. CEM, replanning every 5 steps, goal cost at every imagined step, succe
 
 The fixed version starts every training rollout from one real frame and lets the context grow to 3, exactly as CEM does, so every context length is trained. To get an answer fast, jac and jac+pull+adv_h encoder-only were trained for 15 epochs (learning-rate schedule fitted to 15) and compared with the original models' checkpoints at a similar number of epochs.
 
-Table R3. Per-step AUC of $h$ on imagined latents (as Table 10), red and purple starts, at matched training length. The original jac only kept every 10th checkpoint.
+Table R3. Per-step AUC of $h$ on imagined latents (as Table 13), red and purple starts, at matched training length. The original jac only kept every 10th checkpoint.
 
 | Model | Epoch | Start | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -161,7 +161,7 @@ Table R5. Same screen for jac+pull+adv_h encoder-only, original vs rollout loss,
 
 Same per-step test and CEM screen as the 15-epoch versions, on the fully trained models (50 epochs, cosine schedule fitted to 50). CEM: 50 episodes per rollout-loss cell; originals are the 200-episode runs of the main report.
 
-Table R6. Per-step AUC of $h$ on imagined latents (as Table 10), 50 epochs. Original rows from Table 10 of post-oct-21.md and Table R1; blank = not measured. Held-out AUC of the GP margin function on real red latents: sigreg 0.902 with the rollout loss (the original sigreg margin function reaches 0.987 on the Table 2 states), jac 0.992, jac+pull+adv_h encoder-only 0.999.
+Table R6. Per-step AUC of $h$ on imagined latents (as Table 13), 50 epochs. Original rows from Table 13 of post-oct-21.md and Table R1; blank = not measured. Held-out AUC of the GP margin function on real red latents: sigreg 0.902 with the rollout loss (the original sigreg margin function reaches 0.987 on the Table 5 states), jac 0.992, jac+pull+adv_h encoder-only 0.999.
 
 | Model | Start | Step 1 | Step 3 | Step 5 | Step 10 | Step 15 | Step 25 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -196,7 +196,7 @@ Table R7. CEM at 50 epochs, goal cost at every imagined step, success / collisio
 - Purple, safety-first with replanning: mixed. jac collides more (43.0 -> 60.0); jac+pull+adv_h encoder-only collides less (47.5 -> 38.0, 50 episodes, about 1.2 binomial SDs), although its early-step ranking on purple, the only window where the original had any signal (0.80-0.88 at steps 1-5), drops to 0.50-0.59. Worth a 200-episode confirmation if the rollout loss is picked up again.
 - The one large gain is raw CEM, open loop, purple for jac (16.0 / 80.5 -> 48.0 / 56.0, 50 episodes), consistent with better long-horizon rollouts; it disappears once the safety cost is on.
 - sigreg: the rollout loss with only SIGReg on the latent made the encoder less informative (margin function 0.902 held-out AUC on real red latents; imagined red AUC 0.87 at step 1) and planning collapsed (red success 60-63 -> 12-22). The jac-base encoders were unaffected (0.992, 0.999).
-- If picked up again: longer rollouts ($K = 10$ or 25) would matter mainly for open loop; the purple failure is the size of $h$'s gap, not prediction (Table 14), so a predictor-side loss is not expected to fix it.
+- If picked up again: longer rollouts ($K = 10$ or 25) would matter mainly for open loop; the purple failure is the size of $h$'s gap, not prediction (Table 17), so a predictor-side loss is not expected to fix it.
 
 
 ## Cartpole Margin Runs
@@ -615,5 +615,5 @@ Same sg25clean goals and 25-step horizon, but CEM replans every 5 steps (`REC=5`
 
 Moved from the conclusions of "Fixing the optimistic $h$" in `post-oct-21.md`. Superseded by "Why purple imagined states fail" there: the predictor tracks the purple world about as well as the red one, and the failure is $h$'s safe/unsafe gap. The original bullet:
 
-- The encoder is color-robust (real purple frames: 0.885-0.963 AUC, Table 9), and $h$ on imagined purple latents is near chance after 5-10 steps. At the time we read this as the predictor failing to carry the safety information forward. The two sections below revise that: the predictor tracks the purple world about as well as the red one, and the failure is $h$'s tiny safe/unsafe gap in the purple region (Table 14).
+- The encoder is color-robust (real purple frames: 0.885-0.963 AUC, Table 12), and $h$ on imagined purple latents is near chance after 5-10 steps. At the time we read this as the predictor failing to carry the safety information forward. The two sections below revise that: the predictor tracks the purple world about as well as the red one, and the failure is $h$'s tiny safe/unsafe gap in the purple region (Table 17).
 
