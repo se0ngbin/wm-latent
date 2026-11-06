@@ -6,42 +6,42 @@
 
 \section*{Dubins paper grid}
 
-Dubins, 21 world models (base sigreg / jac / jac+pull $\times$ safety reg), three world-model seeds each (3072, 1, 2; jac uses 3072, 1, 100), as in LeWM (results averaged over 3 training seeds). Every world model is trained for 50 epochs on the same dataset. Mean ($\pm$ std) over the seeds done; a blank cell is not done yet; $^\dagger$ = fewer than 3 seeds done (the Seeds column lists them; a number in parentheses in a CEM cell is the number of seeds averaged). enc.\ = encoder-only safety reg; lin.\ head = adv$_h$ with a linear internal head.
+Dubins, 21 world models (base sigreg / jac / jac+pull $\times$ safety reg), three world-model seeds each (3072, 1, 2; jac uses 3072, 1, 100), as in LeWM (results averaged over 3 training seeds). Every world model is trained for 50 epochs on the same dataset. Mean ($\pm$ std) over the seeds done; a blank cell is not done yet; $^\dagger$ = fewer than 3 seeds done (the Seeds column lists them; a number in parentheses in a CEM cell is the number of seeds averaged). Rows: 1 = sigreg, 2 = jac, 3 = jac+pull base; a = no safety reg, b = adv$_h$, c = adv$_h$ with a linear internal head, d = adv$_\lambda$, e = adv$_\lambda$ encoder-only, f = adv$_h$ encoder-only, g = adv$_h$ with a linear internal head, encoder-only.
 
 \begin{table*}[t]
 \centering
 \small
 \caption{Real-frame AUC of the margin function (trained on red frames only), linear and GP (MLP). 4000 uniform states per condition, disjoint from training.}
 \label{tab:dubins_auc}
-\begin{tabular}{llp{2.2cm}cccccc}
+\begin{tabular}{lp{2.2cm}cccccc}
 \toprule
-Row & Model & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90$^\circ$} \\
-\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
- & & & linear & GP & linear & GP & linear & GP \\
+Row & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90$^\circ$} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+ & & linear & GP & linear & GP & linear & GP \\
 \midrule
-1a & sigreg & 3072, 1, 2 & $0.981 \pm 0.005$ & $0.987 \pm 0.006$ & $0.543 \pm 0.100$ & $0.170 \pm 0.116$ & $0.637 \pm 0.503$ & $0.591 \pm 0.428$ \\
-1b & adv$_h$ & 3072, 1, 2 & $0.997 \pm 0.002$ & $0.998 \pm 0.001$ & $0.834 \pm 0.197$ & $0.811 \pm 0.146$ & $0.991 \pm 0.004$ & $0.789 \pm 0.356$ \\
-1c & adv$_h$, lin.\ head & $^\dagger$ &  &  &  &  &  &  \\
-1d & adv$_\lambda$ & 3072, 1, 2 & $0.999 \pm 0.001$ & $0.999 \pm 0.001$ & $0.727 \pm 0.465$ & $0.838 \pm 0.243$ & $0.925 \pm 0.124$ & $0.888 \pm 0.185$ \\
-1e & adv$_\lambda$, enc. & $^\dagger$ &  &  &  &  &  &  \\
-1f & adv$_h$, enc. & $^\dagger$ &  &  &  &  &  &  \\
-1g & adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  &  &  &  \\
+1a & 3072, 1, 2 & $0.981 \pm 0.005$ & $0.987 \pm 0.006$ & $0.543 \pm 0.100$ & $0.170 \pm 0.116$ & $0.637 \pm 0.503$ & $0.591 \pm 0.428$ \\
+1b & 3072, 1, 2 & $0.997 \pm 0.002$ & $0.998 \pm 0.001$ & $0.834 \pm 0.197$ & $0.811 \pm 0.146$ & $0.991 \pm 0.004$ & $0.789 \pm 0.356$ \\
+1c & $^\dagger$ &  &  &  &  &  &  \\
+1d & 3072, 1, 2 & $0.999 \pm 0.001$ & $0.999 \pm 0.001$ & $0.727 \pm 0.465$ & $0.838 \pm 0.243$ & $0.925 \pm 0.124$ & $0.888 \pm 0.185$ \\
+1e & $^\dagger$ &  &  &  &  &  &  \\
+1f & $^\dagger$ &  &  &  &  &  &  \\
+1g & $^\dagger$ &  &  &  &  &  &  \\
 \midrule
-2a & jac & 3072, 1, 100 & $0.998 \pm 0.001$ & $0.998 \pm 0.000$ & $0.970 \pm 0.017$ & $0.648 \pm 0.088$ & $0.984 \pm 0.010$ & $0.986 \pm 0.008$ \\
-2b & jac+adv$_h$ & 3072$^\dagger$ & 0.998 & 0.999 & 0.991 & 0.174 & 0.994 & 0.995 \\
-2c & jac+adv$_h$, lin.\ head & $^\dagger$ &  &  &  &  &  &  \\
-2d & jac+adv$_\lambda$ & 3072$^\dagger$ & 0.998 & 0.999 & 0.997 & 0.981 & 0.994 & 0.995 \\
-2e & jac+adv$_\lambda$, enc. & 3072$^\dagger$ & 0.997 & 0.999 & 0.734 & 0.336 & 0.994 & 0.994 \\
-2f & jac+adv$_h$, enc. & 3072, 1, 2 & $0.998 \pm 0.000$ & $0.999 \pm 0.001$ & $0.951 \pm 0.064$ & $0.823 \pm 0.056$ & $0.995 \pm 0.001$ & $0.995 \pm 0.001$ \\
-2g & jac+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  &  &  &  \\
+2a & 3072, 1, 100 & $0.998 \pm 0.001$ & $0.998 \pm 0.000$ & $0.970 \pm 0.017$ & $0.648 \pm 0.088$ & $0.984 \pm 0.010$ & $0.986 \pm 0.008$ \\
+2b & 3072$^\dagger$ & 0.998 & 0.999 & 0.991 & 0.174 & 0.994 & 0.995 \\
+2c & $^\dagger$ &  &  &  &  &  &  \\
+2d & 3072$^\dagger$ & 0.998 & 0.999 & 0.997 & 0.981 & 0.994 & 0.995 \\
+2e & 3072$^\dagger$ & 0.997 & 0.999 & 0.734 & 0.336 & 0.994 & 0.994 \\
+2f & 3072, 1, 2 & $0.998 \pm 0.000$ & $0.999 \pm 0.001$ & $0.951 \pm 0.064$ & $0.823 \pm 0.056$ & $0.995 \pm 0.001$ & $0.995 \pm 0.001$ \\
+2g & $^\dagger$ &  &  &  &  &  &  \\
 \midrule
-3a & jac+pull & 3072, 1, 2 & $0.997 \pm 0.000$ & $0.998 \pm 0.001$ & $0.574 \pm 0.362$ & $0.423 \pm 0.396$ & $0.983 \pm 0.004$ & $0.983 \pm 0.004$ \\
-3b & jac+pull+adv$_h$ & 3072, 1, 2 & $0.998 \pm 0.000$ & $0.999 \pm 0.000$ & $0.986 \pm 0.015$ & $0.925 \pm 0.030$ & $0.994 \pm 0.002$ & $0.994 \pm 0.001$ \\
-3c & jac+pull+adv$_h$, lin.\ head & $^\dagger$ &  &  &  &  &  &  \\
-3d & jac+pull+adv$_\lambda$ & 3072$^\dagger$ & 0.998 & 0.998 & 0.996 & 0.986 & 0.994 & 0.994 \\
-3e & jac+pull+adv$_\lambda$, enc. & 3072$^\dagger$ & 0.998 & 0.998 & 0.271 & 0.581 & 0.994 & 0.993 \\
-3f & jac+pull+adv$_h$, enc. & 3072, 1$^\dagger$ & $0.998 \pm 0.001$ & $0.998 \pm 0.000$ & $0.993 \pm 0.004$ & $0.784 \pm 0.240$ & $0.996 \pm 0.001$ & $0.994 \pm 0.001$ \\
-3g & jac+pull+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  &  &  &  \\
+3a & 3072, 1, 2 & $0.997 \pm 0.000$ & $0.998 \pm 0.001$ & $0.574 \pm 0.362$ & $0.423 \pm 0.396$ & $0.983 \pm 0.004$ & $0.983 \pm 0.004$ \\
+3b & 3072, 1, 2 & $0.998 \pm 0.000$ & $0.999 \pm 0.000$ & $0.986 \pm 0.015$ & $0.925 \pm 0.030$ & $0.994 \pm 0.002$ & $0.994 \pm 0.001$ \\
+3c & $^\dagger$ &  &  &  &  &  &  \\
+3d & 3072$^\dagger$ & 0.998 & 0.998 & 0.996 & 0.986 & 0.994 & 0.994 \\
+3e & 3072$^\dagger$ & 0.998 & 0.998 & 0.271 & 0.581 & 0.994 & 0.993 \\
+3f & 3072, 1$^\dagger$ & $0.998 \pm 0.001$ & $0.998 \pm 0.000$ & $0.993 \pm 0.004$ & $0.784 \pm 0.240$ & $0.996 \pm 0.001$ & $0.994 \pm 0.001$ \\
+3g & $^\dagger$ &  &  &  &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -51,35 +51,35 @@ Row & Model & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \mu
 \small
 \caption{Real-frame balanced sign accuracy (0.5 = every state on one side of 0).}
 \label{tab:dubins_signacc}
-\begin{tabular}{llp{2.2cm}cccccc}
+\begin{tabular}{lp{2.2cm}cccccc}
 \toprule
-Row & Model & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90$^\circ$} \\
-\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
- & & & linear & GP & linear & GP & linear & GP \\
+Row & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90$^\circ$} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+ & & linear & GP & linear & GP & linear & GP \\
 \midrule
-1a & sigreg & 3072, 1, 2 & $0.931 \pm 0.021$ & $0.945 \pm 0.006$ & $0.500 \pm 0.000$ & $0.502 \pm 0.004$ & $0.570 \pm 0.203$ & $0.509 \pm 0.025$ \\
-1b & adv$_h$ & 3072, 1, 2 & $0.980 \pm 0.002$ & $0.978 \pm 0.002$ & $0.523 \pm 0.035$ & $0.521 \pm 0.031$ & $0.867 \pm 0.135$ & $0.658 \pm 0.205$ \\
-1c & adv$_h$, lin.\ head & $^\dagger$ &  &  &  &  &  &  \\
-1d & adv$_\lambda$ & 3072, 1, 2 & $0.982 \pm 0.002$ & $0.982 \pm 0.002$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.838 \pm 0.216$ & $0.748 \pm 0.232$ \\
-1e & adv$_\lambda$, enc. & $^\dagger$ &  &  &  &  &  &  \\
-1f & adv$_h$, enc. & $^\dagger$ &  &  &  &  &  &  \\
-1g & adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  &  &  &  \\
+1a & 3072, 1, 2 & $0.931 \pm 0.021$ & $0.945 \pm 0.006$ & $0.500 \pm 0.000$ & $0.502 \pm 0.004$ & $0.570 \pm 0.203$ & $0.509 \pm 0.025$ \\
+1b & 3072, 1, 2 & $0.980 \pm 0.002$ & $0.978 \pm 0.002$ & $0.523 \pm 0.035$ & $0.521 \pm 0.031$ & $0.867 \pm 0.135$ & $0.658 \pm 0.205$ \\
+1c & $^\dagger$ &  &  &  &  &  &  \\
+1d & 3072, 1, 2 & $0.982 \pm 0.002$ & $0.982 \pm 0.002$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.838 \pm 0.216$ & $0.748 \pm 0.232$ \\
+1e & $^\dagger$ &  &  &  &  &  &  \\
+1f & $^\dagger$ &  &  &  &  &  &  \\
+1g & $^\dagger$ &  &  &  &  &  &  \\
 \midrule
-2a & jac & 3072, 1, 100 & $0.977 \pm 0.001$ & $0.971 \pm 0.001$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.891 \pm 0.017$ & $0.853 \pm 0.021$ \\
-2b & jac+adv$_h$ & 3072$^\dagger$ & 0.980 & 0.976 & 0.500 & 0.499 & 0.963 & 0.916 \\
-2c & jac+adv$_h$, lin.\ head & $^\dagger$ &  &  &  &  &  &  \\
-2d & jac+adv$_\lambda$ & 3072$^\dagger$ & 0.982 & 0.977 & 0.500 & 0.500 & 0.962 & 0.937 \\
-2e & jac+adv$_\lambda$, enc. & 3072$^\dagger$ & 0.981 & 0.975 & 0.500 & 0.500 & 0.960 & 0.919 \\
-2f & jac+adv$_h$, enc. & 3072, 1, 2 & $0.980 \pm 0.002$ & $0.974 \pm 0.001$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.952 \pm 0.006$ & $0.896 \pm 0.008$ \\
-2g & jac+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  &  &  &  \\
+2a & 3072, 1, 100 & $0.977 \pm 0.001$ & $0.971 \pm 0.001$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.891 \pm 0.017$ & $0.853 \pm 0.021$ \\
+2b & 3072$^\dagger$ & 0.980 & 0.976 & 0.500 & 0.499 & 0.963 & 0.916 \\
+2c & $^\dagger$ &  &  &  &  &  &  \\
+2d & 3072$^\dagger$ & 0.982 & 0.977 & 0.500 & 0.500 & 0.962 & 0.937 \\
+2e & 3072$^\dagger$ & 0.981 & 0.975 & 0.500 & 0.500 & 0.960 & 0.919 \\
+2f & 3072, 1, 2 & $0.980 \pm 0.002$ & $0.974 \pm 0.001$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.952 \pm 0.006$ & $0.896 \pm 0.008$ \\
+2g & $^\dagger$ &  &  &  &  &  &  \\
 \midrule
-3a & jac+pull & 3072, 1, 2 & $0.976 \pm 0.001$ & $0.966 \pm 0.004$ & $0.467 \pm 0.057$ & $0.500 \pm 0.000$ & $0.887 \pm 0.014$ & $0.844 \pm 0.013$ \\
-3b & jac+pull+adv$_h$ & 3072, 1, 2 & $0.979 \pm 0.001$ & $0.976 \pm 0.001$ & $0.566 \pm 0.115$ & $0.500 \pm 0.000$ & $0.949 \pm 0.007$ & $0.898 \pm 0.020$ \\
-3c & jac+pull+adv$_h$, lin.\ head & $^\dagger$ &  &  &  &  &  &  \\
-3d & jac+pull+adv$_\lambda$ & 3072$^\dagger$ & 0.981 & 0.978 & 0.500 & 0.500 & 0.960 & 0.925 \\
-3e & jac+pull+adv$_\lambda$, enc. & 3072$^\dagger$ & 0.980 & 0.973 & 0.405 & 0.500 & 0.951 & 0.907 \\
-3f & jac+pull+adv$_h$, enc. & 3072, 1$^\dagger$ & $0.978 \pm 0.001$ & $0.974 \pm 0.001$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.951 \pm 0.023$ & $0.909 \pm 0.019$ \\
-3g & jac+pull+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  &  &  &  \\
+3a & 3072, 1, 2 & $0.976 \pm 0.001$ & $0.966 \pm 0.004$ & $0.467 \pm 0.057$ & $0.500 \pm 0.000$ & $0.887 \pm 0.014$ & $0.844 \pm 0.013$ \\
+3b & 3072, 1, 2 & $0.979 \pm 0.001$ & $0.976 \pm 0.001$ & $0.566 \pm 0.115$ & $0.500 \pm 0.000$ & $0.949 \pm 0.007$ & $0.898 \pm 0.020$ \\
+3c & $^\dagger$ &  &  &  &  &  &  \\
+3d & 3072$^\dagger$ & 0.981 & 0.978 & 0.500 & 0.500 & 0.960 & 0.925 \\
+3e & 3072$^\dagger$ & 0.980 & 0.973 & 0.405 & 0.500 & 0.951 & 0.907 \\
+3f & 3072, 1$^\dagger$ & $0.978 \pm 0.001$ & $0.974 \pm 0.001$ & $0.500 \pm 0.000$ & $0.500 \pm 0.000$ & $0.951 \pm 0.023$ & $0.909 \pm 0.019$ \\
+3g & $^\dagger$ &  &  &  &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -89,33 +89,33 @@ Row & Model & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \mu
 \small
 \caption{Raw CEM (no safety cost), open loop, success / collision (\%), 50 episodes per seed.}
 \label{tab:dubins_cem_raw}
-\begin{tabular}{llp{2.2cm}ccc}
+\begin{tabular}{lp{2.2cm}ccc}
 \toprule
-Row & Model & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
+Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \midrule
-1a & sigreg & $^\dagger$ &  &  &  \\
-1b & adv$_h$ & $^\dagger$ &  &  &  \\
-1c & adv$_h$, lin.\ head & $^\dagger$ &  &  &  \\
-1d & adv$_\lambda$ & $^\dagger$ &  &  &  \\
-1e & adv$_\lambda$, enc. & $^\dagger$ &  &  &  \\
-1f & adv$_h$, enc. & $^\dagger$ &  &  &  \\
-1g & adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  \\
+1a & $^\dagger$ &  &  &  \\
+1b & $^\dagger$ &  &  &  \\
+1c & $^\dagger$ &  &  &  \\
+1d & $^\dagger$ &  &  &  \\
+1e & $^\dagger$ &  &  &  \\
+1f & $^\dagger$ &  &  &  \\
+1g & $^\dagger$ &  &  &  \\
 \midrule
-2a & jac & $^\dagger$ &  &  &  \\
-2b & jac+adv$_h$ & $^\dagger$ &  &  &  \\
-2c & jac+adv$_h$, lin.\ head & $^\dagger$ &  &  &  \\
-2d & jac+adv$_\lambda$ & $^\dagger$ &  &  &  \\
-2e & jac+adv$_\lambda$, enc. & $^\dagger$ &  &  &  \\
-2f & jac+adv$_h$, enc. & $^\dagger$ &  &  &  \\
-2g & jac+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  \\
+2a & $^\dagger$ & 86.0 / 24.0 (1) &  &  \\
+2b & $^\dagger$ &  &  &  \\
+2c & $^\dagger$ &  &  &  \\
+2d & $^\dagger$ &  &  &  \\
+2e & $^\dagger$ &  &  &  \\
+2f & $^\dagger$ &  &  &  \\
+2g & $^\dagger$ &  &  &  \\
 \midrule
-3a & jac+pull & $^\dagger$ &  &  &  \\
-3b & jac+pull+adv$_h$ & $^\dagger$ &  &  &  \\
-3c & jac+pull+adv$_h$, lin.\ head & $^\dagger$ &  &  &  \\
-3d & jac+pull+adv$_\lambda$ & $^\dagger$ &  &  &  \\
-3e & jac+pull+adv$_\lambda$, enc. & $^\dagger$ &  &  &  \\
-3f & jac+pull+adv$_h$, enc. & $^\dagger$ &  &  &  \\
-3g & jac+pull+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  \\
+3a & $^\dagger$ & 84.0 / 24.0 (1) &  &  \\
+3b & $^\dagger$ &  &  &  \\
+3c & $^\dagger$ &  &  &  \\
+3d & $^\dagger$ &  &  &  \\
+3e & $^\dagger$ &  &  &  \\
+3f & $^\dagger$ &  &  &  \\
+3g & $^\dagger$ &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -125,33 +125,33 @@ Row & Model & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \small
 \caption{Safety-first CEM (GP margin function, $w = 1000$, $C = 10^4$), open loop, success / collision (\%), 50 episodes per seed.}
 \label{tab:dubins_cem_sf}
-\begin{tabular}{llp{2.2cm}ccc}
+\begin{tabular}{lp{2.2cm}ccc}
 \toprule
-Row & Model & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
+Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \midrule
-1a & sigreg & $^\dagger$ &  &  &  \\
-1b & adv$_h$ & $^\dagger$ &  &  &  \\
-1c & adv$_h$, lin.\ head & $^\dagger$ &  &  &  \\
-1d & adv$_\lambda$ & $^\dagger$ &  &  &  \\
-1e & adv$_\lambda$, enc. & $^\dagger$ &  &  &  \\
-1f & adv$_h$, enc. & $^\dagger$ &  &  &  \\
-1g & adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  \\
+1a & $^\dagger$ &  &  &  \\
+1b & $^\dagger$ &  &  &  \\
+1c & $^\dagger$ &  &  &  \\
+1d & $^\dagger$ &  &  &  \\
+1e & $^\dagger$ &  &  &  \\
+1f & $^\dagger$ &  &  &  \\
+1g & $^\dagger$ &  &  &  \\
 \midrule
-2a & jac & $^\dagger$ &  &  &  \\
-2b & jac+adv$_h$ & $^\dagger$ &  &  &  \\
-2c & jac+adv$_h$, lin.\ head & $^\dagger$ &  &  &  \\
-2d & jac+adv$_\lambda$ & $^\dagger$ &  &  &  \\
-2e & jac+adv$_\lambda$, enc. & $^\dagger$ &  &  &  \\
-2f & jac+adv$_h$, enc. & $^\dagger$ &  &  &  \\
-2g & jac+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  \\
+2a & $^\dagger$ &  &  &  \\
+2b & $^\dagger$ &  &  &  \\
+2c & $^\dagger$ &  &  &  \\
+2d & $^\dagger$ &  &  &  \\
+2e & $^\dagger$ &  &  &  \\
+2f & $^\dagger$ &  &  &  \\
+2g & $^\dagger$ &  &  &  \\
 \midrule
-3a & jac+pull & $^\dagger$ &  &  &  \\
-3b & jac+pull+adv$_h$ & $^\dagger$ &  &  &  \\
-3c & jac+pull+adv$_h$, lin.\ head & $^\dagger$ &  &  &  \\
-3d & jac+pull+adv$_\lambda$ & $^\dagger$ &  &  &  \\
-3e & jac+pull+adv$_\lambda$, enc. & $^\dagger$ &  &  &  \\
-3f & jac+pull+adv$_h$, enc. & $^\dagger$ &  &  &  \\
-3g & jac+pull+adv$_h$, lin.\ head, enc. & $^\dagger$ &  &  &  \\
+3a & $^\dagger$ &  &  &  \\
+3b & $^\dagger$ &  &  &  \\
+3c & $^\dagger$ &  &  &  \\
+3d & $^\dagger$ &  &  &  \\
+3e & $^\dagger$ &  &  &  \\
+3f & $^\dagger$ &  &  &  \\
+3g & $^\dagger$ &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -161,33 +161,33 @@ Row & Model & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \small
 \caption{Safety-first CEM, replanning every 5 steps (goal cost at every imagined step), success / collision (\%), 50 episodes per seed. To be run.}
 \label{tab:dubins_cem_rec5}
-\begin{tabular}{llp{2.2cm}ccc}
+\begin{tabular}{lp{2.2cm}ccc}
 \toprule
-Row & Model & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
+Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \midrule
-1a & sigreg & & & & \\
-1b & adv$_h$ & & & & \\
-1c & adv$_h$, lin.\ head & & & & \\
-1d & adv$_\lambda$ & & & & \\
-1e & adv$_\lambda$, enc. & & & & \\
-1f & adv$_h$, enc. & & & & \\
-1g & adv$_h$, lin.\ head, enc. & & & & \\
+1a & & & & \\
+1b & & & & \\
+1c & & & & \\
+1d & & & & \\
+1e & & & & \\
+1f & & & & \\
+1g & & & & \\
 \midrule
-2a & jac & & & & \\
-2b & jac+adv$_h$ & & & & \\
-2c & jac+adv$_h$, lin.\ head & & & & \\
-2d & jac+adv$_\lambda$ & & & & \\
-2e & jac+adv$_\lambda$, enc. & & & & \\
-2f & jac+adv$_h$, enc. & & & & \\
-2g & jac+adv$_h$, lin.\ head, enc. & & & & \\
+2a & & & & \\
+2b & & & & \\
+2c & & & & \\
+2d & & & & \\
+2e & & & & \\
+2f & & & & \\
+2g & & & & \\
 \midrule
-3a & jac+pull & & & & \\
-3b & jac+pull+adv$_h$ & & & & \\
-3c & jac+pull+adv$_h$, lin.\ head & & & & \\
-3d & jac+pull+adv$_\lambda$ & & & & \\
-3e & jac+pull+adv$_\lambda$, enc. & & & & \\
-3f & jac+pull+adv$_h$, enc. & & & & \\
-3g & jac+pull+adv$_h$, lin.\ head, enc. & & & & \\
+3a & & & & \\
+3b & & & & \\
+3c & & & & \\
+3d & & & & \\
+3e & & & & \\
+3f & & & & \\
+3g & & & & \\
 \bottomrule
 \end{tabular}
 \end{table*}
