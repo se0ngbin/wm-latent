@@ -48,6 +48,17 @@ class _EncoderProxy:
         return self  # parent already moved
 
 
+class _LinMargin(nn.Module):
+    """h(z) = w.z + b; (..., D) -> (..., 1), the same output shape as the adapter's margin MLP heads."""
+
+    def __init__(self, inp_dim):
+        super().__init__()
+        self.lin = nn.Linear(inp_dim, 1)
+
+    def forward(self, x):
+        return self.lin(x)
+
+
 class _ConstHead(nn.Module):
     """Stand-in for the Dreamer cont head: returns an object exposing `.mean`.
     LE-WM has no continuation predictor; latent_cbf only reads `.mean` for
@@ -315,6 +326,20 @@ class LEWMWorldModel(nn.Module):
         if pos is not None:
             return int(pos.shape[1])
         return 3
+
+    def load_margin(self, sd):
+        """Load a saved margin checkpoint into heads. Accepts {"margin_gp", "margin_nogp"} (train_margin_lewm.py),
+        {"margin_gp"} only (le-wm train_gp_margin*_dubins.py), or {"margin_lin": {lin.weight, lin.bias}}
+        (train_lin_margin_dubins.py), which replaces margin_gp with h(z) = w.z + b. A missing nogp head stays at
+        init; it is only read with --no_gp."""
+        if "margin_lin" in sd:
+            lin = _LinMargin(self.embed_dim).to(next(self.heads["margin_gp"].parameters()).device)
+            lin.load_state_dict(sd["margin_lin"])
+            self.heads["margin_gp"] = lin
+            return
+        self.heads["margin_gp"].load_state_dict(sd["margin_gp"])
+        if "margin_nogp" in sd:
+            self.heads["margin_nogp"].load_state_dict(sd["margin_nogp"])
 
     # ---- dreamer-WM API ----
     def preprocess(self, obs):
