@@ -11,13 +11,13 @@ Dubins, 21 world models (base sigreg / jac / jac+pull $\times$ safety reg), thre
 \begin{table*}[t]
 \centering
 \small
-\caption{Real-frame AUC of the margin function (trained on red frames only), linear and GP (MLP). 4000 uniform states per condition, disjoint from training.}
+\caption{Real-frame AUC of the margin function (trained on red frames only), linear ($w^\top z + b$) and MLP (192-512-512-1), both trained with the same gradient-penalty loss. 4000 uniform states per condition, disjoint from training.}
 \label{tab:dubins_auc}
 \begin{tabular}{lp{2.2cm}cccccc}
 \toprule
 Row & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90$^\circ$} \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
- & & linear & GP & linear & GP & linear & GP \\
+ & & linear & MLP & linear & MLP & linear & MLP \\
 \midrule
 1a & 3072, 1, 2 & $0.981 \pm 0.005$ & $0.987 \pm 0.006$ & $0.543 \pm 0.100$ & $0.170 \pm 0.116$ & $0.637 \pm 0.503$ & $0.591 \pm 0.428$ \\
 1b & 3072, 1, 2 & $0.997 \pm 0.002$ & $0.998 \pm 0.001$ & $0.834 \pm 0.197$ & $0.811 \pm 0.146$ & $0.991 \pm 0.004$ & $0.789 \pm 0.356$ \\
@@ -55,7 +55,7 @@ Row & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolum
 \toprule
 Row & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90$^\circ$} \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
- & & linear & GP & linear & GP & linear & GP \\
+ & & linear & MLP & linear & MLP & linear & MLP \\
 \midrule
 1a & 3072, 1, 2 & $0.931 \pm 0.021$ & $0.945 \pm 0.006$ & $0.500 \pm 0.000$ & $0.502 \pm 0.004$ & $0.570 \pm 0.203$ & $0.509 \pm 0.025$ \\
 1b & 3072, 1, 2 & $0.980 \pm 0.002$ & $0.978 \pm 0.002$ & $0.523 \pm 0.035$ & $0.521 \pm 0.031$ & $0.867 \pm 0.135$ & $0.658 \pm 0.205$ \\
@@ -123,7 +123,7 @@ Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \begin{table*}[t]
 \centering
 \small
-\caption{Safety-first CEM (GP margin function, $w = 1000$, $C = 10^4$), open loop, success / collision (\%), 50 episodes per seed.}
+\caption{Safety-first CEM (MLP margin function, $w = 1000$, $C = 10^4$), open loop, success / collision (\%), 50 episodes per seed.}
 \label{tab:dubins_cem_sf}
 \begin{tabular}{lp{2.2cm}ccc}
 \toprule
