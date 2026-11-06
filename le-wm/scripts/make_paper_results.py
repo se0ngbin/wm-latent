@@ -73,7 +73,8 @@ GOALK = int(os.environ.get("GOALK", 25))   # goal distance of the paper grid (so
 
 def cem_val(tag, cond, planner, rec):
     k = "" if GOALK == 25 else f"_k{GOALK}"
-    suf = {"raw": f"{tag}_gr_w0{k}_cross", "ccem": f"{tag}_gp_gr_w1000{k}_cross_ccem"}[planner]
+    rule = os.environ.get("CCEMRULE", "minh")   # minh: all feasible, then highest worst-case h; "" = SafeDreamer's rule
+    suf = {"raw": f"{tag}_gr_w0{k}_cross", "ccem": f"{tag}_gp_gr_w1000{k}_cross_ccem{rule}"}[planner]
     suf += "" if rec == GOALK else f"_rec{rec}"
     p = f"{L}softcem_{suf}_n50_{cond}.log"
     if not os.path.exists(p):
