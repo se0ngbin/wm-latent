@@ -16,8 +16,11 @@ E = os.environ.get
 WM, EP, HEAD = E("WM", "lewm_reacher"), E("EP", "50"), E("HEAD", "raw")
 HEADS = E("HEADS", "/data/seongbin/lewm/reacher_heads")
 W, C = float(E("W", "1000")), float(E("C", "1e4"))
-N_EPS, BUDGET, H, REC, FS = int(E("N_EPS", "50")), int(E("BUDGET", "200")), int(E("H", "5")), int(E("REC", "5")), 5
-OUT = E("OUT", f"/data/seongbin/lewm/reacher_cem/{WM}_{HEAD}.npz")
+MODE = E("MODE", "data")   # data: LeWM protocol pairs that cross the box (default); sls: SLS-squared's 2.7 rad sweep (fails: goal cost flat)
+N_EPS, H, REC, FS = int(E("N_EPS", "50")), int(E("H", "5")), int(E("REC", "5")), 5
+BUDGET = int(E("BUDGET", "50" if MODE == "data" else "200"))
+NITER = int(E("NITER", "10"))   # LeWM paper: 30 CEM iterations for PushT, 10 for the other environments
+OUT = E("OUT", f"/data/seongbin/lewm/reacher_cem/{WM}_{HEAD}_{MODE}.npz")
 DEV = "cuda"
 START_C, START_HW, GOAL = np.array([3.1, -2.25]), np.array([0.05, 0.1]), np.array([0.37, -2.09])
 def in_box(q): q1 = (q[0] + np.pi) % (2 * np.pi) - np.pi; return 0 <= q1 <= np.pi and -2.88 <= q[1] <= -2.45
@@ -29,7 +32,7 @@ MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1); STD = torch.tensor(
 def prep(imgs): return ((torch.as_tensor(np.stack(imgs)).permute(0, 3, 1, 2).float() / 255. - MEAN) / STD).unsqueeze(1)
 
 model = swm.wm.utils.load_pretrained(f"{WM}/weights_epoch_{EP}.pt").to(DEV).eval().requires_grad_(False)
-kw = dict(num_samples=300, n_steps=30, topk=30, batch_size=int(E("NB", "10")), device=DEV, seed=0)   # NB envs per CEM batch (GPU memory)
+kw = dict(num_samples=300, n_steps=NITER, topk=30, batch_size=int(E("NB", "10")), device=DEV, seed=0)   # NB envs per CEM batch (GPU memory)
 solver = (swm.solver.CEMSolver(model, **kw) if HEAD == "raw" else
           SoftSafeCEMSolver(model, margin_ckpt=f"{HEADS}/{WM}/mlp_s0.pt", unsafe_weight=W, unsafe_const=C, goal_cost="final", **kw))
 if HEAD == "linear":
@@ -38,12 +41,28 @@ if HEAD == "linear":
 solver.configure(action_space=gym.spaces.Box(-1, 1, (N_EPS, 2)), n_envs=N_EPS, config=swm.PlanConfig(horizon=H, receding_horizon=REC, action_block=FS))
 
 rng = np.random.default_rng(0)
-starts = rng.uniform(START_C - START_HW, START_C + START_HW, (N_EPS, 2))
 envs = [gym.make("swm/ReacherDMControl-v0", task="qpos_match", render_mode="rgb_array").unwrapped for _ in range(N_EPS)]
-goal_img = []
-for e, s in zip(envs, starts):
-    e.reset(seed=0); e.set_state(GOAL, np.zeros(2)); goal_img.append(e.render()); e.set_state(s, np.zeros(2))
-goal = prep(goal_img)
+if MODE == "data":
+    # LeWM eval protocol (config/eval/reacher.yaml): start = dataset state (qpos, qvel), goal = the dataset frame GOFF steps later.
+    # Held-out episodes (>= 9000, unseen by the margin functions). Kept: start and goal outside the box, but the dataset's own path
+    # between them enters it, so the recorded route is unsafe and a safe plan has to deviate.
+    GOFF = 25
+    with h5py.File("/data/seongbin/lewm/datasets/reacher.h5", "r") as f:
+        fl, ep, Q, V = f["failures"][:].astype(int), f["ep_idx"][:], f["qpos"][:], f["qvel"][:]
+        cs = np.r_[0, np.cumsum(fl)]
+        t = np.arange(len(fl) - GOFF)
+        ok = (ep[t] >= 9000) & (ep[t] == ep[t + GOFF]) & (fl[t] == 0) & (fl[t + GOFF] == 0) & (cs[t + GOFF + 1] - cs[t] > 0)
+        cand = t[ok]; print(f"candidate pairs {len(cand)} (held-out episodes, safe endpoints, dataset path crosses the box)", flush=True)
+        sel = np.sort(rng.choice(cand, N_EPS, replace=False))
+        goal = prep([f["pixels"][i + GOFF] for i in sel]); GOALS = Q[sel + GOFF]
+    starts = Q[sel]
+    for e, i in zip(envs, sel): e.reset(seed=0); e.set_state(Q[i], V[i])
+else:
+    starts = rng.uniform(START_C - START_HW, START_C + START_HW, (N_EPS, 2)); GOALS = np.tile(GOAL, (N_EPS, 1))
+    goal_img = []
+    for e, s in zip(envs, starts):
+        e.reset(seed=0); e.set_state(GOAL, np.zeros(2)); goal_img.append(e.render()); e.set_state(s, np.zeros(2))
+    goal = prep(goal_img)
 img = [e.render() for e in envs]
 qs = [[s.copy()] for s in starts]
 t0, tail = time.time(), None
@@ -57,11 +76,11 @@ for t in range(0, BUDGET, REC * FS):
     img = [e.render() for e in envs]
     print(f"[{WM} {HEAD}] step {t + REC * FS}/{BUDGET} ({(time.time() - t0) / 60:.1f} min)", flush=True)
 qs = np.array(qs)                                                                    # (N, BUDGET+1, 2)
-hit = np.all(np.abs(qs - GOAL) < 0.05, -1); ts = np.where(hit.any(1), hit.argmax(1), BUDGET + 1)
+hit = np.all(np.abs(qs - GOALS[:, None]) < 0.05, -1); ts = np.where(hit.any(1), hit.argmax(1), BUDGET + 1)
 box = np.array([[in_box(q) for q in traj] for traj in qs])
 coll = np.array([box[j, :ts[j]].any() if ts[j] <= BUDGET else box[j].any() for j in range(N_EPS)])
 succ = ts <= BUDGET
 print(f"FINAL {WM} {HEAD} W={W} C={C} n={N_EPS} success={succ.mean():.3f} collision={coll.mean():.3f} safe_success={(succ & ~coll).mean():.3f} "
-      f"min_goal_dist(median)={np.median(np.abs(qs - GOAL).max(-1).min(1)):.3f}", flush=True)
+      f"min_goal_dist(median)={np.median(np.abs(qs - GOALS[:, None]).max(-1).min(1)):.3f}", flush=True)
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 np.savez(OUT, q=qs, start=starts, success=succ, collision=coll, t_success=ts, in_box=box)
