@@ -282,7 +282,14 @@ class _SoftCostJEPA:
     """Model proxy: goal cost + w * sum_t relu(m - h(z_t)) over the imagined
     rollout. Unsafe-looking candidates just rank badly; no action map."""
 
-    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None, h_rel=False):
+    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None, h_rel=False,
+                 ccem=False, ccem_cost_limit=2.0):
+        # ccem: SafeDreamer's constrained-CEM elite rule (OSRP CCEPlanner, SafeDreamer/behaviors.py:316-391) on top of
+        # LeWM's CEM: per-candidate cost = (number of states on the plan, current one included, with h < 0) * 1000/H,
+        # feasible iff cost < ccem_cost_limit (SafeDreamer default 2.0). If >= topk candidates are feasible, the elites
+        # are the feasible ones with the best goal cost; otherwise the topk lowest-cost candidates (ties: lower index
+        # first, as jax.lax.top_k). Encoded as the score CEMSolver takes the topk smallest of. weight/const unused.
+        self.ccem, self.ccem_cost_limit, self.topk = ccem, ccem_cost_limit, None
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
         self.const = const  # flat cost for ANY violation: safe beats unsafe lexicographically
         # "final": JEPA.criterion, goal distance of the last imagined step only (receding-horizon replanning
@@ -313,6 +320,18 @@ class _SoftCostJEPA:
                 g = g.unsqueeze(1)
             g = g[..., -1:, :]                                    # same goal latent JEPA.criterion uses
             cost = (z - g.detach()).pow(2).sum(-1).mean(-1).to(cost.dtype)
+        if self.ccem:
+            zc = info_dict["predicted_emb"][:, :, H - 1:]          # current (real) state + imagined, as SafeDreamer's traj
+            hc = self.head(zc.float())                             # (B, S, 1 + T')
+            c = (hc < 0).float().sum(-1) * (1000.0 / z.size(2))    # SafeDreamer: cost.sum(0) * (1000 / horizon)
+            feas = c < self.ccem_cost_limit
+            enough = feas.sum(1, keepdim=True) >= self.topk
+            S = c.size(1)
+            tie = torch.arange(S, device=c.device, dtype=c.dtype) * 1e-6     # lower index first among equal costs
+            score = torch.where(enough, torch.where(feas, cost.float(), cost.float() + 1e9), c + tie)
+            self.last_h = hc
+            self.last = (cost.mean().item(), c.mean().item(), (~feas).float().mean().item())
+            return score.to(cost.dtype)
         h = self.head(z.float())                                  # (B, S, T')
         if self.h_steps is not None:
             h = h[..., :self.h_steps]
@@ -366,12 +385,14 @@ class SoftSafeCEMSolver(CEMSolver):
 
     def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
                  unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final",
-                 h_quantile: float | None = None, h_steps: int | None = None, h_rel: bool = False, **kwargs):
+                 h_quantile: float | None = None, h_steps: int | None = None, h_rel: bool = False,
+                 ccem: bool = False, ccem_cost_limit: float = 2.0, **kwargs):
         device = kwargs.get("device", "cuda")
         head = _load_margin_head(margin_ckpt, device)
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost,
-                                       h_quantile, h_steps, h_rel),
+                                       h_quantile, h_steps, h_rel, ccem, ccem_cost_limit),
                          **kwargs)
+        self.model.topk = self.topk   # the CCEM rule needs the elite count
         self._trace = []
         if os.environ.get("SOFTCEM_SPREAD"):
             self._spread = _EliteSpread(self.n_steps, unsafe_const)
