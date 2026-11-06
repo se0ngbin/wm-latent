@@ -33,4 +33,15 @@ H2 = torch.tensor([[[1, 1, 1], [1, -0.2, 1], [1, 1, 1], [1, -3, 1], [-1, -1, 1],
 assert run(goal, H2, topk=2, fallback="minh") == [2, 5], run(goal, H2, topk=2, fallback="minh")  # enough: best J of {0,2,5}
 assert run(goal, H2, topk=4, fallback="minh") == [0, 1, 2, 5], run(goal, H2, topk=4, fallback="minh")  # 3 feasible + best worst-case (1: -0.2)
 assert run(goal, H2, topk=5, fallback="minh") == [0, 1, 2, 4, 5], run(goal, H2, topk=5, fallback="minh")  # then 4 (-1) before 3 (-3)
+# threshold-free rules with pre_k = 4 of 6 candidates, topk = 2.
+def run_tf(goal, h_steps, topk, rule, pre):
+    B, S, T = h_steps.shape
+    emb = torch.zeros(B, S, T, 2); emb[..., 0] = h_steps
+    info = {"pixels": torch.zeros(B, S, 1), "predicted_emb": emb}
+    m = _SoftCostJEPA(FakeJEPA(goal), head, 1000, 0.0, 1e4, ccem=True, ccem_fallback=rule); m.topk = topk; m.ccem_pre_k = pre
+    return torch.topk(m.get_cost(info, None), k=topk, dim=1, largest=False).indices[0].sort().values.tolist()
+# worst-case h per candidate: [1, -0.2, 1, -3, -1, 1]; goal J: [5, 0, 3, 1, 0, 2]
+assert run_tf(goal, H2, 2, "safe_task", 4) == [1, 5], run_tf(goal, H2, 2, "safe_task", 4)  # 4 safest {0,1,2,5} -> best J: 1 (0), 5 (2)
+assert run_tf(goal, H2, 2, "task_safe", 4) == [1, 5], run_tf(goal, H2, 2, "task_safe", 4)  # 4 best J {1,3,4,5} -> safest: 5 (1), 1 (-0.2)
+assert run_tf(goal, H2, 2, "task_safe", 3) == [1, 4], run_tf(goal, H2, 2, "task_safe", 3)  # 3 best J {1,3,4} -> safest: 1 (-0.2), 4 (-1)
 print("ccem rule ok")

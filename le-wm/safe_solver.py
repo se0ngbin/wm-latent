@@ -292,7 +292,11 @@ class _SoftCostJEPA:
         # ccem_fallback="minh": feasible = h > 0 on every state of the plan (current included); if fewer than topk are
         # feasible, all feasible plans are kept and the rest of the elites are the infeasible plans with the highest
         # worst-case margin min_k h(z_k). ("count" = SafeDreamer: fewest states with h < 0.)
-        assert ccem_fallback in ("count", "minh"), ccem_fallback
+        # threshold-free rules (only the ranking of the safety score min_k h(z_k) is used, never its sign):
+        # "safe_task": keep the ccem_pre_k safest candidates, elites = the topk with the best goal cost among them;
+        # "task_safe": keep the ccem_pre_k with the best goal cost, elites = the topk safest among them.
+        assert ccem_fallback in ("count", "minh", "safe_task", "task_safe"), ccem_fallback
+        self.ccem_pre_k = 50
         self.ccem, self.ccem_cost_limit, self.ccem_fallback, self.topk = ccem, ccem_cost_limit, ccem_fallback, None
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
         self.const = const  # flat cost for ANY violation: safe beats unsafe lexicographically
@@ -327,6 +331,19 @@ class _SoftCostJEPA:
         if self.ccem:
             zc = info_dict["predicted_emb"][:, :, H - 1:]          # current (real) state + imagined, as SafeDreamer's traj
             hc = self.head(zc.float())                             # (B, S, 1 + T')
+            if self.ccem_fallback in ("safe_task", "task_safe"):
+                worst = hc.min(-1).values                          # safety score: worst-case margin over the plan
+                J = cost.float()
+                pre = min(self.ccem_pre_k, J.size(1))
+                if self.ccem_fallback == "safe_task":
+                    keep = torch.zeros_like(J, dtype=torch.bool).scatter_(1, torch.topk(worst, pre, dim=1).indices, True)
+                    score = torch.where(keep, J, J + 1e9)          # topk smallest = best goal cost among the pre safest
+                else:
+                    keep = torch.zeros_like(J, dtype=torch.bool).scatter_(1, torch.topk(J, pre, dim=1, largest=False).indices, True)
+                    score = torch.where(keep, -worst, torch.full_like(J, 1e9))   # topk smallest = safest among the pre best-goal
+                self.last_h = hc
+                self.last = (cost.mean().item(), worst.mean().item(), (worst <= 0).float().mean().item())
+                return score.to(cost.dtype)
             if self.ccem_fallback == "minh":
                 worst = hc.min(-1).values                          # worst-case margin over the plan
                 feas = worst > 0
