@@ -232,8 +232,12 @@ environment.
 \paragraph{Raw CEM.} $s_n = J(a^{(n)})$: LeWM's planner, unchanged (\texttt{solver=cem} semantics; run as
 \texttt{soft\_cem} with weight 0 and no constraint).
 
-\paragraph{CCEM.} The constrained cross-entropy elite rule of SafeDreamer's online safety-reward planner (OSRP,
-\texttt{SafeDreamer/SafeDreamer/behaviors.py}:316--391; the rule is from Wen \& Topcu, 2018), inside LeWM's CEM above.
+\paragraph{CCEM.} The constrained elite rule of SafeDreamer's online safety-reward planner (OSRP,
+\texttt{SafeDreamer/SafeDreamer/behaviors.py}:316--391), inside LeWM's CEM above. This is a planner: CEM searches over
+action sequences, and each candidate's cost is that of its own imagined trajectory. The same elite rule appears in the
+constrained cross-entropy method of Wen \& Topcu (2018), which is a policy-search method (CEM over policy parameters, with
+a constraint on each policy's expected cumulative cost estimated from rollouts); we use only the rule, in SafeDreamer's
+trajectory-search form, and the constraint here is on the predicted cost of a single plan, not an expected cost.
 The cost model is the margin function $h : \mathbb{R}^{192} \to \mathbb{R}$, $h \ge 0$ read as safe (MLP 192-512-512-1,
 trained on red frames, frozen; \texttt{scripts/train\_gp\_margin\_dubins.py}, loss \texttt{scripts/ood\_margin\_gp\_jepa.py}:96).
 Per state $c_k = \mathbb 1[h(\hat z_k) < 0]$, $k = 0, \dots, H$ (the current, real state included, as in SafeDreamer's
