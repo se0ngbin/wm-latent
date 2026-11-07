@@ -2,7 +2,7 @@
 # Threshold-free elite rules (safe_solver ccem_fallback): safe_task = 50 safest by min_k h, then the 30 best goal cost;
 # task_safe = 50 best goal cost, then the 30 safest. Model: jac+pull+adv_h (purple AUC ~0.99 with a linear h, sign acc
 # ~0.57), linear margin function, its 3 world-model seeds. Goal distances 10-25 (crossing goals), red / purple / rot 90,
-# 50 episodes. Two lanes (GPUs are shared): GPU1 seeds 3072 then 2, GPU0 seed 1.
+# 50 episodes. Two lanes, both on GPU0 (GPU1 is full): seeds 3072 then 2, and seed 1.
 set -uo pipefail
 cd "$(dirname "$0")"
 M=/data/seongbin/dreamer/lewm
@@ -18,6 +18,6 @@ lane () {
     done
   done
 }
-lane 1 lewm_dubins_jacpull_safeadv_linf50:jacpull_linf lewm_dubins_jacpull_safeadv_linf50_s2:jacpull_linf_s2 &
+lane 0 lewm_dubins_jacpull_safeadv_linf50:jacpull_linf lewm_dubins_jacpull_safeadv_linf50_s2:jacpull_linf_s2 &
 lane 0 lewm_dubins_jacpull_safeadv_linf50_s1:jacpull_linf_s1 &
 wait; echo THRESHOLD_FREE_DONE
