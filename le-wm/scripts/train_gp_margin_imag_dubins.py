@@ -10,14 +10,18 @@ margin function only ever saw encoder latents of real frames. Here:
 h is trained (same margin_gp loss / steps as train_gp_margin_dubins.py) on predicted latents + the real uniform-state
 latents of the original GP, so it stays valid on real latents. Reports AUC / false-safe on held-out plans (last 10% of
 episodes) for the old and new h. Saves {"margin_gp": ...} to <MDIR>/<wm>/margin_gp_imag_red_s<seed>.pt.
-Usage: train_gp_margin_imag_dubins.py <wm_dir> [seed]"""
+HEAD=lin trains the LINEAR margin function instead (h(z) = w.z + b, same loss / steps / balanced batches), saved as
+{"margin_lin": ...} to margin_lin_imag_red_s<seed>.pt and compared with margin_lin_fail_red_s0.pt.
+Usage: [HEAD=gp|lin] train_gp_margin_imag_dubins.py <wm_dir> [seed]"""
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..")); sys.path.insert(0, os.path.dirname(__file__))
 import numpy as np, torch, h5py
 from sklearn.metrics import roc_auc_score
+from safe_solver import _MarginHead, _LinMarginHead, _load_margin_head   # before E: E puts the MAIN checkout first on sys.path
 import ood_margin_gp_jepa as E
 import stable_worldmodel as swm
-from safe_solver import _MarginHead
+HEAD = os.environ.get("HEAD", "gp")
+assert HEAD in ("gp", "lin"), HEAD
 
 ck, seed = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 0
 K, NTR, NTE, DEV, MDIR = 25, 6000, 1000, E.DEV, "/data/seongbin/dreamer/lewm"
@@ -80,9 +84,18 @@ tf_fixed = lambda d: tf({"pixels": torch.from_numpy(np.ascontiguousarray(d["pixe
 Zr = E.encode(m, E.render_cond(E.DubinsSwmEnv(), s, og, tf_fixed))
 yr = E.inside_obstacle(s[:, :2], "circle")
 Z = torch.cat([Zh_tr.flatten(0, 1), Zr]); Y = np.concatenate([y_tr.ravel(), yr])
-head = E.train_margin(Z, Y, "gp", seed=seed)
-out = f"{MDIR}/{ck}/margin_gp_imag_red_s{seed}.pt"
-torch.save({"margin_gp": head.state_dict()}, out)
+if HEAD == "gp":
+    head = E.train_margin(Z, Y, "gp", seed=seed)
+else:   # same loop as E.train_margin(kind="gp") with a linear head
+    torch.manual_seed(seed); head = _LinMarginHead().to(DEV); opt = torch.optim.AdamW(head.parameters(), lr=E.LR)
+    safe, unsafe = Z[Y == 0].to(DEV), Z[Y == 1].to(DEV)
+    for _ in range(E.STEPS):
+        bs = min(256, safe.shape[0], unsafe.shape[0])
+        loss = E.margin_gp_loss(head, safe[torch.randint(0, safe.shape[0], (bs,), device=DEV)], unsafe[torch.randint(0, unsafe.shape[0], (bs,), device=DEV)])
+        opt.zero_grad(); loss.backward(); opt.step()
+    head.eval()
+out = f"{MDIR}/{ck}/margin_{HEAD}_imag_red_s{seed}.pt"
+torch.save({f"margin_{HEAD}": head.state_dict()}, out)
 
 
 def report(nm, hd):
@@ -94,6 +107,6 @@ def report(nm, hd):
           f"(steps 1-5 {fs(0, 5):.3f}, 21-25 {fs(20, K):.3f})  false-alarm {(h[safe] < 0).mean():.3f}", flush=True)
 
 
-old = _MarginHead().to(DEV); old.load_state_dict(torch.load(f"{MDIR}/{ck}/margin_gp_fail_red_s0.pt", map_location=DEV)["margin_gp"])
+old = _load_margin_head(f"{MDIR}/{ck}/margin_{HEAD}_fail_red_s0.pt", DEV)
 report("old h (real latents)", old.eval()); report("new h (+predicted)", head)
 print(f"saved {out}", flush=True)

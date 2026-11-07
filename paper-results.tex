@@ -7,7 +7,7 @@
 
 \section*{Dubins paper grid}
 
-Dubins, 21 world models (base sigreg / jac / jac+pull $\times$ safety reg), three world-model seeds each (3072, 1, 2; jac uses 3072, 1, 100), as in LeWM (results averaged over 3 training seeds). Every world model is trained for 50 epochs on the same dataset. Mean ($\pm$ std) over the seeds done; a blank cell is not done yet; $^\dagger$ = fewer than 3 seeds done (the Seeds column lists them; a number in parentheses in a CEM cell is the number of seeds averaged). Rows: 1 = sigreg, 2 = jac, 3 = jac+pull base; a = no safety reg, b = adv$_h$, c = adv$_h$ with a linear internal head, d = adv$_\lambda$, e = adv$_\lambda$ encoder-only, f = adv$_h$ encoder-only, g = adv$_h$ with a linear internal head, encoder-only.
+Dubins, 21 world models (base sigreg / jac / jac+pull $\times$ safety reg), three world-model seeds each (3072, 1, 2; jac uses 3072, 1, 100), as in LeWM (results averaged over 3 training seeds). Every world model is trained for 50 epochs on the same dataset. Mean ($\pm$ std) over the seeds done; a blank cell is not done yet; $^\dagger$ = fewer than 3 seeds done (the Seeds column lists the seeds with every cell of the row done, and "partial" seeds with only some cells done so far; a number in parentheses in a CEM cell is the number of seeds that cell averages, which can exceed the fully done seeds while runs are in progress). Rows: 1 = sigreg, 2 = jac, 3 = jac+pull base; a = no safety reg, b = adv$_h$, c = adv$_h$ with a linear internal head, d = adv$_\lambda$, e = adv$_\lambda$ encoder-only, f = adv$_h$ encoder-only, g = adv$_h$ with a linear internal head, encoder-only.
 
 \begin{table*}[t]
 \centering
@@ -196,35 +196,35 @@ Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \begin{table*}[t]
 \centering
 \small
-\caption{CCEM, replanning every 5 steps, same episodes, success / collision (\%), 50 episodes per seed. To be run.}
-\label{tab:dubins_cem_rec5}
+\caption{CCEM with the linear margin function trained on real \emph{and predicted} latents (6000 CEM-style 25-step plans rolled out by the world model, each imagined step labelled by running the plan in the simulator; plus the 8000 uniform real states), otherwise as the previous table. Run so far: adv$_h$ with a linear internal head, encoder-only (rows g; 1g and 2g are not trained) and jac (2a) as reference; blank = not run.}
+\label{tab:dubins_cem_ccemlimag}
 \begin{tabular}{lp{2.2cm}ccc}
 \toprule
 Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \midrule
-1a & & & & \\
-1b & & & & \\
-1c & & & & \\
-1d & & & & \\
-1e & & & & \\
-1f & & & & \\
-1g & & & & \\
+1a & $^\dagger$ &  &  &  \\
+1b & $^\dagger$ &  &  &  \\
+1c & $^\dagger$ &  &  &  \\
+1d & $^\dagger$ &  &  &  \\
+1e & $^\dagger$ &  &  &  \\
+1f & $^\dagger$ &  &  &  \\
+1g & $^\dagger$ &  &  &  \\
 \midrule
-2a & & & & \\
-2b & & & & \\
-2c & & & & \\
-2d & & & & \\
-2e & & & & \\
-2f & & & & \\
-2g & & & & \\
+2a & $^\dagger$ &  &  &  \\
+2b & $^\dagger$ &  &  &  \\
+2c & $^\dagger$ &  &  &  \\
+2d & $^\dagger$ &  &  &  \\
+2e & $^\dagger$ &  &  &  \\
+2f & $^\dagger$ &  &  &  \\
+2g & $^\dagger$ &  &  &  \\
 \midrule
-3a & & & & \\
-3b & & & & \\
-3c & & & & \\
-3d & & & & \\
-3e & & & & \\
-3f & & & & \\
-3g & & & & \\
+3a & $^\dagger$ &  &  &  \\
+3b & $^\dagger$ &  &  &  \\
+3c & $^\dagger$ &  &  &  \\
+3d & $^\dagger$ &  &  &  \\
+3e & $^\dagger$ &  &  &  \\
+3f & $^\dagger$ &  &  &  \\
+3g & $^\dagger$ &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -232,7 +232,7 @@ Row & Seeds & Red & Purple & Rot.\ 90$^\circ$ \\
 \clearpage
 \section*{Goal-distance sweep}
 
-How hard the task is as a function of goal distance $K$ (goals $K$ steps ahead, straight-line path through an obstacle, plan horizon $K$ open loop, budget $2K$; protocol of Section~\ref{sec:cem}). 50 episodes per cell and world-model seed, the same 50 episodes for every model and seed at a given $K$. Cells: success / collision (\%), mean over the seeds done; the Seeds column lists the seeds with every cell of the row done, $^\dagger$ = fewer than 3, and a number in parentheses in a cell is the number of seeds it averages. Blank: not run (world model not trained).
+How hard the task is as a function of goal distance $K$ (goals $K$ steps ahead, straight-line path through an obstacle, plan horizon $K$ open loop, budget $2K$; protocol of Section~\ref{sec:cem}). 50 episodes per cell and world-model seed, the same 50 episodes for every model and seed at a given $K$. Cells: success / collision (\%), mean over the seeds done; the Seeds column lists the seeds with every cell of the row done ($^\dagger$ = fewer than 3) and "partial" seeds with only some cells done so far, and a number in parentheses in a cell is the number of seeds that cell averages. Blank: not run (world model not trained).
 
 \begin{table*}[t]
 \centering
@@ -257,7 +257,7 @@ Row & Seeds & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & 
 2b & 3072$^\dagger$ & 92 / 14 (1) & 70 / 60 (1) & 66 / 52 (1) & 84 / 16 (1) & 64 / 38 (1) & 58 / 34 (1) & 94 / 8 (1) & 68 / 42 (1) & 64 / 44 (1) \\
 2c & 3072$^\dagger$ & 92 / 12 (1) & 68 / 52 (1) & 78 / 38 (1) & 82 / 12 (1) & 64 / 36 (1) & 72 / 32 (1) & 90 / 14 (1) & 66 / 40 (1) & 80 / 36 (1) \\
 2d & 3072, 1$^\dagger$ & 93 / 14 (2) & 70 / 51 (2) & 75 / 32 (2) & 85 / 13 (2) & 68 / 29 (2) & 75 / 26 (2) & 89 / 13 (2) & 69 / 31 (2) & 81 / 25 (2) \\
-2e & 3072$^\dagger$ & 93 / 9 (2) & 74 / 32 (2) & 77 / 36 (2) & 90 / 7 (2) & 72 / 20 (1) & 82 / 20 (1) & 94 / 6 (1) & 74 / 26 (1) & 88 / 22 (1) \\
+2e & 3072$^\dagger$; 1 partial & 93 / 9 (2) & 74 / 32 (2) & 77 / 36 (2) & 90 / 7 (2) & 71 / 17 (2) & 80 / 21 (2) & 94 / 6 (1) & 74 / 26 (1) & 88 / 22 (1) \\
 2f & 3072, 1, 2 & 92 / 11 & 75 / 41 & 80 / 31 & 89 / 7 & 74 / 20 & 79 / 17 & 91 / 9 & 77 / 23 & 82 / 19 \\
 2g & $^\dagger$ &  &  &  &  &  &  &  &  &  \\
 \midrule
@@ -294,7 +294,7 @@ Row & Seeds & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & 
 2a & 3072, 1, 100 & 93 / 12 & 22 / 74 & 46 / 69 & 87 / 13 & 43 / 32 & 50 / 33 & 90 / 7 & 49 / 31 & 53 / 37 \\
 2b & 3072$^\dagger$ & 86 / 18 (1) & 10 / 82 (1) & 16 / 78 (1) & 80 / 22 (1) & 26 / 62 (1) & 20 / 62 (1) & 90 / 12 (1) & 28 / 50 (1) & 26 / 62 (1) \\
 2c & 3072$^\dagger$ & 88 / 18 (1) & 20 / 80 (1) & 46 / 68 (1) & 90 / 10 (1) & 26 / 68 (1) & 42 / 58 (1) & 86 / 16 (1) & 42 / 56 (1) & 46 / 60 (1) \\
-2d & 3072$^\dagger$ & 89 / 14 (2) & 20 / 74 (2) & 43 / 64 (2) & 85 / 15 (2) & 32 / 50 (2) & 38 / 58 (2) & 80 / 21 (2) & 34 / 45 (2) & 50 / 48 (1) \\
+2d & 3072, 1$^\dagger$ & 89 / 14 (2) & 20 / 74 (2) & 43 / 64 (2) & 85 / 15 (2) & 32 / 50 (2) & 38 / 58 (2) & 80 / 21 (2) & 34 / 45 (2) & 43 / 52 (2) \\
 2e & 3072$^\dagger$ & 94 / 12 (1) & 44 / 70 (1) & 50 / 62 (1) & 94 / 8 (1) & 40 / 50 (1) & 54 / 36 (1) & 92 / 10 (1) & 46 / 48 (1) & 56 / 30 (1) \\
 2f & 3072, 1, 2 & 93 / 11 & 27 / 74 & 43 / 66 & 89 / 11 & 48 / 31 & 52 / 31 & 87 / 10 & 47 / 33 & 56 / 31 \\
 2g & $^\dagger$ &  &  &  &  &  &  &  &  &  \\
@@ -302,7 +302,7 @@ Row & Seeds & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & 
 3a & 3072, 1, 2 & 83 / 33 & 29 / 55 & 39 / 41 & 77 / 25 & 24 / 42 & 29 / 36 & 87 / 17 & 33 / 37 & 41 / 31 \\
 3b & 3072, 1, 2 & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 73 / 31 & 30 / 55 & 32 / 48 \\
 3c & $^\dagger$ &  &  &  &  &  &  &  &  &  \\
-3d & 3072$^\dagger$ & 81 / 26 (2) & 32 / 57 (2) & 66 / 34 (1) & 74 / 30 (1) & 44 / 30 (1) & 60 / 28 (1) & 66 / 38 (1) & 48 / 42 (1) & 62 / 24 (1) \\
+3d & 3072$^\dagger$; 1 partial & 81 / 26 (2) & 32 / 57 (2) & 54 / 33 (2) & 74 / 30 (1) & 44 / 30 (1) & 60 / 28 (1) & 66 / 38 (1) & 48 / 42 (1) & 62 / 24 (1) \\
 3e & 3072$^\dagger$ & 82 / 30 (1) & 26 / 52 (1) & 38 / 60 (1) & 76 / 30 (1) & 28 / 40 (1) & 34 / 46 (1) & 76 / 28 (1) & 30 / 46 (1) & 36 / 48 (1) \\
 3f & 3072, 1$^\dagger$ & 79 / 30 (2) & 22 / 68 (2) & 32 / 56 (2) & 69 / 29 (2) & 25 / 53 (2) & 26 / 53 (2) & 76 / 25 (2) & 30 / 48 (2) & 33 / 52 (2) \\
 3g & 3072$^\dagger$ & 86 / 22 (1) & 30 / 82 (1) & 40 / 54 (1) & 86 / 20 (1) & 46 / 60 (1) & 34 / 44 (1) & 80 / 20 (1) & 46 / 68 (1) & 42 / 40 (1) \\
@@ -321,8 +321,8 @@ Row & Seeds & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & 
 \cmidrule(lr){3-5}\cmidrule(lr){6-8}\cmidrule(lr){9-11}
  & & red & purple & rot. & red & purple & rot. & red & purple & rot. \\
 \midrule
-1a & 3072$^\dagger$ & 73 / 32 (2) & 30 / 70 (2) & 28 / 58 (1) & 62 / 34 (1) & 24 / 62 (1) & 26 / 58 (1) & 60 / 36 (1) & 28 / 60 (1) & 28 / 58 (1) \\
-1b & 3072$^\dagger$ & 62 / 43 (2) & 36 / 43 (2) & 32 / 40 (1) & 64 / 40 (1) & 28 / 40 (1) & 34 / 38 (1) & 60 / 42 (1) & 24 / 38 (1) & 32 / 38 (1) \\
+1a & 3072$^\dagger$; 1 partial & 73 / 32 (2) & 30 / 70 (2) & 28 / 58 (1) & 62 / 34 (1) & 24 / 62 (1) & 26 / 58 (1) & 60 / 36 (1) & 28 / 60 (1) & 28 / 58 (1) \\
+1b & 3072$^\dagger$; 2 partial & 62 / 43 (2) & 36 / 43 (2) & 32 / 40 (1) & 64 / 40 (1) & 28 / 40 (1) & 34 / 38 (1) & 60 / 42 (1) & 24 / 38 (1) & 32 / 38 (1) \\
 1c & $^\dagger$ &  &  &  &  &  &  &  &  &  \\
 1d & 3072$^\dagger$ & 62 / 44 (1) & 34 / 50 (1) & 16 / 62 (1) & 62 / 44 (1) & 36 / 50 (1) & 22 / 64 (1) & 60 / 42 (1) & 34 / 50 (1) & 22 / 58 (1) \\
 1e & 3072$^\dagger$ & 58 / 32 (1) & 30 / 56 (1) & 36 / 44 (1) & 58 / 30 (1) & 24 / 56 (1) & 34 / 44 (1) & 56 / 36 (1) & 24 / 58 (1) & 36 / 46 (1) \\
@@ -338,7 +338,7 @@ Row & Seeds & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & 
 2g & $^\dagger$ &  &  &  &  &  &  &  &  &  \\
 \midrule
 3a & 3072$^\dagger$ & 88 / 14 (1) & 14 / 50 (1) & 48 / 48 (1) & 78 / 6 (1) & 24 / 22 (1) & 24 / 22 (1) & 86 / 8 (1) & 32 / 24 (1) & 40 / 30 (1) \\
-3b & 3072$^\dagger$ & 85 / 22 (2) & 26 / 53 (2) & 26 / 52 (1) & 82 / 20 (1) & 26 / 32 (1) & 24 / 36 (1) & 84 / 16 (1) & 34 / 44 (1) & 30 / 36 (1) \\
+3b & 3072$^\dagger$; 1 partial & 85 / 22 (2) & 26 / 53 (2) & 26 / 52 (1) & 82 / 20 (1) & 26 / 32 (1) & 24 / 36 (1) & 84 / 16 (1) & 34 / 44 (1) & 30 / 36 (1) \\
 3c & $^\dagger$ &  &  &  &  &  &  &  &  &  \\
 3d & 3072$^\dagger$ & 84 / 18 (1) & 32 / 50 (1) & 48 / 26 (1) & 74 / 24 (1) & 50 / 28 (1) & 48 / 16 (1) & 72 / 24 (1) & 52 / 32 (1) & 48 / 22 (1) \\
 3e & 3072$^\dagger$ & 86 / 26 (1) & 16 / 46 (1) & 38 / 52 (1) & 86 / 14 (1) & 28 / 28 (1) & 38 / 30 (1) & 86 / 16 (1) & 32 / 26 (1) & 46 / 32 (1) \\
