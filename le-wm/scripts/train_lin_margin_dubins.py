@@ -30,5 +30,6 @@ for _ in range(E.STEPS):   # same loop as E.train_margin(kind="gp")
 head.eval()
 acc, auc = E.score(head, Z[E.NTR:], y[E.NTR:])
 out = f"/data/seongbin/dreamer/lewm/{ck}/margin_lin_fail_red_s{seed}.pt"
+os.makedirs(os.path.dirname(out), exist_ok=True)
 torch.save({"margin_lin": head.state_dict()}, out)
 print(f"saved {out}  held-out AUC={auc:.4f} sign-acc={acc:.4f}", flush=True)

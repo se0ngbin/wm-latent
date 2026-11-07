@@ -95,6 +95,7 @@ else:   # same loop as E.train_margin(kind="gp") with a linear head
         opt.zero_grad(); loss.backward(); opt.step()
     head.eval()
 out = f"{MDIR}/{ck}/margin_{HEAD}_imag_red_s{seed}.pt"
+os.makedirs(os.path.dirname(out), exist_ok=True)
 torch.save({f"margin_{HEAD}": head.state_dict()}, out)
 
 
