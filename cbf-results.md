@@ -32,14 +32,19 @@ On imagined latents (held-out 25-step rollouts), gpfail → gpimag FS: sigreg 0.
 
 | WM | buffer | gpfail | gpimag | lin |
 |---|---|---|---|---|
-| sigreg | 0.706 / 0.428 | 0.557 / 0.764 | pending | pending |
-| jac | 0.071 / 0.794 | 0.065 / 0.761 | pending | pending |
-| jac+pull | 0.016 / 0.821 | 0.024 / 0.819 | pending | pending |
-| jac+pull+adv_h | – | pending | pending | pending |
+| sigreg | 0.706 / 0.428 | 0.557 / 0.764 | 0.710 / 0.368 | 0.617 / 0.739 |
+| jac | 0.071 / 0.794 | 0.065 / 0.761 | 0.006 / 0.785 | 0.101 / 0.160 |
+| jac+pull | 0.016 / 0.821 | 0.024 / 0.819 | 0.008 / 0.794 | 0.111 / 0.521 |
+| jac+pull+adv_h | – | 0.100 / 0.733 | 0.021 / 0.489 | 0.289 / 0.190 |
 
 No filter ≈ 0.54 / 0.87 (nominal policy on a Dreamer RSSM, `nom_baseline.h5`; approximate for LeWM).
 
 - gpfail matches buffer on jac and jac+pull (within about a point).
+- gpimag (uniform + imagined states) is the best margin function on jac and jac+pull: collision 0.6% / 0.8% at the same success as buffer/gpfail. Consistent with its lower false-safe rate on imagined latents (single seed).
+- Linear margins collide more and succeed far less (jac 0.160, jac+pull+adv_h 0.190 success): the filter both lets the car into obstacles and blocks the goal.
+- jac+pull+adv_h is worse than jac+pull with every margin (gpfail 10.0% vs 2.4%, gpimag 2.1% vs 0.8%, with lower success). The adversarial safety reg does not help the CBF in-distribution.
+- sigreg stays at or above no-filter collision with every margin function.
+- OOD (purple obstacles, diamond obstacles; same red-trained critics) for gpfail / gpimag / lin: running, expected about 3–4 pm PST Nov 7. Earlier buffer-margin OOD run: purple ≈ no filter for every WM (0.52–0.55 collision); diamond jac 0.032, jac+pull 0.039, sigreg 0.432.
 - sigreg gpfail is effectively always-safe (FS 0.927), so its CBF ≈ no filter; the accurate buffer margin collides more than no filter.
 
 ## Files
