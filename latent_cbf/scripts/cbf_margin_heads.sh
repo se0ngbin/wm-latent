@@ -4,7 +4,7 @@
 #   gpfail = margin_gp_fail_red_s0.pt (8000 uniform states)   gpimag = margin_gp_imag_red_s0.pt (+ imagined latents)
 #   lin    = margin_lin_fail_red_s0.pt (linear, uniform states)
 # Outputs: <wm>/seed0_<tag>/PyHJ/gp, trajs lewm_cbf_gp_<tag>_<wm>_seed0.h5, logs run_logs/lewm_cbf_heads/.
-# Usage: [COND=red|purple|diamond] scripts/cbf_margin_heads.sh wm:tag ...   (parallel; each waits for a GPU with NEED MiB free)
+# Usage: [COND=red|purple|diamond|rot90] scripts/cbf_margin_heads.sh wm:tag ...   (parallel; each waits for a GPU with NEED MiB free)
 # COND != red: eval-time obstacle shift via dubins_env DUBINS_OBST_* hooks; critic must already exist (trained on red).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../src/latent_cbf" && pwd)"
@@ -13,7 +13,7 @@ CK=/data/seongbin/lewm/checkpoints; OUT=/data/seongbin/dreamer/lewm; LOG=$L/run_
 export STABLEWM_HOME=/data/seongbin/lewm LOCAL_DATASET_DIR=/data/seongbin/lewm WANDB_MODE=disabled PYTHONUNBUFFERED=1
 export PYTHONPATH=$L/le-wm
 NEED=${NEED:-5000}; LOCK=$LOG/.gpu.lock; COND=${COND:-red}; S=""; [ "$COND" = red ] || S="_$COND"
-case $COND in red) ;; purple) export DUBINS_OBST_COLOR=purple ;; diamond) export DUBINS_OBST_SHAPE=diamond ;; *) echo "bad COND $COND"; exit 1 ;; esac
+case $COND in red) ;; purple) export DUBINS_OBST_COLOR=purple ;; diamond) export DUBINS_OBST_SHAPE=diamond ;; rot90) export DUBINS_ROT_DEG=90 ;; *) echo "bad COND $COND"; exit 1 ;; esac
 declare -A HEAD=([gpfail]=margin_gp_fail_red_s0.pt [gpimag]=margin_gp_imag_red_s0.pt [lin]=margin_lin_fail_red_s0.pt)
 pick_gpu(){  # ponytail: free-memory poll under a flock, held 120s so the next pick sees this job's memory
   exec 9>"$LOCK"; flock 9
