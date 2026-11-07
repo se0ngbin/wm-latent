@@ -1019,14 +1019,14 @@ Table 23. Paired tests vs jac, CCEM with the MLP margin function, per-episode co
 
 | Goal, condition | jac collisions / 50 | significantly worse (p < 0.05) | tie | significantly better | ties with jac |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 15 steps, purple | 16 | 7 | 9 | 0 | adv_h, adv_λ, adv_λ, encoder-only, adv_h, encoder-only, jac+adv_h, encoder-only, jac+pull, jac+pull+adv_h, jac+pull+adv_λ, jac+pull+adv_λ, encoder-only |
-| 15 steps, rotated 90° | 15 | 8 | 8 | 0 | jac+adv_λ, encoder-only, jac+adv_h, encoder-only, jac+pull, jac+pull+adv_h, jac+pull+adv_λ, jac+pull+adv_λ, encoder-only, jac+pull+adv_h, encoder-only, jac+pull+adv_h, linear head, encoder-only |
-| 20 steps, purple | 6 | 10 | 6 | 0 | jac+adv_λ, encoder-only, jac+adv_h, encoder-only, jac+pull, jac+pull+adv_λ, jac+pull+adv_λ, encoder-only, jac+pull+adv_h, encoder-only |
-| 20 steps, rotated 90° | 5 | 13 | 3 | 0 | jac+adv_λ, encoder-only, jac+pull, jac+pull+adv_λ |
-| 25 steps, purple | 13 | 6 | 10 | 0 | jac+adv_h, jac+adv_h, linear head, jac+adv_λ, jac+adv_λ, encoder-only, jac+adv_h, encoder-only, jac+pull, jac+pull+adv_h, jac+pull+adv_λ, jac+pull+adv_λ, encoder-only, jac+pull+adv_h, encoder-only |
-| 25 steps, rotated 90° | 12 | 5 | 11 | 0 | jac+adv_h, jac+adv_h, linear head, jac+adv_λ, jac+adv_λ, encoder-only, jac+adv_h, encoder-only, jac+pull, jac+pull+adv_h, jac+pull+adv_λ, jac+pull+adv_λ, encoder-only, jac+pull+adv_h, encoder-only, jac+pull+adv_h, linear head, encoder-only |
+| 15 steps, purple | 16 | 7 | 9 | 0 | adv_h; adv_λ; adv_λ, encoder-only; adv_h, encoder-only; jac+adv_h, encoder-only; jac+pull; jac+pull+adv_h; jac+pull+adv_λ; jac+pull+adv_λ, encoder-only |
+| 15 steps, rotated 90° | 15 | 8 | 8 | 0 | jac+adv_λ, encoder-only; jac+adv_h, encoder-only; jac+pull; jac+pull+adv_h; jac+pull+adv_λ; jac+pull+adv_λ, encoder-only; jac+pull+adv_h, encoder-only; jac+pull+adv_h, linear head, encoder-only |
+| 20 steps, purple | 6 | 10 | 6 | 0 | jac+adv_λ, encoder-only; jac+adv_h, encoder-only; jac+pull; jac+pull+adv_λ; jac+pull+adv_λ, encoder-only; jac+pull+adv_h, encoder-only |
+| 20 steps, rotated 90° | 5 | 13 | 3 | 0 | jac+adv_λ, encoder-only; jac+pull; jac+pull+adv_λ |
+| 25 steps, purple | 13 | 6 | 10 | 0 | jac+adv_h; jac+adv_h, linear head; jac+adv_λ; jac+adv_λ, encoder-only; jac+adv_h, encoder-only; jac+pull; jac+pull+adv_h; jac+pull+adv_λ; jac+pull+adv_λ, encoder-only; jac+pull+adv_h, encoder-only |
+| 25 steps, rotated 90° | 12 | 5 | 11 | 0 | jac+adv_h; jac+adv_h, linear head; jac+adv_λ; jac+adv_λ, encoder-only; jac+adv_h, encoder-only; jac+pull; jac+pull+adv_h; jac+pull+adv_λ; jac+pull+adv_λ, encoder-only; jac+pull+adv_h, encoder-only; jac+pull+adv_h, linear head, encoder-only |
 
-- No model is significantly better than jac in any comparison (also with the linear margin function, checked at 25 steps). The models that tie it most consistently are jac+pull, jac+adv_h encoder-only, jac+adv_λ encoder-only and (up to 20 steps) jac+pull+adv_λ; the full safety regs on the jac base are significantly worse in most comparisons. 64 tests per table: a few p < 0.05 are expected by chance; the strong ones (p ≤ 0.003) survive a Holm correction.
+- No model is significantly better than jac in any comparison (also with the linear margin function, checked at 25 steps). The models that tie it most consistently are jac+pull, jac+adv_h encoder-only, jac+adv_λ encoder-only and jac+pull+adv_λ (MLP margin function; with the linear one it is significantly worse under rotation at 25 steps); the full safety regs on the jac base are significantly worse in most comparisons. 96 tests in this table: a few p < 0.05 are expected by chance; the strong ones (p ≤ 0.003) survive a Holm correction.
 - Seeds: these are seed 3072. The same sweep on the extra trained seeds is running (`goal_dist_sweep_seeds.sh`); seed counts per row are tracked in `paper-results.tex`.
 
 Table 24. Threshold-free elite rules on jac+pull+adv_h (purple AUC with a linear $h$ 0.986 ± 0.015 over 3 seeds, sign accuracy 0.57), linear margin function. Safe → task: the 50 safest plans by $\min_k h$, then the 30 with the best goal cost; task → safe: the 50 best by goal cost, then the 30 safest; only the ranking of $h$ is used. Success / collision (%), pooled over the seeds with all four planners done (n = episodes).
