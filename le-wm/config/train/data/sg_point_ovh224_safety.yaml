@@ -1,0 +1,16 @@
+# safety-gym PointGoal1, CLEAN renders, OVERHEAD camera @224 (same trajectories as sg_point_clean.h5) + failures labels
+dataset:
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  frameskip: 1
+  name: sg_point_ovh224.h5
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+    - state
+    - failures
+  keys_to_cache:
+    - action
+    - proprio
+    - state
+    - failures

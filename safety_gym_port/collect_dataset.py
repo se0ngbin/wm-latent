@@ -6,10 +6,10 @@ keep every chunk containing an unsafe frame, subsample all-safe chunks to the ta
 Runs in the safety-gym venv; le-wm trains offline on the h5."""
 import os, sys, argparse
 os.environ.setdefault("MUJOCO_GL", "egl")
-import numpy as np, h5py
+import numpy as np, h5py, mujoco
 import safety_gymnasium as sg
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from policy import goal_seek_action, loiter_action, _wrap
+from policy import goal_seek_action, loiter_action, _wrap, point_goal_action, point_dash_action
 
 
 def full_goal(t, rng):
@@ -22,6 +22,37 @@ def full_loiter(t, rng):
     hs = np.asarray([h[:2] for h in t.hazards.pos]); j = np.linalg.norm(hs - [x, y], axis=1).argmin()
     e = _wrap(np.arctan2(hs[j][1] - y, hs[j][0] - x) - th); k = np.clip(2.0 * e, -1, 1)
     return np.clip(np.array([1.0 + k, 1.0 - k]) + rng.normal(0, 0.3, 2), -1, 1)
+
+
+OVERHEAD = (4.0, 2 * np.degrees(np.arctan(1.8 / 4.0)))   # height, fovy: straight down, frames [-1.8, 1.8]^2 (hazards reach 1.7)
+
+
+def make_env(agent, size, clean, cam="fixedfar"):
+    """Top-down env; clean=True also drops the lidar ring (cost sphere is handled in render()).
+    cam='fixedfar' = safety-gym's 45deg-angled far camera; 'overhead' = that camera moved straight above the arena
+    (agent ~2x larger, and a 90deg camera turn about z is an exact image rotation)."""
+    env = sg.make(f"Safety{agent}Goal1-v0", render_mode="rgb_array", camera_name="fixedfar", width=size, height=size)
+    if clean: env.unwrapped.task.render_conf.lidar_markers = False
+    env.unwrapped._cam = cam
+    return env
+
+
+def render(u, clean):
+    """clean=True hides the red sphere safety-gym draws at the agent when last-step cost>0 (== failure label)."""
+    if getattr(u, "_cam", "fixedfar") == "overhead":   # re-applied every call: the model is rebuilt on reset
+        m = u.task.model; cid = m.camera("fixedfar").id
+        m.cam_pos[cid] = [0, 0, OVERHEAD[0]]; m.cam_quat[cid] = [1, 0, 0, 0]; m.cam_fovy[cid] = OVERHEAD[1]
+        mujoco.mj_forward(m, u.task.data)
+    c = u.cost
+    if clean: u.cost = {}
+    img = u.render().astype(np.uint8); u.cost = c
+    return img
+
+
+def act(t, rng, agent, loit, brake_at=0.2):
+    """Collection policy mix: Car goal/loiter; Point goal-seek (overshoots) / hazard dash-then-brake."""
+    if agent == "Point": return point_dash_action(t, rng, brake_at) if loit else point_goal_action(t, rng)
+    return full_loiter(t, rng) if loit else full_goal(t, rng)
 
 
 def margin(t):
@@ -40,10 +71,12 @@ def main():
     ap.add_argument("--size", type=int, default=128)
     ap.add_argument("--color", default="blue")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--agent", default="Car", choices=["Car", "Point"])
+    ap.add_argument("--clean", action="store_true", help="no cost-indicator sphere / lidar ring in renders (label leak)")
+    ap.add_argument("--cam", default="fixedfar", choices=["fixedfar", "overhead"])
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
-    env = sg.make("SafetyCarGoal1-v0", render_mode="rgb_array", camera_name="fixedfar",
-                  width=a.size, height=a.size)
+    env = make_env(a.agent, a.size, a.clean, a.cam)
     t = env.unwrapped.task
     import safety_gymnasium.assets.color as C
     from sg_env import PALETTE
@@ -62,22 +95,22 @@ def main():
         t.hazards.color = col; C.COLOR["hazard"] = col
         env.reset(seed=int(rng.integers(1 << 30)))
         t.hazards.color = col
-        loit = rng.random() < a.p_loiter
-        P, A, S, F = [], [], [], []
+        loit = rng.random() < a.p_loiter; brake_at = rng.uniform(0, 0.4)
+        P, A, S, F, V = [], [], [], [], []
         for _ in range(a.ep_steps):
             st = env.state() if hasattr(env, "state") else None
             m = np.asarray(t.agent.mat).reshape(3, 3)
             st = np.array([t.agent.pos[0], t.agent.pos[1], np.arctan2(m[1, 0], m[0, 0])], np.float32)
-            img = env.unwrapped.render().astype(np.uint8)
-            act = (full_loiter(t, rng) if loit else full_goal(t, rng)).astype(np.float32)
-            P.append(img); A.append(act); S.append(st); F.append(int(margin(t) < 0))
-            env.step(act)
+            img = render(env.unwrapped, a.clean)
+            ac = act(t, rng, a.agent, loit, brake_at).astype(np.float32)
+            P.append(img); A.append(ac); S.append(st); F.append(int(margin(t) < 0)); V.append(np.asarray(t.agent.vel[:2], np.float32))
+            env.step(ac)
         # split into non-overlapping chunks
         W = a.chunk
         for i in range(0, len(P) - W + 1, W):
             f = np.array(F[i:i + W])
             chunk = (np.array(P[i:i + W], np.uint8), np.array(A[i:i + W], np.float32),
-                     np.array(S[i:i + W], np.float32), f.astype(np.uint8))
+                     np.array(S[i:i + W], np.float32), f.astype(np.uint8), np.array(V[i:i + W], np.float32))
             if f.any():
                 unsafe_chunks.append(chunk); n_unsafe_f += int(f.sum()); n_safe_in_unsafe += int((1 - f).sum())
             else:
@@ -95,7 +128,7 @@ def main():
     rng.shuffle(kept)
 
     PIX = np.concatenate([c[0] for c in kept]); ACT = np.concatenate([c[1] for c in kept])
-    STA = np.concatenate([c[2] for c in kept]); FAIL = np.concatenate([c[3] for c in kept])
+    STA = np.concatenate([c[2] for c in kept]); FAIL = np.concatenate([c[3] for c in kept]); VEL = np.concatenate([c[4] for c in kept])
     PRO = np.stack([np.cos(STA[:, 2]), np.sin(STA[:, 2])], 1).astype(np.float32)
     W = a.chunk; nchunk = len(kept)
     EPI = np.repeat(np.arange(nchunk), W); STP = np.tile(np.arange(W), nchunk)
@@ -105,7 +138,7 @@ def main():
     with h5py.File(a.out, "w") as f:
         f.create_dataset("pixels", data=PIX, )
         f.create_dataset("action", data=ACT); f.create_dataset("proprio", data=PRO)
-        f.create_dataset("state", data=STA); f.create_dataset("failures", data=FAIL)
+        f.create_dataset("state", data=STA); f.create_dataset("failures", data=FAIL); f.create_dataset("velocity", data=VEL)
         f.create_dataset("episode_idx", data=EPI); f.create_dataset("step_idx", data=STP)
         f.create_dataset("ep_len", data=ep_len); f.create_dataset("ep_offset", data=ep_off)
     print(f"WROTE {a.out} frames={len(PIX)} chunks={nchunk} unsafe_frac={FAIL.mean():.3f} "

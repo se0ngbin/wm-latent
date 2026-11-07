@@ -33,6 +33,32 @@ def mixed_action(task, rng, p_hazard=0.5):
     return hazard_seek_action(task, rng) if rng.random() < p_hazard else goal_seek_action(task, rng)
 
 
+def point_steer(task, want, thrust=1.0):
+    """Point robot (action=[thrust along heading, turn rate]): turn toward `want` (world dir) and thrust
+    along it, using reverse thrust when the target is behind (thrust acts along +-heading)."""
+    m = np.asarray(task.agent.mat).reshape(3, 3); th = np.arctan2(m[1, 0], m[0, 0])
+    e_f = _wrap(np.arctan2(want[1], want[0]) - th); e_b = _wrap(e_f + np.pi)
+    e, s = (e_f, 1.0) if abs(e_f) <= abs(e_b) else (e_b, -1.0)
+    return np.array([s * thrust if abs(e) < 0.6 else 0.0, np.clip(3 * e, -1, 1)])
+
+
+def point_goal_action(task, rng, noise=0.3):
+    """Full-thrust goal seek, no braking: momentum makes it overshoot and drift through hazards."""
+    a = point_steer(task, np.asarray(task.goal.pos[:2]) - task.agent.pos[:2])
+    return np.clip(a + rng.normal(0, noise, 2), -1, 1)
+
+
+def point_dash_action(task, rng, brake_at, noise=0.2):
+    """Dash at the nearest hazard at full thrust; once within `brake_at` of its edge, brake (thrust against
+    velocity). Small brake_at -> hits at speed; large -> near-miss stops. Gives both sides of the
+    velocity-dependent safe-set boundary."""
+    p = task.agent.pos[:2]; hs = np.asarray([h[:2] for h in task.hazards.pos])
+    j = np.linalg.norm(hs - p, axis=1).argmin(); edge = np.linalg.norm(hs[j] - p) - float(task.hazards.size)
+    v = np.asarray(task.agent.vel[:2])
+    a = point_steer(task, -v) if (edge < brake_at and np.linalg.norm(v) > 0.05) else point_steer(task, hs[j] - p)
+    return np.clip(a + rng.normal(0, noise, 2), -1, 1)
+
+
 def loiter_action(task, rng, forward=0.5, kturn=2.5, noise=0.5):
     """Approach the nearest hazard and linger in/around it: while outside, drive toward it;
     once inside (agent center within hazard), small circling actions to accumulate unsafe
