@@ -92,21 +92,28 @@ def lejepa_forward(self, batch, stage, cfg):
     # Replace NaN values with 0 (occurs at sequence boundaries)
     batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
-    output = self.model.encode(batch)
-
-    emb = output["emb"]  # (B, T, D)
-    act_emb = output["act_emb"]
-    # safety_gap's predictor-gap rollout needs a longer window (see run()); keep the full window for it and give the
-    # main loss and every other regularizer the usual history_size + num_preds frames.
-    output["emb_full"], output["act_emb_full"] = emb, act_emb
-    if "failures" in batch:
-        output["failures_full"] = batch["failures"]
+    # safety_gap's predictor-gap rollout needs a longer window (see run()). Only the usual history_size + num_preds
+    # frames are ENCODED (the rollout needs just the future actions and failure labels, not future latents); the main
+    # loss and every other regularizer see that window. The full-length actions / labels go to safety_gap.
     W1 = ctx_len + n_preds
-    if emb.size(1) > W1:
-        T = emb.size(1)
-        emb = output["emb"] = emb[:, :W1]
-        act_emb = output["act_emb"] = act_emb[:, :W1]
+    T = batch["pixels"].size(1)
+    if "failures" in batch:
+        output_failures_full = batch["failures"]
+    if T > W1:
+        enc_in = dict(batch)
+        enc_in["pixels"] = batch["pixels"][:, :W1]
+        output = self.model.encode(enc_in)                 # emb: W1 frames, act_emb: all T actions
+        act_emb_full = output["act_emb"]
+        output["act_emb"] = act_emb_full[:, :W1]
         batch = {k: (v[:, :W1] if torch.is_tensor(v) and v.dim() >= 2 and v.size(1) == T else v) for k, v in batch.items()}
+    else:
+        output = self.model.encode(batch)
+        act_emb_full = output["act_emb"]
+    emb = output["emb"]  # (B, W1, D)
+    act_emb = output["act_emb"]
+    output["emb_full"], output["act_emb_full"] = emb, act_emb_full
+    if "failures" in batch:
+        output["failures_full"] = output_failures_full
 
     ctx_emb = output["ctx_emb"] = emb[:, :ctx_len]
     ctx_act = output["ctx_act"] = act_emb[:, : ctx_len]

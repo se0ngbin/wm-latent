@@ -1189,8 +1189,9 @@ class SafetyGapReg(nn.Module):
         return torch.func.functional_call(self.head, params, (z.float(),)).squeeze(-1)
 
     def forward(self, model, emb, act_emb, pred_emb, failures, ctx_len):
-        """emb: (B, W, D) real latents of the full window; act_emb: (B, W, A); pred_emb: (B, ctx_len, D) main one-step
-        predictions of frames 1..ctx_len; failures: (B, W)."""
+        """emb: (B, >= ctx_len + 1, D) real latents of the encoded window; act_emb: (B, W, A) all actions of the full
+        window; pred_emb: (B, ctx_len, D) main one-step predictions of frames 1..ctx_len; failures: (B, W) labels of the
+        full window (W = ctx_len + rollout_steps when the predictor gap is on)."""
         dev = emb.device
         fail_w = failures.round().long()                              # (B, W)
         W1 = ctx_len + 1                                              # the main-loss window
@@ -1224,7 +1225,7 @@ class SafetyGapReg(nn.Module):
             self.stats.update(enc_gap=eg.detach(), enc_viol=(s(f1) * h_real < self.gamma).float().mean().detach())
             loss = loss + self.enc_gap_weight * eg
         if self.pred_gap_weight:
-            W = emb.size(1)
+            W = fail_w.size(1)                                        # full window (emb has only W1 frames)
             K = min(self.K, W - ctx_len)
             bn = _CleanStatBN(model)
             ctx = emb[:, :ctx_len].detach()
