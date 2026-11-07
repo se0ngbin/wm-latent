@@ -397,9 +397,7 @@ class FilteredDiffusionController:
             assert ckpt, "wm_backend=lewm requires lewm_ckpt_path or lewm_run_name"
             self.wm = LEWMWorldModel(config, ckpt).to(self.device)
             if getattr(config, "lewm_margin_ckpt", ""):
-                sd = torch.load(config.lewm_margin_ckpt, map_location=self.device)
-                self.wm.heads["margin_gp"].load_state_dict(sd["margin_gp"])
-                self.wm.heads["margin_nogp"].load_state_dict(sd["margin_nogp"])
+                self.wm.load_margin(torch.load(config.lewm_margin_ckpt, map_location=self.device))
             self.wm.eval()
             print(f"LE-WM loaded: {ckpt}; embed_dim={self.wm.embed_dim}")
         else:

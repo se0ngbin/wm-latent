@@ -54,9 +54,7 @@ def _build_wm(env, config):
         assert ckpt, "wm_backend=lewm requires lewm_ckpt_path or lewm_run_name"
         wm = LEWMWorldModel(config, ckpt).to(config.device)
         if config.lewm_margin_ckpt:
-            margin_sd = torch.load(config.lewm_margin_ckpt, map_location=config.device)
-            wm.heads["margin_gp"].load_state_dict(margin_sd["margin_gp"])
-            wm.heads["margin_nogp"].load_state_dict(margin_sd["margin_nogp"])
+            wm.load_margin(torch.load(config.lewm_margin_ckpt, map_location=config.device))
         wm.eval()
         return wm
 
