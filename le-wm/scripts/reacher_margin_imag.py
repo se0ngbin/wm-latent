@@ -18,7 +18,7 @@ import sg_point_eval as E
 
 G = os.environ.get
 WM, EP, SEED = G("WM", "lewm_reacher"), G("EP", "50"), int(G("SEED", "0"))
-NPC, NPLAN, NTE, STEPS = int(G("N_PER_CLASS", "25000")), int(G("NPLAN", "8000")), int(G("NTE", "1000")), int(G("STEPS", "20000"))
+NPC, NPLAN, NTE, STEPS = int(G("N_PER_CLASS", "25000")), int(G("NPLAN", "8000")), int(G("NTE", "1000")), int(G("STEPS", "3000"))
 HEADS, HEADS_OUT = G("HEADS", "/data/seongbin/lewm/reacher_heads"), G("HEADS_OUT", "/data/seongbin/lewm/reacher_heads_imag")
 K, FS, LOOK = 5, 5, 25
 rng = np.random.default_rng(SEED)
@@ -38,7 +38,8 @@ with h5py.File("/data/seongbin/lewm/datasets/reacher.h5", "r") as f:
         a, b = t[ok & split[t] & near], t[ok & split[t]]
         return np.sort(np.r_[rng.choice(a, n // 2, replace=False), rng.choice(b, n - n // 2, replace=False)])
     s_tr, s_te = starts(tr, NPLAN), starts(~tr, NTE)
-    P_tr, P_te = f["pixels"][s_tr], f["pixels"][s_te]
+    px = lambda s: f["pixels"][np.unique(s)][np.unique(s, return_inverse=True)[1]]   # h5py needs strictly increasing indices; halves can overlap
+    P_tr, P_te = px(s_tr), px(s_te)
 Af = A[~np.isnan(A).any(1)]; A_MU, A_SD = Af.mean(0), Af.std(0)   # reacher_cem.py's scaler
 print(f"real train {len(ti)} | real test {len(te)} (unsafe {yte.mean():.3f}) | plans train {NPLAN} test {NTE}", flush=True)
 
