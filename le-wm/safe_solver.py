@@ -295,7 +295,9 @@ class _SoftCostJEPA:
         # threshold-free rules (only the ranking of the safety score min_k h(z_k) is used, never its sign):
         # "safe_task": keep the ccem_pre_k safest candidates, elites = the topk with the best goal cost among them;
         # "task_safe": keep the ccem_pre_k with the best goal cost, elites = the topk safest among them.
-        assert ccem_fallback in ("count", "minh", "safe_task", "task_safe"), ccem_fallback
+        # "safe_task_norm": safe_task with h z-scored per imagined step across the candidates before the min over steps
+        # (cancels a depth-dependent or OOD offset of h shared by all candidates; the current state is shared, so excluded)
+        assert ccem_fallback in ("count", "minh", "safe_task", "task_safe", "safe_task_norm"), ccem_fallback
         self.ccem_pre_k = 50
         self.ccem, self.ccem_cost_limit, self.ccem_fallback, self.topk = ccem, ccem_cost_limit, ccem_fallback, None
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
@@ -331,6 +333,16 @@ class _SoftCostJEPA:
         if self.ccem:
             zc = info_dict["predicted_emb"][:, :, H - 1:]          # current (real) state + imagined, as SafeDreamer's traj
             hc = self.head(zc.float())                             # (B, S, 1 + T')
+            if self.ccem_fallback == "safe_task_norm":
+                hi = hc[..., 1:]                                   # imagined steps only (B, S, T')
+                hn = (hi - hi.mean(1, keepdim=True)) / hi.std(1, keepdim=True).clamp_min(1e-6)
+                worst = hn.min(-1).values                          # worst per-step-normalized margin
+                J = cost.float()
+                pre = min(self.ccem_pre_k, J.size(1))
+                keep = torch.zeros_like(J, dtype=torch.bool).scatter_(1, torch.topk(worst, pre, dim=1).indices, True)
+                self.last_h = hc
+                self.last = (cost.mean().item(), worst.mean().item(), (hc.min(-1).values <= 0).float().mean().item())
+                return torch.where(keep, J, J + 1e9).to(cost.dtype)
             if self.ccem_fallback in ("safe_task", "task_safe"):
                 worst = hc.min(-1).values                          # safety score: worst-case margin over the plan
                 J = cost.float()

@@ -44,4 +44,9 @@ def run_tf(goal, h_steps, topk, rule, pre):
 assert run_tf(goal, H2, 2, "safe_task", 4) == [1, 5], run_tf(goal, H2, 2, "safe_task", 4)  # 4 safest {0,1,2,5} -> best J: 1 (0), 5 (2)
 assert run_tf(goal, H2, 2, "task_safe", 4) == [1, 5], run_tf(goal, H2, 2, "task_safe", 4)  # 4 best J {1,3,4,5} -> safest: 5 (1), 1 (-0.2)
 assert run_tf(goal, H2, 2, "task_safe", 3) == [1, 4], run_tf(goal, H2, 2, "task_safe", 3)  # 3 best J {1,3,4} -> safest: 1 (-0.2), 4 (-1)
+# per-step normalization cancels a per-step offset shared by all candidates: adding +5 to every candidate's h at step 2
+# must not change the elites (raw min would then ignore step 2 for everyone).
+Hs = torch.tensor([[[0, 1, -1], [0, 2, 0], [0, -1, 2], [0, 0.5, 0.5], [0, -2, 1], [0, 1.5, 1]]], dtype=torch.float)
+Hs2 = Hs.clone(); Hs2[..., 2] += 5
+assert run_tf(goal, Hs, 2, "safe_task_norm", 3) == run_tf(goal, Hs2, 2, "safe_task_norm", 3), "per-step offset changed elites"
 print("ccem rule ok")
