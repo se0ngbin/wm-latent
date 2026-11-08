@@ -237,6 +237,43 @@ Table 11. CEM under sim-to-real shifts, 50 box-crossing pairs: collision (succes
 - Dynamics shifts leave the margin function intact (frames unchanged), so CCEM works for all three models (collision 0.020-0.120) except action noise (0.120-0.220): noise injected after planning pushes the arm into the box regardless of the plan. Joint damping ×10 is too strong (no model reaches the goal, success 0.040-0.060); its low collision is from the arm barely moving.
 - The linear margin function is at least as good as the MLP for jac under every shift.
 
+## Threshold-free CEM
+
+Dubins found that threshold-free elite rules need $h$ to rank imagined OOD states, which it stopped doing within 5-10 steps under purple. On Reacher the relevant question is narrower: can $h$ rank the candidate plans of one replan, which share the start frame (`reacher_within_start.py`)? 200 safe held-out starts whose recorded path enters the box within 25 steps, 64 random CEM-style 5-block plans each (35.5% enter the box, simulator labels); plan score $\min_k h(\hat z_k)$ over the 5 predicted blocks, start frame rendered at floor $\alpha$.
+
+Table 12. Plan ranking: within-start AUC (mean over starts) / pooled AUC / plan false-safe at threshold 0, for the MLP and linear real+imag margin functions.
+
+| WM | $\alpha$ | MLP | linear |
+|---|---|---|---|
+| jac ep10 | 0.0 | 0.979 / 0.976 / 0.037 | 0.978 / 0.975 / 0.027 |
+| jac ep10 | 0.2 | 0.979 / 0.976 / 0.048 | 0.977 / 0.976 / 0.031 |
+| jac ep10 | 0.3 | 0.900 / 0.874 / 0.327 | 0.899 / 0.902 / 0.276 |
+| jac ep10 | 0.4 | 0.834 / 0.804 / 0.670 | 0.730 / 0.697 / 0.606 |
+| jac+adv_h ep5 | 0.0 | 0.981 / 0.979 / 0.042 | 0.977 / 0.974 / 0.029 |
+| jac+adv_h ep5 | 0.2 | 0.980 / 0.979 / 0.044 | 0.977 / 0.973 / 0.029 |
+| jac+adv_h ep5 | 0.3 | 0.966 / 0.942 / 0.349 | 0.967 / 0.959 / 0.187 |
+| jac+adv_h ep5 | 0.4 | 0.852 / 0.766 / 0.900 | 0.883 / 0.828 / 0.747 |
+
+- The plan ranking survives the shift where the threshold does not: at $\alpha = 0.3$ jac ranks plans at within-start AUC 0.90 while 28-33% of unsafe plans pass the 0 threshold; jac+adv_h ranks them at 0.97 (its better static ranking, Table 8, carries into plan ranking). At 0.4 ranking degrades (0.73-0.88) and 61-90% of unsafe plans pass.
+
+CEM with the Dubins threshold-free elite rules (`ccem_fallback`; pre-selection 50 of 300): safe→task = the 50 plans with the highest $\min_k h$, elites = the 30 with the best goal cost among them; task→safe = the 50 best goal costs, elites = the 30 safest; safe→task norm = safe→task with $h$ z-scored per predicted step across the candidates.
+
+Table 13. CEM under the floor shift, 50 box-crossing pairs: collision / safe success / median closest goal distance (rad; in distribution about 0.03-0.05).
+
+| WM | $\alpha$ | Margin fn | CCEM (minh) | safe→task | task→safe | safe→task norm |
+|---|---|---|---|---|---|---|
+| jac ep10 | 0.3 | MLP | 0.140 / 0.440 / 0.048 | 0.080 / 0.120 / 0.470 | 0.120 / 0.300 / 0.085 | 0.060 / 0.060 / 0.610 |
+| jac ep10 | 0.3 | linear | 0.100 / 0.460 / 0.054 | 0.080 / 0.140 / 0.193 | 0.080 / 0.320 / 0.094 | 0.060 / 0.120 / 0.255 |
+| jac ep10 | 0.4 | MLP | 0.240 / 0.280 / 0.138 | 0.100 / 0.180 / 0.458 | 0.160 / 0.180 / 0.128 | 0.100 / 0.040 / 0.526 |
+| jac ep10 | 0.4 | linear | 0.220 / 0.260 / 0.128 | 0.260 / 0.200 / 0.181 | 0.260 / 0.200 / 0.131 | 0.380 / 0.100 / 0.230 |
+| jac+adv_h ep5 | 0.3 | MLP | 0.180 / 0.500 / 0.047 | 0.040 / 0.100 / 0.464 | 0.080 / 0.200 / 0.124 | 0.020 / 0.060 / 0.598 |
+| jac+adv_h ep5 | 0.3 | linear | 0.160 / 0.420 / 0.052 | 0.020 / 0.180 / 0.204 | 0.060 / 0.260 / 0.101 | 0.020 / 0.160 / 0.265 |
+| jac+adv_h ep5 | 0.4 | MLP | not run | 0.040 / 0.100 / 0.575 | 0.100 / 0.120 / 0.316 | 0.020 / 0.060 / 0.607 |
+| jac+adv_h ep5 | 0.4 | linear | not run | 0.060 / 0.100 / 0.416 | 0.100 / 0.120 / 0.300 | 0.020 / 0.060 / 0.576 |
+
+- Ranking-first rules lower collision further, most with jac+adv_h (0.020-0.060 at $\alpha$ 0.3 and 0.4, against 0.160-0.180 for CCEM at 0.3), but by stalling: safe success falls to 0.060-0.260 and the arm ends 0.19-0.47 rad from the goal instead of about 0.05. Picking the safest plans first picks plans that barely move. task→safe keeps more progress but is still below CCEM's safe success at 0.3.
+- This repeats the Dubins verdict (ranking-first trades task for safety; threshold-first with ranking as fallback is the better default), but adv_h's ranking advantage is visible here for the first time in planning: with the same rules it collides less than jac.
+
 ## adv_h at matched epochs (mid-run checkpoints)
 
 The adv_h runs are paused or still training, so their checkpoints are compared with jac at the same epoch (same seed, same cosine schedule position; neither has finished annealing). jac+adv_h = `rc_jac_safeadv_linf` (MLP adversary head, the Dubins recipe: L∞ 8/255, 2 PGD steps, AUC gate 0.95), epoch 5; jac+adv_h-lin = `rc_jac_safeadv_linf_linhead` (linear adversary head), epoch 4. Same pipeline as above: real+imag margin functions (`reacher_heads_imag_ep<EP>/`), floor sweep, CEM on the 50 box-crossing pairs with the floor shift.
