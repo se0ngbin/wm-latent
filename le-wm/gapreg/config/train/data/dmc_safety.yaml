@@ -1,0 +1,16 @@
+# LeWM DMC Reacher (reacher_random, 10k eps x 200 steps) = config/train/data/dmc.yaml + per-frame failures:
+# SLS-squared's invisible joint box (wrap(q1) in [0, pi], q2 in [-2.88, -2.45]), written by le-wm/scripts/reacher_rewrite_h5.py
+# into the uncompressed copy datasets/reacher.h5 (the official file's Blosc 100-frame pixel chunks cost ~57 ms per window).
+dataset:
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  frameskip: 5
+  name: reacher.h5
+  keys_to_load:
+    - pixels
+    - action
+    - observation
+    - failures
+  keys_to_cache:
+    - action
+    - observation
+    - failures

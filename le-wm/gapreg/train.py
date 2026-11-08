@@ -1,0 +1,260 @@
+import os
+from functools import partial
+from pathlib import Path
+
+import hydra
+import lightning as pl
+import stable_pretraining as spt
+import stable_worldmodel as swm
+import torch
+from torch import nn
+from lightning.pytorch.loggers import WandbLogger
+from omegaconf import OmegaConf, open_dict
+
+from module import (
+    SIGReg, JacobianNormReg, StateLipschitzReg, PixelLipschitzReg,
+    InvarianceReg, AugInvarianceReg, ActionSeparationReg, PredAnchorReg,
+    AdvColorInvarianceReg, SafetyAdvInvarianceReg, SafetyGapReg, PredJacobianReg,
+)
+from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
+
+
+REGULARIZERS = {
+    "sigreg": SIGReg,
+    "jacobian": JacobianNormReg,
+    "state_lipschitz": StateLipschitzReg,
+    "pixel_lipschitz": PixelLipschitzReg,
+    "invariance": InvarianceReg,
+    "aug_invariance": AugInvarianceReg,
+    "adv_color_invariance": AdvColorInvarianceReg,
+    "action_separation": ActionSeparationReg,
+    "pred_anchor": PredAnchorReg,
+    "safety_adv": SafetyAdvInvarianceReg,
+    "safety_gap": SafetyGapReg,
+    "pred_jacobian": PredJacobianReg,
+}
+
+
+def _call_regularizer(name, module, output, batch, model):
+    emb = output["emb"]
+    if name == "sigreg":
+        return module(emb.transpose(0, 1))
+    if name == "state_lipschitz":
+        return module(emb, batch["state"])
+    if name in ("jacobian", "pixel_lipschitz", "invariance", "aug_invariance", "adv_color_invariance"):
+        encoder = model.encoder
+        projector = model.projector
+        def encode_fn(p):
+            out = encoder(p, interpolate_pos_encoding=True)
+            return projector(out.last_hidden_state[:, 0])
+        return module(encode_fn, batch["pixels"])
+    if name == "action_separation":
+        ctx_emb = output["ctx_emb"]
+        loss = module(model, ctx_emb, batch["action"][:, : ctx_emb.size(1)])
+        output["action_sep_ratio"] = torch.as_tensor(module.last_ratio, device=loss.device)
+        return loss
+    if name == "pred_anchor":
+        ctx_emb = output["ctx_emb"]
+        def encode_fn(p):
+            out = model.encoder(p, interpolate_pos_encoding=True)
+            return model.projector(out.last_hidden_state[:, 0])
+        last_frame = batch["pixels"][:, ctx_emb.size(1) - 1]
+        loss = module(model, encode_fn, ctx_emb, output["ctx_act"], last_frame)
+        output["pred_anchor_ratio"] = torch.as_tensor(module.last_ratio, device=loss.device)
+        return loss
+    if name == "safety_adv":
+        def encode_fn(p):
+            out = model.encoder(p, interpolate_pos_encoding=True)
+            return model.projector(out.last_hidden_state[:, 0])
+        loss = module(model, encode_fn, output["emb"], output["ctx_act"], batch["pixels"], batch["failures"])
+        for k, v in module.stats.items():   # logged only if key contains "ratio"
+            output[f"safety_adv_{k}_ratio"] = torch.as_tensor(v, device=loss.device)
+        return loss
+    if name == "safety_gap":
+        loss = module(model, output["emb_full"], output["act_emb_full"], output["pred_emb"], output["failures_full"],
+                      output["ctx_emb"].size(1))
+        for k, v in module.stats.items():
+            output[f"safety_gap_{k}_ratio"] = torch.as_tensor(v, device=loss.device)
+        return loss
+    if name == "pred_jacobian":
+        loss = module(model, output["ctx_emb"], output["ctx_act"])
+        output["pred_jac_gain_ratio"] = torch.as_tensor(module.last_gain, device=loss.device)
+        return loss
+    raise ValueError(f"Unknown regularizer: {name}")
+
+
+def lejepa_forward(self, batch, stage, cfg):
+    """encode observations, predict next states, compute losses."""
+
+    ctx_len = cfg.history_size
+    n_preds = cfg.num_preds
+
+    # Replace NaN values with 0 (occurs at sequence boundaries)
+    batch["action"] = torch.nan_to_num(batch["action"], 0.0)
+
+    # safety_gap's predictor-gap rollout needs a longer window (see run()). Only the usual history_size + num_preds
+    # frames are ENCODED (the rollout needs just the future actions and failure labels, not future latents); the main
+    # loss and every other regularizer see that window. The full-length actions / labels go to safety_gap.
+    W1 = ctx_len + n_preds
+    T = batch["pixels"].size(1)
+    if "failures" in batch:
+        output_failures_full = batch["failures"]
+    if T > W1:
+        enc_in = dict(batch)
+        enc_in["pixels"] = batch["pixels"][:, :W1]
+        output = self.model.encode(enc_in)                 # emb: W1 frames, act_emb: all T actions
+        act_emb_full = output["act_emb"]
+        output["act_emb"] = act_emb_full[:, :W1]
+        batch = {k: (v[:, :W1] if torch.is_tensor(v) and v.dim() >= 2 and v.size(1) == T else v) for k, v in batch.items()}
+    else:
+        output = self.model.encode(batch)
+        act_emb_full = output["act_emb"]
+    emb = output["emb"]  # (B, W1, D)
+    act_emb = output["act_emb"]
+    output["emb_full"], output["act_emb_full"] = emb, act_emb_full
+    if "failures" in batch:
+        output["failures_full"] = output_failures_full
+
+    ctx_emb = output["ctx_emb"] = emb[:, :ctx_len]
+    ctx_act = output["ctx_act"] = act_emb[:, : ctx_len]
+
+    tgt_emb = emb[:, n_preds:] # label
+    pred_emb = self.model.predict(ctx_emb, ctx_act) # pred
+    output["pred_emb"] = pred_emb
+
+    # LeWM loss
+    output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
+
+    total_reg = torch.zeros((), device=output["pred_loss"].device)
+    for name, module in self.regularizers.items():
+        weight = float(cfg.loss.regularizers[name].weight)
+        reg_loss = _call_regularizer(name, module, output, batch, self.model)
+        output[f"{name}_loss"] = reg_loss
+        total_reg = total_reg + weight * reg_loss
+    output["reg_loss"] = total_reg
+    output["loss"] = output["pred_loss"] + total_reg
+
+    losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k or "ratio" in k}
+    self.log_dict(losses_dict, on_step=True, sync_dist=True)
+    return output
+
+@hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
+def run(cfg):
+    #########################
+    ##       dataset       ##
+    #########################
+
+    sg = cfg.loss.regularizers.get("safety_gap") if "regularizers" in cfg.loss else None
+    if sg is not None and float((sg.get("kwargs") or {}).get("pred_gap_weight", 0.0)):
+        K = int((sg.get("kwargs") or {}).get("rollout_steps", 5))   # predictor-gap rollout: history_size + K frames
+        with open_dict(cfg):
+            cfg.data.dataset.num_steps = max(int(cfg.history_size) + K, int(cfg.history_size) + int(cfg.num_preds))
+    dataset_cfg = OmegaConf.to_container(cfg.data.dataset, resolve=True)
+    dataset_name = dataset_cfg.pop("name")
+    cache_dir = os.environ.get("LOCAL_DATASET_DIR", None)
+    dataset = swm.data.load_dataset(
+        dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
+    )
+    transforms = []
+    # Obstacle color augmentation (data-level color decorrelation): recolor the red
+    # obstacle to a random non-purple training color per window BEFORE ImageNet norm,
+    # so "obstacle" is not bound to red. Purple stays OOD (held out of the palette).
+    if bool(cfg.get("color_aug", False)):
+        from utils import ObstacleRecolor
+        _rot = bool(cfg.get("color_aug_rot", False))
+        _src = str(cfg.get("color_aug_source", "red"))   # "red" (dubins) or "blue" (sg hazards)
+        transforms.append(spt.data.transforms.WrapTorchTransform(
+            ObstacleRecolor(p_apply=float(cfg.get("color_aug_p", 1.0)), rotate=_rot, source=_src),
+            source='pixels', target='pixels'))
+        print(f"[train] obstacle color_aug ON (p_apply={float(cfg.get('color_aug_p', 1.0))}, rotate={_rot}, source={_src})")
+    transforms.append(get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size))
+    
+    with open_dict(cfg):
+        for col in cfg.data.dataset.keys_to_load:
+            if col.startswith("pixels") or col == "failures":   # binary labels: no z-score
+                continue
+            normalizer = get_column_normalizer(dataset, col, col)
+            transforms.append(normalizer)
+
+        cfg.model.action_encoder.input_dim = cfg.data.dataset.frameskip * dataset.get_dim("action")
+
+    transform = spt.data.transforms.Compose(*transforms)
+    dataset.transform = transform
+
+    rnd_gen = torch.Generator().manual_seed(cfg.seed)
+    train_set, val_set = spt.data.random_split(
+        dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen
+    )
+
+    train = torch.utils.data.DataLoader(train_set, **cfg.loader, shuffle=True, drop_last=True, generator=rnd_gen)
+    val = torch.utils.data.DataLoader(val_set, **cfg.loader, shuffle=False, drop_last=False)
+    
+    ##############################
+    ##       model / optim      ##
+    ##############################
+
+    world_model = hydra.utils.instantiate(cfg.model)
+
+    optimizers = {
+        'model_opt': {
+            "modules": 'model',
+            "optimizer": dict(cfg.optimizer),
+            "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
+            "interval": "epoch",
+        },
+    }
+
+    data_module = spt.data.DataModule(train=train, val=val)
+    regularizers = nn.ModuleDict({
+        name: REGULARIZERS[name](**(spec.get("kwargs", {}) or {}))
+        for name, spec in cfg.loss.regularizers.items()
+    })
+    world_model = spt.Module(
+        model = world_model,
+        regularizers = regularizers,
+        forward=partial(lejepa_forward, cfg=cfg),
+        optim=optimizers,
+    )
+
+    ##########################
+    ##       training       ##
+    ##########################
+
+    run_id = cfg.get("subdir") or ""
+    run_dir = Path(swm.data.utils.get_cache_dir(sub_folder='checkpoints'), run_id)
+
+    logger = None
+    if cfg.wandb.enabled:
+        logger = WandbLogger(**cfg.wandb.config)
+        logger.log_hyperparams(OmegaConf.to_container(cfg))
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open(run_dir / "config.yaml", "w") as f:
+        OmegaConf.save(cfg, f)
+
+    object_dump_callback = SaveCkptCallback(
+        run_name=cfg.output_model_name, cfg=cfg.model, epoch_interval=1,
+    )
+
+    trainer = pl.Trainer(
+        **cfg.trainer,
+        callbacks=[object_dump_callback],
+        num_sanity_val_steps=1,
+        logger=logger,
+        enable_checkpointing=True,
+    )
+
+    ckpt_path = run_dir / f"{cfg.output_model_name}_weights.ckpt"
+    manager = spt.Manager(
+        trainer=trainer,
+        module=world_model,
+        data=data_module,
+        ckpt_path=ckpt_path if ckpt_path.exists() else None,
+    )
+
+    manager()
+    return
+
+
+if __name__ == "__main__":
+    run()
