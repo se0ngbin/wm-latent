@@ -379,6 +379,21 @@ Table 18. Safe-plan veto rate at 90% unsafe caught, by closest distance to the b
 - jac+adv_h narrows the blur: at floor 0.3 its 50% point is about 0.15 rad (jac 0.25), and under camera shift it vetoes 10-20 points fewer safe plans at every distance; under occlusion it equals jac. The 50-pair CEM comparisons were too noisy to show this. So the adversarial reg acts on the right quantity.
 - Plans more than 1 rad from the box are vetoed 12-15% even in distribution (rarely visited regions); this does not affect the comparison.
 
+### Oracle check: a graded target does not remove the blur
+
+If the blur were in the readout, a target with resolution near the boundary should help. Oracle (not a usable method, since it needs a geometric definition of the constraint): the same real + imagined latents, but $h$ regresses the signed joint-space distance to the box (MSE, clipped to [-0.5, 1] rad; `reacher_margin_imag.py TARGET=dist`, heads in `reacher_heads_dist*`). Plan-veto diagnostic as Table 18's set-up, threshold 0, MLP.
+
+Table 20. CCEM plan veto, unsafe caught / near-safe vetoed / far-safe vetoed: classification (margin_gp) vs distance-regression margin function.
+
+| WM | Target | In distribution | Floor 0.3 | Occlusion |
+|---|---|---|---|---|
+| jac | classification | 0.92 / 0.31 / 0.05 | 0.62 / 0.07 / 0.02 | 0.57 / 0.07 / 0.02 |
+| jac | distance (oracle) | 0.83 / 0.11 / 0.02 | 0.59 / 0.06 / 0.01 | 0.55 / 0.06 / 0.02 |
+| jac+adv_h ep5 | classification | 0.91 / 0.30 / 0.05 | 0.59 / 0.06 / 0.02 | 0.47 / 0.07 / 0.02 |
+| jac+adv_h ep5 | distance (oracle) | 0.85 / 0.16 / 0.02 | 0.61 / 0.05 / 0.01 | 0.48 / 0.07 / 0.01 |
+
+- In distribution the distance target sharpens the boundary (near-safe vetoed 0.11-0.16 vs 0.30-0.31, at a somewhat lower catch rate). Under the shifts the two targets are indistinguishable, with or without plan-level calibration: the information that separates near-safe from unsafe is not in the shifted latent, so no readout target can recover it. The lever is the encoder's state resolution under shift (Tables 6c, 18), not the margin function.
+
 ## Separating "cannot plan" from "unsafe"
 
 `reacher_outcomes.py` on the saved trajectories: per episode, reached the goal or not × entered the box or not; progress = fraction of the initial goal distance closed by the closest approach; no-progress share = safe-but-failed episodes with progress < 0.25. For runs with $h$ logging (`reacher_cem.py`), each collision is attributed: fooled = the plan returned at the replan before entry had $\min_k h(\hat z_k) > 0$ (the model judged it safe); forced = $\le 0$ (no feasible plan); noticed = $h$ on the real frame at the entry step is $< 0$.
