@@ -194,6 +194,49 @@ Table 6c. kNN / in-support / NN error at step 0 (encoder) and step 5 (predicted)
 - It pulls toward the right state only if the encoder kept the state. jac at $\alpha = 0.3$: the encoder latent is off support but near the right state (0.29 rad); by step 5 it is 93% in support at 0.41 rad, which is why the plan veto works there. sigreg at $\alpha = 0.1$: off support and wrong (2.56 rad); by step 5 it is 88% in support and still wrong (2.16 rad), so re-grounding turns a detectable OOD latent into an in-support alias. Same for official at $\alpha \ge 0.2$ and jac at 0.5.
 - Re-grounding is therefore not a goal in itself: it amplifies whatever state the encoder kept. The quantity to improve is the encoder's state retention under shift. An OOD check belongs on the step-0 encoder latent, where every failing case here is 100% off support (it would also flag jac at 0.3, where it still works).
 
+## Sim-to-real shifts
+
+`reacher_shift.py`: shifts a deployment would plausibly meet, severities fixed before any result. Camera: fixed camera moved 3 cm in x and y (cam shift), tilted 5° (cam tilt), moved 10 cm closer (cam zoom). Light: overhead light moved to (0.4, 0.4, 1) aimed at the origin (light dir). Sensor: Gaussian noise $\sigma = 10/255$, Gaussian blur $\sigma = 1.5$ px, JPEG quality 15, gamma 1.5 (exposure), white balance R ×1.2 / B ×0.8, a fixed 48 px grey square per episode (occlusion). Dynamics (planning only; frames unchanged): actuator gear ×0.7 (gear0.7), joint damping ×10 (damping10), 1-env-step action latency (delay1), Gaussian action noise $\sigma = 0.2$ (act noise). Start and goal frames are rendered under the shift. Epoch-10 world models, real+imag margin functions.
+
+Table 10. Zero-shot margin function under sim-to-real appearance shifts: bal acc (AUC), 5000 held-out states.
+
+| Shift (mean pixel change) | sigreg MLP | sigreg linear | jac MLP | jac linear | official MLP | official linear |
+|---|---|---|---|---|---|---|
+| cam shift (15.7) | 0.500 (0.838) | 0.500 (0.892) | 0.506 (0.935) | 0.860 (0.973) | 0.500 (0.777) | 0.500 (0.843) |
+| cam tilt (19.4) | 0.500 (0.831) | 0.500 (0.872) | 0.503 (0.828) | 0.693 (0.854) | 0.500 (0.712) | 0.500 (0.741) |
+| cam zoom (6.2) | 0.500 (0.995) | 0.904 (0.997) | 0.913 (0.999) | 0.966 (0.999) | 0.649 (0.999) | 0.977 (0.997) |
+| light dir (5.2) | 0.500 (0.906) | 0.500 (0.894) | 0.997 (1.000) | 0.992 (0.999) | 0.500 (0.995) | 0.969 (0.997) |
+| noise (8.0) | 0.824 (0.997) | 0.987 (0.998) | 0.997 (1.000) | 0.989 (0.999) | 0.998 (0.999) | 0.991 (0.999) |
+| blur (1.7) | 0.812 (0.999) | 0.983 (0.999) | 0.996 (0.999) | 0.991 (0.999) | 0.992 (1.000) | 0.994 (0.999) |
+| jpeg (4.5) | 0.500 (0.802) | 0.504 (0.952) | 0.996 (1.000) | 0.991 (0.999) | 0.500 (0.997) | 0.921 (0.997) |
+| exposure (33.7) | 0.500 (0.583) | 0.500 (0.658) | 0.735 (0.998) | 0.980 (0.998) | 0.500 (0.675) | 0.500 (0.743) |
+| white balance (12.7) | 0.500 (0.498) | 0.500 (0.348) | 0.997 (1.000) | 0.991 (0.999) | 0.500 (0.619) | 0.500 (0.459) |
+| occlusion (1.9) | 0.500 (0.691) | 0.576 (0.683) | 0.592 (0.956) | 0.707 (0.955) | 0.500 (0.900) | 0.582 (0.869) |
+
+Table 11. CEM under sim-to-real shifts, 50 box-crossing pairs: collision (success). In distribution (Table 4): raw 0.540-0.580, CCEM 0.020-0.060.
+
+| Shift | sigreg raw | sigreg CCEM MLP | sigreg CCEM lin | jac raw | jac CCEM MLP | jac CCEM lin | official raw | official CCEM MLP | official CCEM lin |
+|---|---|---|---|---|---|---|---|---|---|
+| cam shift | 0.160 (0.080) | 0.160 (0.080) | 0.160 (0.080) | 0.640 (0.260) | 0.320 (0.200) | 0.220 (0.200) | 0.240 (0.120) | 0.240 (0.120) | 0.240 (0.120) |
+| cam tilt | 0.260 (0.160) | 0.260 (0.160) | 0.260 (0.160) | 0.560 (0.160) | 0.440 (0.160) | 0.340 (0.160) | 0.320 (0.140) | 0.320 (0.140) | 0.320 (0.140) |
+| cam zoom | 0.280 (0.540) | 0.280 (0.600) | 0.220 (0.420) | 0.400 (0.880) | 0.120 (0.700) | 0.100 (0.640) | 0.360 (0.720) | 0.060 (0.640) | 0.040 (0.560) |
+| light dir | 0.540 (0.160) | 0.560 (0.160) | 0.520 (0.160) | 0.560 (0.680) | 0.060 (0.620) | 0.060 (0.520) | 0.640 (0.480) | 0.100 (0.580) | 0.060 (0.520) |
+| noise | 0.540 (0.580) | 0.120 (0.620) | 0.060 (0.500) | 0.580 (0.600) | 0.060 (0.660) | 0.060 (0.500) | 0.600 (0.720) | 0.040 (0.680) | 0.040 (0.520) |
+| blur | 0.520 (0.640) | 0.040 (0.740) | 0.040 (0.540) | 0.640 (0.560) | 0.080 (0.660) | 0.060 (0.540) | 0.560 (0.780) | 0.040 (0.780) | 0.040 (0.600) |
+| jpeg | 0.500 (0.140) | 0.260 (0.240) | 0.200 (0.060) | 0.560 (0.540) | 0.040 (0.560) | 0.060 (0.440) | 0.560 (0.600) | 0.100 (0.620) | 0.040 (0.540) |
+| exposure | 0.280 (0.140) | 0.280 (0.140) | 0.280 (0.140) | 0.500 (0.680) | 0.080 (0.680) | 0.060 (0.640) | 0.400 (0.240) | 0.400 (0.240) | 0.400 (0.240) |
+| white balance | 0.600 (0.100) | 0.600 (0.100) | 0.600 (0.100) | 0.540 (0.680) | 0.060 (0.560) | 0.060 (0.460) | 0.360 (0.300) | 0.360 (0.300) | 0.360 (0.300) |
+| occlusion | 0.280 (0.240) | 0.280 (0.240) | 0.260 (0.220) | 0.340 (0.420) | 0.240 (0.500) | 0.260 (0.420) | 0.320 (0.320) | 0.320 (0.300) | 0.280 (0.260) |
+| gear0.7 | 0.520 (0.380) | 0.040 (0.500) | 0.040 (0.300) | 0.580 (0.380) | 0.040 (0.400) | 0.040 (0.340) | 0.520 (0.440) | 0.060 (0.320) | 0.040 (0.320) |
+| damping10 | 0.120 (0.040) | 0.020 (0.060) | 0.040 (0.060) | 0.140 (0.040) | 0.020 (0.060) | 0.040 (0.040) | 0.140 (0.040) | 0.020 (0.040) | 0.040 (0.040) |
+| delay1 | 0.560 (0.540) | 0.080 (0.540) | 0.080 (0.440) | 0.600 (0.440) | 0.120 (0.520) | 0.100 (0.420) | 0.560 (0.520) | 0.060 (0.460) | 0.060 (0.460) |
+| act noise | 0.620 (0.460) | 0.220 (0.360) | 0.120 (0.360) | 0.620 (0.420) | 0.220 (0.340) | 0.180 (0.260) | 0.540 (0.460) | 0.200 (0.360) | 0.220 (0.280) |
+
+- jac + CCEM keeps collision at 0.040-0.120 under every photometric and sensor shift, camera zoom and three of the four dynamics shifts; sigreg is at raw-CEM level under exposure, white balance, light direction and the camera shifts, and the official model under exposure, white balance and the camera shifts. Margin function sign acc (Table 10) predicts this: wherever it is 0.500 for both heads, CCEM equals raw CEM.
+- jac's remaining failures are camera shift / tilt (CCEM collision 0.220-0.440, success 0.160-0.200) and occlusion (0.240-0.260). The camera shifts break planning for every model (success 0.080-0.200 even raw): the goal image and the dynamics are seen through a geometry the model never saw, so this is a task failure as much as a safety one.
+- Dynamics shifts leave the margin function intact (frames unchanged), so CCEM works for all three models (collision 0.020-0.120) except action noise (0.120-0.220): noise injected after planning pushes the arm into the box regardless of the plan. Joint damping ×10 is too strong (no model reaches the goal, success 0.040-0.060); its low collision is from the arm barely moving.
+- The linear margin function is at least as good as the MLP for jac under every shift.
+
 ## adv_h at matched epochs (mid-run checkpoints)
 
 The adv_h runs are paused or still training, so their checkpoints are compared with jac at the same epoch (same seed, same cosine schedule position; neither has finished annealing). jac+adv_h = `rc_jac_safeadv_linf` (MLP adversary head, the Dubins recipe: L∞ 8/255, 2 PGD steps, AUC gate 0.95), epoch 5; jac+adv_h-lin = `rc_jac_safeadv_linf_linhead` (linear adversary head), epoch 4. Same pipeline as above: real+imag margin functions (`reacher_heads_imag_ep<EP>/`), floor sweep, CEM on the 50 box-crossing pairs with the floor shift.
