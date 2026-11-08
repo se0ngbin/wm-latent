@@ -50,7 +50,14 @@ CONDS = {"red": dict(obstacle="red", shape="circle", rot=0), "purple": dict(obst
 BNADAPT, NADAPT = bool(int(os.environ.get("BNADAPT", "0"))), int(os.environ.get("NADAPT", "2000"))
 ra = np.random.default_rng(11)
 x0, x1, y0, y1 = E.WORLD_BOUNDS
-sa = np.stack([ra.uniform(x0, x1, NADAPT), ra.uniform(y0, y1, NADAPT), ra.uniform(-np.pi, np.pi, NADAPT)], 1).astype(np.float32)
+SAFEONLY = bool(int(os.environ.get("SAFEONLY", "0")))   # adaptation frames only of SAFE states (a robot cannot collect collisions)
+sa = np.zeros((0, 3), np.float32)
+while len(sa) < NADAPT:
+    c = np.stack([ra.uniform(x0, x1, 2 * NADAPT), ra.uniform(y0, y1, 2 * NADAPT), ra.uniform(-np.pi, np.pi, 2 * NADAPT)], 1).astype(np.float32)
+    if SAFEONLY:
+        c = c[~E.inside_obstacle(c[:, :2], "circle").astype(bool)]
+    sa = np.concatenate([sa, c])
+sa = sa[:NADAPT]
 Aa = torch.from_numpy((ra.standard_normal((NADAPT, 1, 1)) + 0.7 * ra.standard_normal((NADAPT, T, 1))).astype(np.float32).reshape(NADAPT, NB, FS)).to(DEV)
 m0 = m
 
@@ -77,9 +84,13 @@ def bn_adapt(frames):
     return m
 
 
+QS = (0.05, 0.10)   # safe-only thresholds: c = q-quantile of h over the (safe-only) adaptation frames of the condition
 for cn, cond in CONDS.items():
+    fa = E.render_cond(E.DubinsSwmEnv(), sa, cond, tf_fixed)
     if BNADAPT:
-        m = bn_adapt(E.render_cond(E.DubinsSwmEnv(), sa, cond, tf_fixed))
+        m = bn_adapt(fa)
+    with torch.no_grad():
+        za = E.encode(m, fa).to(DEV)
     with torch.no_grad():
         emb = E.encode(m, E.render_cond(E.DubinsSwmEnv(), st0, cond, tf_fixed)).to(DEV).unsqueeze(1)
         for b in range(NB):
@@ -94,3 +105,12 @@ for cn, cond in CONDS.items():
         real = f"real {roc_auc_score(~y0l, hr):.2f} " if 0 < y0l.mean() < 1 else ""
         aucs = " ".join(f"{(b + 1) * FS}:{roc_auc_score(safe[:, b], h[:, b]):.2f}" for b in range(NB) if 0 < safe[:, b].mean() < 1)
         print(f"IMAGFS{'-BN' if BNADAPT else ''} {ck} fs{FS} {os.path.basename(p)} {cn}: {real}AUC@envstep {aucs}", flush=True)
+        with torch.no_grad():
+            ha = hd(za.float()).cpu().numpy()
+        def bal(c, b):
+            hb, sb = h[:, b] - c, safe[:, b]
+            return ((hb[sb] >= 0).mean() + (hb[~sb] < 0).mean()) / 2 if 0 < sb.mean() < 1 else float("nan")
+        steps = [b for b in range(NB) if (b + 1) * FS in (5, 10, 15, 20, 25)]
+        for name, c in [("thr 0", 0.0)] + [(f"safe q{int(q * 100):02d} (c={np.quantile(ha, q):+.2f})", float(np.quantile(ha, q))) for q in QS]:
+            print(f"   bal-acc {name}: " + " ".join(f"{(b + 1) * FS}:{bal(c, b):.2f}" for b in steps)
+                  + f"  | predicted-safe share {np.mean(h[:, steps] - c >= 0):.2f}", flush=True)

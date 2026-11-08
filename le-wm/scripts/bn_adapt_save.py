@@ -3,6 +3,7 @@ diag_imag_fs_dubins.py BNADAPT=1): projector BN statistics recomputed from NADAP
 (random uniform states), then the predictor output projection's BN statistics from NB-step random-action imagined rollouts
 from those latents. Nothing else changes. Writes checkpoints/<wm>_bn<cond>/weights_epoch_50.pt (+ config links), so CEM
 loads it like any WM; the margin function h stays the red-trained one of <wm>.
+Env: NADAPT (2000), SAFEONLY (0/1), BNTAG (suffix of the output dir).
 Usage: bn_adapt_save.py <wm_dir> <cond: purple|rot90|red> [fs=1] [nb=25]"""
 import sys, os, copy
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..")); sys.path.insert(0, os.path.dirname(__file__))
@@ -21,7 +22,14 @@ tf = E.get_img_preprocessor(source="pixels", target="pixels", img_size=E.IMG)
 tf_fixed = lambda d: tf({"pixels": torch.from_numpy(np.ascontiguousarray(d["pixels"])).permute(0, 3, 1, 2)})
 ra = np.random.default_rng(11)                                      # same adaptation set as the screen
 x0, x1, y0, y1 = E.WORLD_BOUNDS
-sa = np.stack([ra.uniform(x0, x1, NADAPT), ra.uniform(y0, y1, NADAPT), ra.uniform(-np.pi, np.pi, NADAPT)], 1).astype(np.float32)
+SAFEONLY = bool(int(os.environ.get("SAFEONLY", "0")))   # adaptation frames only of SAFE states (a robot cannot collect collisions)
+sa = np.zeros((0, 3), np.float32)
+while len(sa) < NADAPT:
+    c = np.stack([ra.uniform(x0, x1, 2 * NADAPT), ra.uniform(y0, y1, 2 * NADAPT), ra.uniform(-np.pi, np.pi, 2 * NADAPT)], 1).astype(np.float32)
+    if SAFEONLY:
+        c = c[~E.inside_obstacle(c[:, :2], "circle").astype(bool)]
+    sa = np.concatenate([sa, c])
+sa = sa[:NADAPT]
 Aa = torch.from_numpy((ra.standard_normal((NADAPT, 1, 1)) + 0.7 * ra.standard_normal((NADAPT, NB * FS, 1)))
                       .astype(np.float32).reshape(NADAPT, NB, FS)).to(DEV)
 m = swm.wm.utils.load_pretrained(f"{ck}/weights_epoch_50.pt").to(DEV).eval()
@@ -48,7 +56,7 @@ with torch.no_grad():
     for b in bns: b.eval()
 root = os.environ["STABLEWM_HOME"] + "/checkpoints"
 src = os.path.realpath(f"{root}/{ck}")
-out = f"{root}/{ck}_bn{cn}"
+out = f"{root}/{ck}_bn{cn}" + os.environ.get("BNTAG", "")
 os.makedirs(out, exist_ok=True)
 torch.save(m.state_dict(), f"{out}/weights_epoch_50.pt")
 for c in ("config.json", "config.yaml"):
