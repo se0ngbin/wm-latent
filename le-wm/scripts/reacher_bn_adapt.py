@@ -6,7 +6,7 @@ trained on <wm>. Adaptation frames: held-out episodes (>= 9000) excluding the re
 keeps only safe frames (a robot cannot collect failures). Writes checkpoints/<wm>_bn<cond><BNTAG>/weights_epoch_<EP>.pt + config
 links, and links reacher_heads_imag/<out> -> reacher_heads_imag/<wm> so every Reacher script loads the original heads.
 Conditions: floor<a>, light, arm_color, or any reacher_shift.py appearance shift.
-Env: NADAPT (2000), NB (5), SAFEONLY (0/1), BNTAG, HEADS. Usage: reacher_bn_adapt.py <wm> <ep> <cond>"""
+Env: NADAPT (2000), NB (5), SAFEONLY (0/1), BNSETS (proj | pred | both), BNTAG, HEADS. Usage: reacher_bn_adapt.py <wm> <ep> <cond>"""
 import os, sys
 os.environ.setdefault("MUJOCO_GL", "egl")
 import numpy as np, torch, h5py, gymnasium as gym
@@ -48,11 +48,14 @@ def stage(mod):
 def enc(a, bs=250):
     return torch.cat([m.projector(m.encoder((torch.as_tensor(a[i:i + bs], device=DEV).permute(0, 3, 1, 2).float() / 255. - MEAN) / STD,
                                             interpolate_pos_encoding=True).last_hidden_state[:, 0]) for i in range(0, len(a), bs)])
+BNSETS = G("BNSETS", "both")   # proj | pred | both: which BatchNorm set to re-estimate (the other keeps its training statistics)
+assert BNSETS in ("proj", "pred", "both"), BNSETS
 with torch.no_grad():
-    bns = stage(m.projector); enc(frames)
-    for b in bns: b.eval()
+    if BNSETS in ("proj", "both"):
+        bns = stage(m.projector); enc(frames)
+        for b in bns: b.eval()
     z = enc(frames).unsqueeze(1)
-    bns = stage(m.pred_proj)
+    bns = stage(m.pred_proj) if BNSETS in ("pred", "both") else []
     for i in range(0, NADAPT, 250):
         e = z[i:i + 250]
         for k in range(NB):

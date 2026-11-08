@@ -603,6 +603,23 @@ Table 27. jac+adv_h, unadapted → BN-adapted. Collision / safe success / progre
 - But it blurs adv_h's safety boundary: at floor 0.3 the curve moves from near in distribution back to jac-like (0.54 → 0.81 at < 0.05 rad), and at floor 0.4 collision rises (0.20 → 0.36). The margin function was trained on the unadapted latent, and adv_h's invariance already kept that latent near its training position; re-centering the BatchNorm moves it away from what $h$ reads.
 - So for adv_h, BN adaptation helps the goal cost and hurts the safety readout. Camera geometry: no gain or worse, as everywhere.
 
+### Which BatchNorm set, and a split planner
+
+Per-layer test (`reacher_bn_adapt.py BNSETS=proj|pred`) and a split CCEM (`H_WM`: goal cost and rollout from the adapted model, the feasibility check from $h$ on the unadapted model's rollout of the same candidates; with both models equal it reproduces the single-model run exactly). jac+adv_h epoch 10, collision / safe success / progress; blur = safe-plan veto at < 0.05 rad (90% unsafe caught, MLP).
+
+Table 28. jac+adv_h under floor shifts.
+
+| Condition | Margin fn | None | Both sets | Projector only | Predictor only | Split (both-sets planner) | Split (projector planner) |
+|---|---|---|---|---|---|---|---|
+| floor 0.3 | MLP | 0.14 / 0.36 / 0.83 | 0.10 / 0.52 / 0.91 | 0.14 / 0.66 / 0.92 | 0.16 / 0.28 / 0.79 | 0.14 / 0.60 / 0.94 | 0.20 / 0.56 / 0.93 |
+| floor 0.3 | linear | 0.18 / 0.28 / 0.81 | 0.08 / 0.48 / 0.88 | 0.10 / 0.52 / 0.89 | 0.14 / 0.30 / 0.78 | 0.14 / 0.60 / 0.93 | 0.18 / 0.52 / 0.92 |
+| floor 0.4 | MLP | 0.20 / 0.10 / 0.28 | 0.36 / 0.14 / 0.61 | 0.38 / 0.24 / 0.73 | 0.34 / 0.14 / 0.37 | 0.34 / 0.18 / 0.66 | 0.36 / 0.26 / 0.76 |
+| floor 0.4 | linear | 0.16 / 0.12 / 0.27 | 0.32 / 0.14 / 0.42 | 0.38 / 0.28 / 0.70 | 0.26 / 0.10 / 0.22 | 0.20 / 0.16 / 0.57 | 0.22 / 0.24 / 0.65 |
+| floor 0.3 | blur at < 0.05 rad | 0.54 | 0.81 | 0.84 | 0.57 | (unadapted $h$) | (unadapted $h$) |
+
+- The projector BatchNorm carries both effects: adapting it alone repairs goal reaching (the best safe success at floor 0.3, 0.66) and blurs $h$ like adapting both; the predictor projection alone keeps $h$ sharp but does not repair planning. So the planning fix and the safety loss sit in the same encoder latent.
+- The split planner keeps the adapted model's progress (floor 0.3: 0.92-0.94; floor 0.4: 0.57-0.76 vs 0.27-0.28 unadapted) with the unadapted, sharper $h$, but collision does not fall below the unadapted run (floor 0.3: 0.14-0.20 vs 0.14-0.18). A planner that reaches the goal takes more near-box routes, which exercises $h$'s remaining false-safes; part of the unadapted run's low collision was not getting anywhere. Best overall at floor 0.3: split with the linear margin function (0.14 / 0.60 / 0.93). One seed, $n = 50$.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
