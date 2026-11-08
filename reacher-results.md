@@ -274,6 +274,61 @@ Table 13. CEM under the floor shift, 50 box-crossing pairs: collision / safe suc
 - Ranking-first rules lower collision further, most with jac+adv_h (0.020-0.060 at $\alpha$ 0.3 and 0.4, against 0.160-0.180 for CCEM at 0.3), but by stalling: safe success falls to 0.060-0.260 and the arm ends 0.19-0.61 rad from the goal instead of about 0.05. Picking the safest plans first picks plans that barely move. task→safe keeps more progress but is still below CCEM's safe success at 0.3.
 - This repeats the Dubins verdict (ranking-first trades task for safety; threshold-first with ranking as fallback is the better default), but adv_h's ranking advantage is visible here for the first time in planning: with the same rules it collides less than jac.
 
+## Test-time recalibration of the threshold
+
+Under these shifts the ranking often survives while the threshold fails (Tables 3, 10, 12). `reacher_calib.py` refits only $h$'s offset, $h \to h - c$, from calibration frames rendered under the shift: held-out states disjoint from the test set, joint-box labels from qpos (a robot reads them from its joint encoders). Labeled: 100 safe + 100 unsafe frames, $c$ = the threshold with the best balanced accuracy. Safe-only (no failure data): 100 safe frames; median-matching ($c$ = shift of the median $h$ on safe frames) or the 5% quantile ($c$ = 5% quantile of $h$ on the shifted safe frames).
+
+Table 14. Static bal acc on the 5000 test states: uncalibrated / labeled / safe-only 5% quantile (real+imag margin functions).
+
+| WM | Margin fn | floor 0.3 | floor 0.4 | exposure | cam shift | cam tilt | occlusion |
+|---|---|---|---|---|---|---|---|
+| sigreg | MLP | 0.500 / 0.517 / 0.529 | 0.500 / 0.585 / 0.466 | 0.500 / 0.647 / 0.649 | 0.500 / 0.751 / 0.711 | 0.500 / 0.759 / 0.651 | 0.500 / 0.650 / 0.583 |
+| jac | MLP | 0.500 / 0.844 / 0.806 | 0.500 / 0.681 / 0.585 | 0.735 / 0.959 / 0.988 | 0.506 / 0.862 / 0.718 | 0.503 / 0.788 / 0.538 | 0.592 / 0.890 / 0.856 |
+| jac | linear | 0.578 / 0.904 / 0.890 | 0.500 / 0.519 / 0.470 | 0.980 / 0.985 / 0.979 | 0.860 / 0.960 / 0.751 | 0.693 / 0.788 / 0.610 | 0.707 / 0.887 / 0.806 |
+| jac+adv_h ep5 | MLP | 0.500 / 0.968 / 0.973 | 0.500 / 0.778 / 0.631 | 0.997 / 0.998 / 0.989 | 0.602 / 0.932 / 0.813 | 0.500 / 0.678 / 0.549 | 0.592 / 0.925 / 0.831 |
+| jac+adv_h ep5 | linear | 0.572 / 0.980 / 0.980 | 0.500 / 0.794 / 0.680 | 0.986 / 0.988 / 0.989 | 0.913 / 0.954 / 0.900 | 0.648 / 0.705 / 0.603 | 0.680 / 0.926 / 0.852 |
+
+- Recalibration recovers the threshold wherever the ranking survived, and the safe-only 5% quantile gets most of the labeled gain without any failure data (jac+adv_h, floor 0.3: 0.973 / 0.980 vs labeled 0.968 / 0.980). adv_h's better ranking is what makes it recalibrate best. Median-matching does nothing (bal acc unchanged, not shown): $h$ on safe states hardly moves under these shifts; it is the unsafe states that rise into the safe range, so only a quantile-style threshold catches them.
+
+Table 15. CCEM with the recalibrated threshold (offset fit on real frames, applied to every predicted state): collision / safe success / progress (median fraction of the initial goal distance closed).
+
+| WM | Margin fn | Condition | Uncalibrated | Labeled | Safe-only 5% |
+|---|---|---|---|---|---|
+| jac | MLP | floor 0.3 | 0.140 / 0.440 / 0.898 | 0.060 / 0.080 / 0.200 | 0.080 / 0.220 / 0.610 |
+| jac | linear | floor 0.3 | 0.100 / 0.460 / 0.874 | 0.100 / 0.280 / 0.730 | 0.100 / 0.240 / 0.770 |
+| jac | MLP | floor 0.4 | 0.240 / 0.280 / 0.646 | 0.060 / 0.120 / 0.192 | 0.100 / 0.200 / 0.320 |
+| jac | MLP | occlusion | 0.240 / 0.440 / 0.897 | 0.080 / 0.080 / 0.100 | 0.120 / 0.220 / 0.690 |
+| jac | MLP | cam shift | 0.320 / 0.160 / 0.736 | 0.080 / 0.060 / 0.000 | 0.180 / 0.100 / 0.310 |
+| jac | MLP | exposure | 0.080 / 0.640 / 0.930 | 0.040 / 0.580 / 0.920 | 0.020 / 0.340 / 0.840 |
+| jac+adv_h ep5 | MLP | floor 0.3 | 0.180 / 0.500 / 0.902 | 0.020 / 0.180 / 0.653 | 0.020 / 0.140 / 0.543 |
+| jac+adv_h ep5 | linear | floor 0.3 | 0.160 / 0.420 / 0.867 | 0.020 / 0.200 / 0.704 | 0.020 / 0.160 / 0.714 |
+| jac+adv_h ep5 | MLP | occlusion | 0.220 / 0.400 / 0.860 | 0.080 / 0.140 / 0.280 | 0.120 / 0.240 / 0.540 |
+
+- Recalibration cuts collision (to 0.020-0.120) but costs safe success (for example 0.500 to 0.140-0.180), largely through lost progress: the planner gets safer by not reaching the goal.
+- The returned plans are almost never infeasible under the calibrated threshold (0-1% of replans for jac+adv_h at floor 0.3, Table 16 data), so this is not CCEM's fallback: the feasible set itself shrinks to plans that do not approach the goal. The offset is fit on real frames, but predicted states re-ground toward in-distribution, where $h$'s safe-ward shift is about half as large (Table 6), so the same offset over-tightens them. Next to try: calibrate on predicted latents (offset per prediction step), with safe labels from the robot's own executed plans.
+
+## Separating "cannot plan" from "unsafe"
+
+`reacher_outcomes.py` on the saved trajectories: per episode, reached the goal or not × entered the box or not; progress = fraction of the initial goal distance closed by the closest approach; no-progress share = safe-but-failed episodes with progress < 0.25. For runs with $h$ logging (`reacher_cem.py`), each collision is attributed: fooled = the plan returned at the replan before entry had $\min_k h(\hat z_k) > 0$ (the model judged it safe); forced = $\le 0$ (no feasible plan); noticed = $h$ on the real frame at the entry step is $< 0$.
+
+Table 16. Outcomes and collision attribution (CCEM): reached+safe / safe, no goal / entered box / progress / no-progress share of safe failures | fooled / forced / noticed (of collisions).
+
+| WM | Margin fn | Condition | Outcomes | Attribution |
+|---|---|---|---|---|
+| jac | MLP | in distribution | 0.580 / 0.360 / 0.060 / 0.927 / 0.111 | 0.33 / 0.67 / 1.00 |
+| jac | MLP | floor 0.3 | 0.440 / 0.420 / 0.140 / 0.898 / 0.190 | 1.00 / 0.00 / 0.00 |
+| jac | MLP | floor 0.4 | 0.280 / 0.480 / 0.240 / 0.646 / 0.250 | 1.00 / 0.00 / 0.00 |
+| jac | MLP | occlusion | 0.440 / 0.320 / 0.240 / 0.897 / 0.062 | 1.00 / 0.00 / 0.08 |
+| jac | MLP | cam shift | 0.160 / 0.520 / 0.320 / 0.736 / 0.385 | 1.00 / 0.00 / 0.00 |
+| jac | linear | cam shift | 0.200 / 0.580 / 0.220 / 0.659 / 0.448 | 0.73 / 0.27 / 0.73 |
+| sigreg | MLP | floor 0.1 | 0.300 / 0.220 / 0.480 / 0.732 / 0.455 | 1.00 / 0.00 / 0.00 |
+| jac+adv_h ep5 | MLP | floor 0.3 | 0.500 / 0.320 / 0.180 / 0.902 / 0.062 | 1.00 / 0.00 / 0.00 |
+| jac+adv_h ep5 | MLP | floor 0.3, labeled calib | 0.180 / 0.800 / 0.020 / 0.653 / 0.300 | 1.00 / 0.00 / 1.00 |
+| jac | MLP | damping ×10 (dynamics) | 0.040 / 0.920 / 0.040 / 0.204 / 0.848 | n/a (no logging) |
+
+- In distribution the few collisions (3/50) are mostly forced: the model saw no feasible plan, and $h$ noticed the box. Under every appearance shift the collisions are the model's: the chosen plan looked safe (fooled 0.73-1.00) and $h$ did not read the box even with the arm inside (noticed 0-0.08). So OOD collisions are a safety-model failure, not a planner choosing a known risk.
+- "Cannot plan" is separable: in distribution the safe failures are near-misses (progress 0.93, 11% no-progress); under camera shift and for sigreg at floor 0.1 about 40-45% of safe failures make no progress, and damping ×10 is almost purely a planning failure (85% no-progress, progress 0.20).
+
 ## adv_h at matched epochs (mid-run checkpoints)
 
 The adv_h runs are paused or still training, so their checkpoints are compared with jac at the same epoch (same seed, same cosine schedule position; neither has finished annealing). jac+adv_h = `rc_jac_safeadv_linf` (MLP adversary head, the Dubins recipe: L∞ 8/255, 2 PGD steps, AUC gate 0.95), epoch 5; jac+adv_h-lin = `rc_jac_safeadv_linf_linhead` (linear adversary head), epoch 4. Same pipeline as above: real+imag margin functions (`reacher_heads_imag_ep<EP>/`), floor sweep, CEM on the 50 box-crossing pairs with the floor shift.
@@ -341,4 +396,4 @@ Table 7. False-safe, AUC and mean $h$ on unsafe states, averaged over predicted 
 
 ## Files
 
-Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
+Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`, `reacher_within_start.py`, `reacher_calib.py`, `reacher_outcomes.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
