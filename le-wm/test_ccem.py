@@ -49,4 +49,15 @@ assert run_tf(goal, H2, 2, "task_safe", 3) == [1, 4], run_tf(goal, H2, 2, "task_
 Hs = torch.tensor([[[0, 1, -1], [0, 2, 0], [0, -1, 2], [0, 0.5, 0.5], [0, -2, 1], [0, 1.5, 1]]], dtype=torch.float)
 Hs2 = Hs.clone(); Hs2[..., 2] += 5
 assert run_tf(goal, Hs, 2, "safe_task_norm", 3) == run_tf(goal, Hs2, 2, "safe_task_norm", 3), "per-step offset changed elites"
+# per-position offsets (h(z_k) - c_k): c = -10 everywhere makes every candidate feasible -> elites = best goal cost;
+# c = [0, 0, 0] equals no offsets; a short list is padded with its last value.
+def run_off(goal, h_steps, topk, offs):
+    B, S, T = h_steps.shape
+    emb = torch.zeros(B, S, T, 2); emb[..., 0] = h_steps
+    info = {"pixels": torch.zeros(B, S, 1), "predicted_emb": emb}
+    m = _SoftCostJEPA(FakeJEPA(goal), head, 1000, 0.0, 1e4, ccem=True, ccem_fallback="minh", h_offsets=offs); m.topk = topk
+    return torch.topk(m.get_cost(info, None), k=topk, dim=1, largest=False).indices[0].sort().values.tolist()
+assert run_off(goal, H2, 2, [-10.0]) == [1, 4], run_off(goal, H2, 2, [-10.0])            # all feasible: J 0 (1), 0 (4)
+assert run_off(goal, H2, 4, [0.0, 0.0, 0.0]) == run(goal, H2, topk=4, fallback="minh")
+assert run_off(goal, H2, 2, [0.0, -0.5]) == [1, 5], run_off(goal, H2, 2, [0.0, -0.5])    # c=-0.5 on steps 1-2 -> 1 feasible (-0.2+0.5); feasible {0,1,2,5}, best J: 1 (0), 5 (2); without offsets [2, 5]
 print("ccem rule ok")

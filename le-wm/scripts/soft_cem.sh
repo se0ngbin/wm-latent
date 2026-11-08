@@ -26,6 +26,7 @@ K=${GOALK:-25}                                             # GOALK env: goal K s
 [ -n "${HQ:-}" ] && SUF=${SUF}_hq${HQ}   # HQ env: solver.h_quantile (rank-normalized h)
 [ -n "${HREL:-}" ] && SUF=${SUF}_hrel   # HREL=true: solver.h_rel (margin = h of the current frame, threshold-free)
 [ -n "${MARGIN:-}" ] && SUF=${SUF}_m${MTAG:?MTAG names the MARGIN schedule}   # MARGIN env: unsafe_margin, scalar or "[e_1,...,e_T]" per imagined step
+[ -n "${HOFFS:-}" ] && SUF=${SUF}_cal${CTAG:?CTAG names the HOFFS calibration}   # HOFFS env: "[c_0,...,c_K]" per-position CCEM offsets (calib_pred_dubins.py)
 declare -A ENVS=([red]= [purple]=DUBINS_OBST_COLOR=purple [diamond]=DUBINS_OBST_SHAPE=square [fullrot90]=DUBINS_ROT_DEG=90)
 for scen in "${@:-red}"; do
   lg="$LOG/softcem_${TAG}_${SUF}_${scen}.log"
@@ -33,7 +34,7 @@ for scen in "${@:-red}"; do
   for try in 1 2 3 4 5 6; do
     grep -q "'collision_rate'" "$lg" 2>/dev/null && break
     env ${ENVS[$scen]} CUDA_VISIBLE_DEVICES=$GPU $PY eval.py --config-name=dubins solver=soft_cem \
-      solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C solver.goal_cost=${GOALCOST:-final} solver.unsafe_margin="${MARGIN:-0.0}" solver.h_quantile=${HQ:-null} solver.h_steps=${HSTEPS:-null} solver.h_rel=${HREL:-false} solver.ccem=$([ -n "${CCEM:-}" ] && echo true || echo false) solver.ccem_fallback=${CCEMRULE:-count} solver.batch_size=${BS:-16} policy="$WM/weights_epoch_50.pt" \
+      solver.margin_ckpt="$HEAD" solver.unsafe_weight=$W solver.unsafe_const=$C solver.goal_cost=${GOALCOST:-final} solver.unsafe_margin="${MARGIN:-0.0}" solver.h_quantile=${HQ:-null} solver.h_steps=${HSTEPS:-null} solver.h_rel=${HREL:-false} solver.ccem=$([ -n "${CCEM:-}" ] && echo true || echo false) solver.ccem_fallback=${CCEMRULE:-count} solver.h_offsets="${HOFFS:-null}" solver.batch_size=${BS:-16} policy="$WM/weights_epoch_50.pt" \
       eval.num_eval=${NEVAL:-200} eval.goal_offset_steps=$K eval.goal_at_episode_end=false eval.eval_budget=$((2 * K)) \
       plan_config.horizon=$K plan_config.action_block=1 plan_config.receding_horizon=${REC:-$K} \
       '+eval.goal_avoid_obstacles=[[0.25,0.65,0.5],[0.25,-0.65,0.5]]' +eval.goal_avoid_margin=0.05 \

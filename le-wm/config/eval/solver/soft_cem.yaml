@@ -19,3 +19,4 @@ h_rel: false   # true: margin = h(current real frame) + unsafe_margin (threshold
 ccem: false   # true: SafeDreamer constrained-CEM elite rule (OSRP CCEPlanner) instead of the soft cost
 ccem_cost_limit: 2.0   # SafeDreamer osrp default
 ccem_fallback: count   # count = SafeDreamer (fewest h<0 states); minh = all feasible (h>0) then highest worst-case min_k h
+h_offsets: null   # [c_0..c_K]: CCEM reads h(z_k) - c_k (calib_pred_dubins.py per-step threshold recalibration)
