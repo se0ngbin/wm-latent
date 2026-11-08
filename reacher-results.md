@@ -545,6 +545,46 @@ Table 23. CEM with the BN-adapted world model, 50 box-crossing pairs: collision 
 - The safe-q10 threshold stalls (safe success 0.06-0.22, progress 0.02-0.64): after adaptation $h$ is already about right, and the extra margin vetoes the detours, as the real-frame recalibration did (Table 15). Threshold 0 is the right setting on Reacher.
 - Opposite outcome to Dubins, where the same adaptation doubled CCEM collisions under purple: there the unadapted $h$ called nearly every plan unsafe and CCEM's conservative fallback was itself the safety; on Reacher the unadapted $h$ calls everything safe (CCEM = raw CEM), so correcting it can only help.
 
+## jac+adv_h at epoch 10
+
+`rc_jac_safeadv_linf` finished (epoch 10, same seed and schedule as jac); full suite through `queue_ep10_eval_v2.sh`. Training prediction loss is the same as jac's (epoch 10: 0.0220 vs 0.0218); the adversary was on from epoch 2 (in-training head AUC 0.9993-0.9997).
+
+Table 24. Floor sweep, bal acc (AUC), real+imag margin functions: jac vs jac+adv_h.
+
+| WM | Margin fn | 0.2 | 0.3 | 0.4 | 0.5 | 1 |
+|---|---|---|---|---|---|---|
+| jac | MLP | 0.997 (0.999) | 0.500 (0.873) | 0.500 (0.667) | 0.500 (0.553) | 0.500 (0.566) |
+| jac+adv_h | MLP | 0.997 (0.999) | 0.500 (0.986) | 0.500 (0.747) | 0.500 (0.565) | 0.500 (0.436) |
+| jac | linear | 0.990 (0.999) | 0.578 (0.952) | 0.500 (0.402) | 0.500 (0.465) | 0.500 (0.699) |
+| jac+adv_h | linear | 0.990 (0.999) | 0.517 (0.993) | 0.500 (0.896) | 0.500 (0.734) | 0.500 (0.425) |
+
+Table 25. Blur curve (as Table 18), MLP: safe-plan veto at 90% unsafe caught, by closest distance to the box (rad).
+
+| WM | Condition | < 0.05 | 0.05-0.1 | 0.1-0.2 | 0.2-0.3 | 0.3-0.5 | 0.5-1 | > 1 |
+|---|---|---|---|---|---|---|---|---|
+| jac | floor 0.3 | 0.83 | 0.82 | 0.68 | 0.42 | 0.12 | 0.03 | 0.37 |
+| jac+adv_h | floor 0.3 | 0.54 | 0.44 | 0.28 | 0.13 | 0.07 | 0.02 | 0.31 |
+| jac | camera shift | 0.90 | 0.90 | 0.86 | 0.75 | 0.52 | 0.21 | 0.22 |
+| jac+adv_h | camera shift | 0.77 | 0.73 | 0.61 | 0.42 | 0.25 | 0.12 | 0.15 |
+| jac | occlusion | 0.88 | 0.87 | 0.85 | 0.80 | 0.56 | 0.16 | 0.48 |
+| jac+adv_h | occlusion | 0.80 | 0.76 | 0.78 | 0.73 | 0.47 | 0.10 | 0.43 |
+
+Table 26. CEM, 50 box-crossing pairs: collision / safe success / progress, jac vs jac+adv_h (epoch 10, same margin-function recipe).
+
+| Condition | jac CCEM-MLP | jac+adv_h CCEM-MLP | jac CCEM-linear | jac+adv_h CCEM-linear | jac raw | jac+adv_h raw |
+|---|---|---|---|---|---|---|
+| in distribution | 0.06 / 0.58 / 0.93 | 0.04 / 0.52 / 0.91 | 0.06 / 0.44 / 0.90 | 0.08 / 0.54 / 0.89 | 0.58 / 0.36 / 0.94 | 0.58 / 0.36 / 0.93 |
+| floor 0.3 | 0.14 / 0.44 / 0.90 | 0.14 / 0.36 / 0.83 | 0.10 / 0.46 / 0.87 | 0.18 / 0.28 / 0.81 | 0.34 / 0.50 / 0.89 | 0.26 / 0.38 / 0.88 |
+| floor 0.4 | 0.24 / 0.28 / 0.65 | 0.20 / 0.10 / 0.28 | 0.22 / 0.26 / 0.66 | 0.16 / 0.12 / 0.27 | 0.24 / 0.24 / 0.66 | 0.20 / 0.10 / 0.28 |
+| camera shift | 0.32 / 0.16 / 0.74 | 0.16 / 0.22 / 0.77 | 0.22 / 0.20 / 0.66 | 0.14 / 0.22 / 0.52 | 0.64 / 0.16 / 0.73 | 0.60 / 0.16 / 0.68 |
+| camera tilt | 0.44 / 0.10 / 0.44 | 0.26 / 0.12 / 0.50 | 0.34 / 0.12 / 0.45 | 0.28 / 0.14 / 0.48 | 0.56 / 0.10 / 0.56 | 0.52 / 0.12 / 0.62 |
+| occlusion | 0.24 / 0.44 / 0.90 | 0.24 / 0.42 / 0.88 | 0.26 / 0.40 / 0.86 | 0.20 / 0.38 / 0.82 | 0.34 / 0.36 / 0.88 | 0.30 / 0.40 / 0.88 |
+| photometric (light dir, noise, jpeg, exposure, white balance) | 0.04-0.08 / 0.56-0.66 | 0.04-0.06 / 0.52-0.66 | 0.06 / 0.44-0.62 | 0.06 / 0.48-0.56 | 0.50-0.58 | 0.54-0.62 |
+
+- The adversarial reg sharpens the margin function's boundary under shift: at floor 0.3 the blur curve's 50% point moves from about 0.25 rad (jac) to about 0.05 rad, close to in distribution, and under camera shift by about 0.15 rad; the ranking survives further (floor 0.4 AUC 0.747 / 0.896 vs 0.667 / 0.402). This is stronger than at epoch 5 (Table 18).
+- In planning this pays off under camera geometry (CCEM-MLP collision 0.32 to 0.16 under camera shift, 0.44 to 0.26 under tilt, at equal or better safe success); elsewhere CCEM is within noise of jac.
+- But jac+adv_h plans worse under large floor shifts, regardless of safety: at floor 0.4 even raw CEM's progress falls to 0.28 (jac 0.66), so safe success drops to 0.10. The adversary makes $h$ invariant, not the goal cost; under a large floor shift the goal latent and the planner's distance to it are off. One seed, $n = 50$.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
