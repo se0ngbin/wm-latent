@@ -1,6 +1,6 @@
 """Separate "cannot plan under the shift" from "unsafe under the shift" for reacher_cem.py runs (MODE=data, saved .npz).
 Goals are rebuilt from reacher_cem.py's deterministic pair selection (held-out episodes, safe endpoints, recorded path crosses
-the box, PAIR_SEED 42, 50 pairs). Per run:
+the box, PAIR_SEED 42; pair count = the run's N_EPS). Per run:
   outcome 2x2   : SS = reached goal, never in box; SF = never in box, no goal (cannot plan); US = goal but entered box; UF = box, no goal
   progress      : median fraction of the initial joint-space goal distance (max over joints, wrapped) closed by the closest approach
   path          : median joint-space path length (rad, sum over steps of the max joint step)
@@ -17,12 +17,14 @@ with h5py.File("/data/seongbin/lewm/datasets/reacher.h5", "r") as f:
     fl, ep, Q = f["failures"][:].astype(int), f["ep_idx"][:], f["qpos"][:]
 cs = np.r_[0, np.cumsum(fl)]; t = np.arange(len(fl) - GOFF)
 ok = (ep[t] >= 9000) & (ep[t] == ep[t + GOFF]) & (fl[t] == 0) & (fl[t + GOFF] == 0) & (cs[t + GOFF + 1] - cs[t] > 0)
-cand = t[ok]; sel = np.sort(cand[np.random.default_rng(42).choice(len(cand) - 1, size=N, replace=False)])
-GOALS = Q[sel + GOFF]
+cand = t[ok]
+def pairs(n):   # reacher_cem.py's selection for N_EPS = n
+    sel = np.sort(cand[np.random.default_rng(42).choice(len(cand) - 1, size=n, replace=False)]); return sel, Q[sel + GOFF]
 
 
 def outcomes(path):
     d = np.load(path); q, succ, coll = d["q"], d["success"].astype(bool), d["collision"].astype(bool)
+    sel, GOALS = pairs(len(q))
     assert np.allclose(q[:, 0], Q[sel], atol=1e-6), f"{path}: starts do not match the data-mode pairs"
     gd = wrap(q - GOALS[:, None]).max(-1)                                   # (N, T+1) goal distance
     prog = 1 - gd.min(1) / np.maximum(gd[:, 0], 1e-6)
