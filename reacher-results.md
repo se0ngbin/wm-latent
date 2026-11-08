@@ -271,7 +271,7 @@ Table 13. CEM under the floor shift, 50 box-crossing pairs: collision / safe suc
 | jac+adv_h ep5 | 0.4 | MLP | not run | 0.040 / 0.100 / 0.575 | 0.100 / 0.120 / 0.316 | 0.020 / 0.060 / 0.607 |
 | jac+adv_h ep5 | 0.4 | linear | not run | 0.060 / 0.100 / 0.416 | 0.100 / 0.120 / 0.300 | 0.020 / 0.060 / 0.576 |
 
-- Ranking-first rules lower collision further, most with jac+adv_h (0.020-0.060 at $\alpha$ 0.3 and 0.4, against 0.160-0.180 for CCEM at 0.3), but by stalling: safe success falls to 0.060-0.260 and the arm ends 0.19-0.47 rad from the goal instead of about 0.05. Picking the safest plans first picks plans that barely move. task→safe keeps more progress but is still below CCEM's safe success at 0.3.
+- Ranking-first rules lower collision further, most with jac+adv_h (0.020-0.060 at $\alpha$ 0.3 and 0.4, against 0.160-0.180 for CCEM at 0.3), but by stalling: safe success falls to 0.060-0.260 and the arm ends 0.19-0.61 rad from the goal instead of about 0.05. Picking the safest plans first picks plans that barely move. task→safe keeps more progress but is still below CCEM's safe success at 0.3.
 - This repeats the Dubins verdict (ranking-first trades task for safety; threshold-first with ranking as fallback is the better default), but adv_h's ranking advantage is visible here for the first time in planning: with the same rules it collides less than jac.
 
 ## adv_h at matched epochs (mid-run checkpoints)
