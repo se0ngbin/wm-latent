@@ -518,7 +518,7 @@ Table 22. Blur curve (as Table 18: safe-plan veto at 90% unsafe caught, by close
 | jac | cam shift | unadapted | 0.90 | 0.90 | 0.86 | 0.75 | 0.52 | 0.21 | 0.22 |
 | jac | cam shift | BN-adapted | 0.88 | 0.86 | 0.80 | 0.69 | 0.46 | 0.16 | 0.13 |
 
-Table 23. CEM with the BN-adapted world model, 50 box-crossing pairs: collision / safe success / progress. Unadapted = the same margin function and CCEM on the original model (Tables 5, 11). jac under light and exposure: adaptation hit a transient render error, rerunning.
+Table 23. CEM with the BN-adapted world model, 50 box-crossing pairs: collision / safe success / progress. Unadapted = the same margin function and CCEM on the original model (Tables 5, 11).
 
 | WM | Condition | CCEM MLP, unadapted | CCEM MLP, BN-adapted | CCEM linear, unadapted | CCEM linear, BN-adapted | CCEM MLP, BN + safe-q10 | raw CEM, BN-adapted |
 |---|---|---|---|---|---|---|---|
@@ -533,8 +533,8 @@ Table 23. CEM with the BN-adapted world model, 50 box-crossing pairs: collision 
 | jac | floor 0.1 | 0.060 / 0.660 / 0.919 | 0.060 / 0.560 / 0.920 | 0.060 / 0.540 / 0.899 | 0.080 / 0.400 / 0.857 | 0.020 / 0.100 / 0.019 | 0.600 / 0.360 / 0.901 |
 | jac | floor 0.3 | 0.140 / 0.440 / 0.898 | 0.160 / 0.420 / 0.898 | 0.100 / 0.460 / 0.874 | 0.100 / 0.440 / 0.886 | 0.040 / 0.100 / 0.281 | 0.520 / 0.380 / 0.918 |
 | jac | floor 0.4 | 0.240 / 0.280 / 0.646 | 0.240 / 0.300 / 0.725 | 0.220 / 0.260 / 0.662 | 0.220 / 0.280 / 0.713 | 0.180 / 0.140 / 0.341 | 0.260 / 0.260 / 0.703 |
-| jac | light | 0.060 / 0.580 / 0.919 | n/a | 0.060 / 0.520 / 0.885 | n/a | n/a | n/a |
-| jac | exposure | 0.080 / 0.640 / 0.927 | n/a | 0.060 / 0.620 / 0.905 | n/a | n/a | n/a |
+| jac | light | 0.060 / 0.580 / 0.919 | 0.080 / 0.520 / 0.912 | 0.060 / 0.520 / 0.885 | 0.080 / 0.400 / 0.880 | 0.020 / 0.100 / 0.015 | 0.600 / 0.300 / 0.883 |
+| jac | exposure | 0.080 / 0.640 / 0.927 | 0.080 / 0.600 / 0.938 | 0.060 / 0.620 / 0.905 | 0.060 / 0.400 / 0.876 | 0.020 / 0.100 / 0.017 | 0.560 / 0.320 / 0.919 |
 | jac | white balance | 0.060 / 0.560 / 0.908 | 0.060 / 0.540 / 0.902 | 0.060 / 0.460 / 0.883 | 0.100 / 0.440 / 0.884 | 0.020 / 0.080 / 0.015 | 0.640 / 0.280 / 0.896 |
 | jac | occlusion | 0.240 / 0.440 / 0.897 | 0.300 / 0.400 / 0.888 | 0.260 / 0.400 / 0.859 | 0.240 / 0.400 / 0.893 | 0.060 / 0.100 / 0.271 | 0.440 / 0.400 / 0.903 |
 | jac | cam shift | 0.320 / 0.160 / 0.736 | 0.240 / 0.240 / 0.763 | 0.220 / 0.200 / 0.659 | 0.100 / 0.160 / 0.486 | 0.040 / 0.060 / 0.040 | 0.620 / 0.160 / 0.728 |
