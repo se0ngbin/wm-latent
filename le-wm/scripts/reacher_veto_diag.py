@@ -76,7 +76,7 @@ for wm, epn, hd in WMS:
         for kind, h in heads.items():
             with torch.no_grad(): hv = h(emb.flatten(0, 1)).view(NS, P, K + 1).cpu().numpy()   # current + 5 predicted
             offs = {"uncal": np.zeros(K + 1)}
-            if c != "floor0":
+            if c != "floor0" and G("OFFSETS", "1") == "1":
                 for var in ["labeled", "safe_q05"]:
                     offs[f"real_{var}"] = np.full(K + 1, REAL[f"{wm}_ep{epn}"][kind][c][var])
                     offs[f"pred_{var}"] = np.array(PRED[f"{wm}_ep{epn}"][kind][c][var])
