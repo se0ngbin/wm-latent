@@ -620,6 +620,30 @@ Table 28. jac+adv_h under floor shifts.
 - The projector BatchNorm carries both effects: adapting it alone repairs goal reaching (the best safe success at floor 0.3, 0.66) and blurs $h$ like adapting both; the predictor projection alone keeps $h$ sharp but does not repair planning. So the planning fix and the safety loss sit in the same encoder latent.
 - The split planner keeps the adapted model's progress (floor 0.3: 0.92-0.94; floor 0.4: 0.57-0.76 vs 0.27-0.28 unadapted) with the unadapted, sharper $h$, but collision does not fall below the unadapted run (floor 0.3: 0.14-0.20 vs 0.14-0.18). A planner that reaches the goal takes more near-box routes, which exercises $h$'s remaining false-safes; part of the unadapted run's low collision was not getting anywhere. Best overall at floor 0.3: split with the linear margin function (0.14 / 0.60 / 0.93). One seed, $n = 50$.
 
+### Paired tests vs jac
+
+All CEM runs use the same 50 box-crossing pairs, so outcomes are paired per episode. Two-sided exact McNemar on collision and on safe success, against jac (epoch 10, same margin-function recipe and planner).
+
+Table 29. jac → other: rate (episodes better for jac / better for the other model, p).
+
+| Comparison | Condition | Margin fn | Collision | Safe success |
+|---|---|---|---|---|
+| jac+adv_h | floor 0.3 | MLP | 0.14 → 0.14 (3 / 3, 1.00) | 0.44 → 0.36 (12 / 8, 0.50) |
+| jac+adv_h | floor 0.3 | linear | 0.10 → 0.18 (1 / 5, 0.22) | 0.46 → 0.28 (13 / 4, 0.049) |
+| jac+adv_h | floor 0.4 | MLP | 0.24 → 0.20 (5 / 3, 0.73) | 0.28 → 0.10 (9 / 0, 0.004) |
+| jac+adv_h | floor 0.4 | linear | 0.22 → 0.16 (6 / 3, 0.51) | 0.26 → 0.12 (8 / 1, 0.039) |
+| jac+adv_h | camera shift | MLP | 0.32 → 0.16 (11 / 3, 0.057) | 0.16 → 0.22 (3 / 6, 0.51) |
+| jac+adv_h | camera tilt | MLP | 0.44 → 0.26 (14 / 5, 0.064) | 0.10 → 0.12 (2 / 3, 1.00) |
+| jac+adv_h | occlusion | MLP | 0.24 → 0.24 (5 / 5, 1.00) | 0.44 → 0.42 (8 / 7, 1.00) |
+| jac+adv_h | in distribution | MLP | 0.06 → 0.04 (1 / 0, 1.00) | 0.58 → 0.52 (6 / 3, 0.51) |
+| jac+adv_h + BN split | floor 0.3 | MLP | 0.14 → 0.14 (3 / 3, 1.00) | 0.44 → 0.60 (4 / 12, 0.077) |
+| jac+adv_h + BN split | floor 0.4 | MLP | 0.24 → 0.34 (5 / 10, 0.30) | 0.28 → 0.18 (8 / 3, 0.23) |
+| jac+adv_h + BN split | camera shift | MLP | 0.32 → 0.14 (12 / 3, 0.035) | 0.16 → 0.20 (5 / 7, 0.77) |
+| jac+adv_h + BN split | occlusion | MLP | 0.24 → 0.22 (4 / 3, 1.00) | 0.44 → 0.42 (8 / 7, 1.00) |
+
+- No general OOD improvement over jac in planning. The only significant gain is lower collision under camera shift for adv_h with the BN split planner (p = 0.035), with adv_h alone borderline under camera shift and tilt (p ≈ 0.06); about 20 tests were run here, so one p = 0.035 needs replication. adv_h significantly lowers safe success under large floor shifts (floor 0.4: p = 0.004 / 0.039; floor 0.3 linear: p = 0.049), which BN adaptation repairs only to jac's level.
+- The claim that holds is diagnostic: adv_h sharpens the margin function's boundary under shift (Tables 24-25, 12,800 plans per condition), one training seed. Planning claims need more seeds and more CEM pairs.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
