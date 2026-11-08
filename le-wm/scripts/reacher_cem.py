@@ -78,12 +78,17 @@ else:
     for e, s in zip(envs, starts):
         e.reset(seed=0); e.set_state(GOAL, np.zeros(2)); goal_img.append(e.render()); e.set_state(s, np.zeros(2))
     goal = prep(goal_img)
-if E("FLOOR"):   # floor = (1-a) default checker + a brown (as reacher_ood FLOOR_SWEEP); start AND goal frames rendered under it
+# OOD appearance at planning time; start AND goal frames rendered under it. FLOOR=a: floor = (1-a) default checker + a brown
+# (as reacher_ood FLOOR_SWEEP); LIGHT=i: light intensity (default 0.7); ARM=1: purple arm (reacher_ood arm_color)
+VAR = {}
+if E("FLOOR"): a = float(E("FLOOR")); VAR["floor.color"] = (1 - a) * np.array([[0.1, 0.2, 0.3], [0.2, 0.3, 0.4]]) + a * np.array([[0.45, 0.3, 0.15], [0.55, 0.38, 0.2]])
+if E("LIGHT"): VAR["light.intensity"] = np.array([float(E("LIGHT"))])
+if E("ARM"): VAR["agent.color"] = np.array([0.55, 0.2, 0.75])
+if VAR:
     assert MODE in ("data", "lewm")
-    a = float(E("FLOOR")); fl_c = (1 - a) * np.array([[0.1, 0.2, 0.3], [0.2, 0.3, 0.4]]) + a * np.array([[0.45, 0.3, 0.15], [0.55, 0.38, 0.2]])
     gi = []
     for e, i in zip(envs, sel):
-        e.reset(seed=0, options={"variation_values": {"floor.color": fl_c}})
+        e.reset(seed=0, options={"variation_values": VAR})
         e.set_state(Q[i + GOFF], V[i + GOFF]); gi.append(e.render()); e.set_state(Q[i], V[i])
     goal = prep(gi)
 img = [e.render() for e in envs]
