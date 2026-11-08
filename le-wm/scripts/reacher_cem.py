@@ -8,7 +8,7 @@ Env: WM, EP, HEAD (raw | mlp | linear), HEADS, W, C, N_EPS, BUDGET, H, REC, OUT.
 import os, sys, time
 os.environ.setdefault("MUJOCO_GL", "egl")
 import numpy as np, torch, h5py, gymnasium as gym
-sys.path.insert(0, "/home/seongbin/latent/le-wm")   # ponytail: SoftSafeCEMSolver lives on main, not this branch; drop when merged
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this branch's safe_solver (has CCEM)
 import stable_worldmodel as swm
 from safe_solver import SoftSafeCEMSolver
 
@@ -16,6 +16,7 @@ E = os.environ.get
 WM, EP, HEAD = E("WM", "lewm_reacher"), E("EP", "50"), E("HEAD", "raw")
 HEADS = E("HEADS", "/data/seongbin/lewm/reacher_heads")
 W, C = float(E("W", "1000")), float(E("C", "1e4"))
+CCEM = E("CCEM", "")   # e.g. minh: constrained elite rule (as Dubins CCEM); empty = legacy safety-first soft cost
 MODE = E("MODE", "data")   # data: LeWM protocol pairs that cross the box (default); sls: SLS-squared's 2.7 rad sweep (fails: goal cost flat)
 N_EPS, H, REC, FS = int(E("N_EPS", "50")), int(E("H", "5")), int(E("REC", "5")), 5
 BUDGET = int(E("BUDGET", "50" if MODE == "data" else "200"))
@@ -34,7 +35,8 @@ def prep(imgs): return ((torch.as_tensor(np.stack(imgs)).permute(0, 3, 1, 2).flo
 model = swm.wm.utils.load_pretrained(f"{WM}/weights_epoch_{EP}.pt").to(DEV).eval().requires_grad_(False)
 kw = dict(num_samples=300, n_steps=NITER, topk=30, batch_size=int(E("NB", "10")), device=DEV, seed=int(E("CEM_SEED", "42")))   # eval.py: solver seed = cfg.seed = 42   # NB envs per CEM batch (GPU memory)
 solver = (swm.solver.CEMSolver(model, **kw) if HEAD == "raw" else
-          SoftSafeCEMSolver(model, margin_ckpt=f"{HEADS}/{WM}/mlp_s0.pt", unsafe_weight=W, unsafe_const=C, goal_cost="final", **kw))
+          SoftSafeCEMSolver(model, margin_ckpt=f"{HEADS}/{WM}/mlp_s0.pt", unsafe_weight=W, unsafe_const=C, goal_cost="final",
+                            ccem=bool(CCEM), ccem_fallback=CCEM or "count", **kw))
 if HEAD == "linear":
     lin = torch.nn.Linear(192, 1).to(DEV); lin.load_state_dict(torch.load(f"{HEADS}/{WM}/linear_s0.pt", map_location=DEV)["linear"])
     solver.model.head = lambda z: lin(z).squeeze(-1)
