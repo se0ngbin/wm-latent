@@ -4,6 +4,9 @@
     nsr      = mean ||z_a(s) - z_0(s)|| / mean ||z_0(s') - z_0(s)||, s' = 5 env steps later (nuisance shift / real-motion signal)
     const    = ||mean_s (z_a - z_0)||^2 / mean_s ||z_a - z_0||^2 (1 = the shift is one constant offset for every state)
     dh/gap   = mean_s (h(z_a) - h(z_0)) / (mean_safe h(z_0) - mean_unsafe h(z_0))   (threshold shift in units of the class gap)
+    dh_k/gap = the same threshold shift on predicted latents zhat_k^a vs zhat_k^0; deep_unsafe_frac_neg = fraction of the deepest
+               quarter of unsafe states (lowest h at base) that still read unsafe (h < 0) under the shift
+    plan_TPR / plan_FPR = CCEM-style plan veto (min_k h(zhat_k^a) < 0) on plans that do / do not enter the box within 5 blocks
     auc, bal = margin function (real+imag MLP, $HEADS) on z_a
   imagined (predictor), one random CEM-style plan per state (5 blocks, z-scored, as reacher_margin_imag), 1-frame history:
     rel_k    = mean ||zhat_k^a - zhat_k^0|| / mean ||z_a - z_0||   (k = 1..5; < 1 = the rollout re-grounds toward the base rollout)
@@ -80,5 +83,8 @@ for wm, epn in WMS:
         print(f"FLOORDIAG {wm} a={a} nsr={dn / sig:.3f} const={const:.3f} dh/gap={(ha - h0).mean() / gap:+.3f} "
               f"auc={roc_auc_score(1 - ys, ha):.3f} bal={bal(ha, ys):.3f} | rel_k={' '.join(f'{r:.2f}' for r in rel)} | "
               f"imag auc_k={' '.join(f'{roc_auc_score(1 - yi[:, k], hk[k]):.3f}' for k in range(K))} "
-              f"bal_k={' '.join(f'{bal(hk[k], yi[:, k]):.3f}' for k in range(K))}", flush=True)
+              f"bal_k={' '.join(f'{bal(hk[k], yi[:, k]):.3f}' for k in range(K))} | "
+              f"dh_k/gap={' '.join(f'{(hk[k] - H(zh0[:, k])).mean() / gap:+.3f}' for k in range(K))} "
+              f"plan_TPR={(np.stack(hk, 1).min(1)[yi.any(1) == 1] < 0).mean():.3f} plan_FPR={(np.stack(hk, 1).min(1)[yi.any(1) == 0] < 0).mean():.3f} "
+              f"deep_unsafe_frac_neg={(ha[ys == 1][h0[ys == 1] < np.quantile(h0[ys == 1], 0.25)] < 0).mean():.3f}", flush=True)
     del m; torch.cuda.empty_cache()
