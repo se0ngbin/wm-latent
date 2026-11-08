@@ -76,16 +76,28 @@ Table 5. CEM under appearance shift (start and goal frames rendered under it): c
 | sigreg | floor 0.1 | 0.500 (0.380) | 0.480 (0.380) | 0.480 (0.380) |
 | sigreg | floor 0.2 | 0.460 (0.280) | 0.460 (0.280) | 0.460 (0.280) |
 | sigreg | floor 0.3 | 0.380 (0.220) | 0.380 (0.220) | 0.380 (0.220) |
+| sigreg | floor 0.4 | 0.420 (0.180) | 0.420 (0.180) | 0.420 (0.180) |
+| sigreg | floor 0.5 | 0.400 (0.120) | 0.400 (0.120) | 0.400 (0.120) |
+| sigreg | floor 0.75 | 0.320 (0.060) | 0.320 (0.060) | 0.320 (0.060) |
+| sigreg | floor 1 | 0.180 (0.100) | 0.180 (0.100) | 0.180 (0.100) |
 | sigreg | light 0.3 | 0.420 (0.160) | 0.420 (0.160) | 0.420 (0.160) |
 | sigreg | arm purple | 0.460 (0.360) | 0.320 (0.400) | 0.280 (0.420) |
 | jac | floor 0.1 | 0.640 (0.600) | 0.060 (0.660) | 0.060 (0.540) |
 | jac | floor 0.2 | 0.480 (0.720) | 0.080 (0.720) | 0.080 (0.500) |
 | jac | floor 0.3 | 0.340 (0.640) | 0.140 (0.500) | 0.100 (0.480) |
+| jac | floor 0.4 | 0.240 (0.320) | 0.240 (0.340) | 0.220 (0.340) |
+| jac | floor 0.5 | 0.380 (0.220) | 0.380 (0.220) | 0.380 (0.220) |
+| jac | floor 0.75 | 0.480 (0.160) | 0.480 (0.160) | 0.480 (0.160) |
+| jac | floor 1 | 0.440 (0.120) | 0.440 (0.120) | 0.440 (0.120) |
 | jac | light 0.3 | 0.560 (0.580) | 0.060 (0.580) | 0.060 (0.520) |
 | jac | arm purple | 0.620 (0.360) | 0.080 (0.300) | 0.060 (0.440) |
 | official | floor 0.1 | 0.480 (0.840) | 0.060 (0.620) | 0.040 (0.600) |
 | official | floor 0.2 | 0.300 (0.380) | 0.280 (0.400) | 0.280 (0.400) |
 | official | floor 0.3 | 0.360 (0.300) | 0.360 (0.300) | 0.360 (0.300) |
+| official | floor 0.4 | 0.400 (0.260) | 0.400 (0.260) | 0.400 (0.260) |
+| official | floor 0.5 | 0.440 (0.280) | 0.440 (0.280) | 0.420 (0.280) |
+| official | floor 0.75 | 0.260 (0.140) | 0.260 (0.140) | 0.260 (0.140) |
+| official | floor 1 | 0.240 (0.080) | 0.240 (0.080) | 0.240 (0.080) |
 | official | light 0.3 | 0.380 (0.320) | 0.380 (0.320) | 0.380 (0.320) |
 | official | arm purple | 0.460 (0.360) | 0.420 (0.340) | 0.400 (0.260) |
 
@@ -135,13 +147,26 @@ Table 6b. Plan-level veto, as CCEM uses it: fraction of plans with $\min_k h(\ha
 | sigreg | 0 | 0.997 | 0.961 | 0.070 |
 | sigreg | 0.1 | 0.500 | 0.028 | 0.015 |
 | sigreg | 0.3 | 0.500 | 0.069 | 0.023 |
+| sigreg | 0.4 | 0.500 | 0.072 | 0.021 |
+| sigreg | 0.5 | 0.500 | 0.023 | 0.010 |
+| sigreg | 0.75 | 0.500 | 0.008 | 0.003 |
+| sigreg | 1 | 0.500 | 0.000 | 0.000 |
 | jac | 0 | 0.998 | 0.961 | 0.070 |
 | jac | 0.1 | 0.998 | 0.964 | 0.077 |
 | jac | 0.3 | 0.500 | 0.357 | 0.031 |
+| jac | 0.4 | 0.500 | 0.224 | 0.039 |
+| jac | 0.5 | 0.500 | 0.121 | 0.025 |
+| jac | 0.75 | 0.500 | 0.000 | 0.000 |
+| jac | 1 | 0.500 | 0.000 | 0.000 |
 | official | 0 | 0.998 | 0.951 | 0.070 |
 | official | 0.1 | 0.687 | 0.900 | 0.039 |
 | official | 0.3 | 0.500 | 0.077 | 0.021 |
+| official | 0.4 | 0.500 | 0.021 | 0.011 |
+| official | 0.5 | 0.500 | 0.023 | 0.010 |
+| official | 0.75 | 0.500 | 0.003 | 0.002 |
+| official | 1 | 0.500 | 0.003 | 0.002 |
 
+- Not luck: the veto decays smoothly with $\alpha$ (jac 0.961 / 0.357 / 0.224 / 0.121 / 0 at $\alpha$ = 0 / 0.3 / 0.4 / 0.5 / 0.75), and CCEM's benefit ends between 0.3 and 0.4: at 0.4 a 22% veto no longer lowers collision (0.220-0.240 vs raw 0.240), and from 0.5 on CCEM is identical to raw CEM for every model (Table 5). Goal reaching also collapses past 0.3 (jac raw success 0.640 at 0.3, 0.320 at 0.4, 0.120 at 1); jac's low raw collision at 0.4 reflects less movement, not avoidance. Beyond $\alpha \approx 0.5$ no model plans (success 0.060-0.280).
 - Plan-level veto predicts CCEM; static sign acc does not. Official at $\alpha = 0.1$ has sign acc 0.687 but vetoes 90% of unsafe plans (CCEM collision 0.040-0.060); jac at $\alpha = 0.3$ has sign acc 0.500 but vetoes 36% of unsafe plans at a 3% false-veto rate, against 7% for sigreg and 8% for official. CEM re-samples around the feasible elites for 10 iterations and replans, so a precise partial veto still steers most episodes off the box (collision 0.340 raw to 0.100-0.140).
 
 ## Prediction depth (in distribution)
