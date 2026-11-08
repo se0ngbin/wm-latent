@@ -585,6 +585,24 @@ Table 26. CEM, 50 box-crossing pairs: collision / safe success / progress, jac v
 - In planning this pays off under camera geometry (CCEM-MLP collision 0.32 to 0.16 under camera shift, 0.44 to 0.26 under tilt, at equal or better safe success); elsewhere CCEM is within noise of jac.
 - But jac+adv_h plans worse under large floor shifts, regardless of safety: at floor 0.4 even raw CEM's progress falls to 0.28 (jac 0.66), so safe success drops to 0.10. The adversary makes $h$ invariant, not the goal cost; under a large floor shift the goal latent and the planner's distance to it are off. One seed, $n = 50$.
 
+### BatchNorm adaptation on jac+adv_h (epoch 10)
+
+Same recipe (2000 safe frames, threshold 0) on `rc_jac_safeadv_linf`, for the conditions where it fails or plans badly.
+
+Table 27. jac+adv_h, unadapted → BN-adapted. Collision / safe success / progress; blur curve = safe-plan veto at 90% unsafe caught at < 0.05 / 0.1-0.2 / 0.2-0.3 / 0.3-0.5 rad (MLP).
+
+| Condition | CCEM-MLP | CCEM-linear | raw CEM | blur curve, unadapted → adapted |
+|---|---|---|---|---|
+| floor 0.3 | 0.14 / 0.36 / 0.83 → 0.10 / 0.52 / 0.91 | 0.18 / 0.28 / 0.81 → 0.08 / 0.48 / 0.88 | 0.26 / 0.38 / 0.88 → 0.36 / 0.48 / 0.92 | 0.54 / 0.28 / 0.13 / 0.07 → 0.81 / 0.74 / 0.59 / 0.23 |
+| floor 0.4 | 0.20 / 0.10 / 0.28 → 0.36 / 0.14 / 0.61 | 0.16 / 0.12 / 0.27 → 0.32 / 0.14 / 0.42 | 0.20 / 0.10 / 0.28 → 0.36 / 0.14 / 0.64 | n/a → 0.87 / 0.83 / 0.75 / 0.68 |
+| camera shift | 0.16 / 0.22 / 0.77 → 0.16 / 0.16 / 0.67 | 0.14 / 0.22 / 0.52 → 0.18 / 0.18 / 0.27 | 0.60 / 0.16 / 0.68 → 0.68 / 0.16 / 0.63 | 0.77 / 0.61 / 0.42 / 0.25 → 0.75 / 0.62 / 0.44 / 0.27 |
+| camera tilt | 0.26 / 0.12 / 0.50 → 0.36 / 0.16 / 0.41 | 0.28 / 0.14 / 0.48 → 0.26 / 0.12 / 0.37 | 0.52 / 0.12 / 0.62 → 0.58 / 0.10 / 0.49 | n/a → 0.91 / 0.94 / 0.93 / 0.83 |
+| occlusion | 0.24 / 0.42 / 0.88 → 0.18 / 0.36 / 0.86 | 0.20 / 0.38 / 0.82 → 0.14 / 0.34 / 0.85 | 0.30 / 0.40 / 0.88 → 0.30 / 0.34 / 0.85 | 0.80 / 0.78 / 0.73 / 0.47 → 0.82 / 0.80 / 0.77 / 0.55 |
+
+- Adaptation repairs jac+adv_h's goal reaching under floor shifts (raw CEM progress at floor 0.4: 0.28 → 0.64; at 0.3 safe success 0.36-0.28 → 0.52-0.48 with lower collision), so the floor-0.4 planning failure (Table 26) was an offset.
+- But it blurs adv_h's safety boundary: at floor 0.3 the curve moves from near in distribution back to jac-like (0.54 → 0.81 at < 0.05 rad), and at floor 0.4 collision rises (0.20 → 0.36). The margin function was trained on the unadapted latent, and adv_h's invariance already kept that latent near its training position; re-centering the BatchNorm moves it away from what $h$ reads.
+- So for adv_h, BN adaptation helps the goal cost and hurts the safety readout. Camera geometry: no gain or worse, as everywhere.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
