@@ -106,7 +106,8 @@ for cn in CONDS:
         for k in range(K):
             hf, yf = h[fit, :, k].ravel(), y[fit, :, k].ravel()
             he, ye = h[ev, :, k].ravel(), y[ev, :, k].ravel()
-            off["labeled"].append(best_thr(hf, yf)); off["safe_q05"].append(float(np.quantile(hf[~yf], 0.05)))
+            # labeled needs both classes: with < 20 unsafe predicted states at this step the fit is noise -> no offset
+            off["labeled"].append(best_thr(hf, yf) if yf.sum() >= 20 else 0.0); off["safe_q05"].append(float(np.quantile(hf[~yf], 0.05)))
             if k + 1 in (1, 3, 5, 10, 15) and 0 < ye.mean() < 1:
                 rows.append(f"  k={k + 1} unsafe {ye.mean():.2f} AUC {roc_auc_score(~ye, he):.3f} bal {bal(he, ye):.3f} "
                             f"-> lab {bal(he, ye, off['labeled'][-1]):.3f} q05 {bal(he, ye, off['safe_q05'][-1]):.3f}")
