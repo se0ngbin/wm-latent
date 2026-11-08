@@ -489,6 +489,62 @@ Table 21. Per shift: cos / $\lVert \Delta z \rVert$ / spread / along / gap.
 - Where jac breaks (floor 0.3, occlusion, camera shift) its invariance runs out: the latent moves 0.66-0.82 of the spread, more than 5 env steps of real motion (0.59), and no model turns the shift away from the safety axis (cos about 0.3 everywhere). adv_h does not change this linear picture at floor 0.3 (along / gap 0.391 vs 0.397); its narrower blur (Table 18) must sit in the nonlinear structure the MLP $h$ reads, which a single centroid direction does not capture.
 - So the routes left for the large shifts are extending invariance to larger shifts (the size problem; a larger adversary radius, with the Dubins caveat that 16/255 hurt colour there) or turning the shift orthogonal to safety, which on Dubins only the jac+pull family did (colour ortho ×4.1-×5.0; forcing it with a loss hurt). The running jac+pull(2.4)+adv_h model tests the second on Reacher.
 
+## Test-time BatchNorm adaptation
+
+Label-free test-time adaptation from the Dubins work (imag-margin `bn_adapt_save.py`; Reacher port `reacher_bn_adapt.py`). LeWM's only BatchNorm layers are in the encoder's projector and the predictor's output projection. Their running statistics are reset and re-estimated (equal-weight average) under the shift, the projector from 2000 unlabeled shifted frames, then the predictor projection from 5-block random CEM-style imagined rollouts from those adapted latents. Only safe frames are used (a robot cannot collect failures). Nothing else changes, and the margin functions stay the ones trained on the unadapted model. The adapted checkpoint replaces the world model everywhere (current frame, goal frame, predicted rollout). Safe-q10 = plan with $h - c$, $c$ = 10% quantile of $h$ on the adapted safe frames (the Dubins safe-only threshold).
+
+Table 22. Blur curve (as Table 18: safe-plan veto at 90% unsafe caught, by closest distance to the box, rad), MLP margin function.
+
+| WM | Condition | Model | < 0.05 | 0.05-0.1 | 0.1-0.2 | 0.2-0.3 | 0.3-0.5 | 0.5-1 | > 1 |
+|---|---|---|---|---|---|---|---|---|---|
+| any | in distribution | reference (jac) | 0.35 | 0.25 | 0.12 | 0.03 | 0.02 | 0.01 | 0.12 |
+| sigreg | floor 0.1 | BN-adapted | 0.34 | 0.26 | 0.13 | 0.04 | 0.03 | 0.01 | 0.28 |
+| sigreg | floor 0.3 | unadapted | 0.83 | 0.87 | 0.87 | 0.89 | 0.88 | 0.92 | 0.99 |
+| sigreg | floor 0.3 | BN-adapted | 0.40 | 0.30 | 0.18 | 0.11 | 0.05 | 0.02 | 0.35 |
+| sigreg | floor 0.4 | BN-adapted | 0.66 | 0.59 | 0.45 | 0.23 | 0.11 | 0.04 | 0.40 |
+| sigreg | exposure | BN-adapted | 0.78 | 0.77 | 0.67 | 0.51 | 0.27 | 0.13 | 0.18 |
+| sigreg | white balance | BN-adapted | 0.51 | 0.44 | 0.29 | 0.14 | 0.04 | 0.02 | 0.18 |
+| sigreg | occlusion | unadapted | 0.87 | 0.88 | 0.86 | 0.82 | 0.75 | 0.71 | 0.82 |
+| sigreg | occlusion | BN-adapted | 0.83 | 0.83 | 0.84 | 0.78 | 0.65 | 0.55 | 0.73 |
+| sigreg | cam shift | unadapted | 0.84 | 0.83 | 0.82 | 0.81 | 0.80 | 0.71 | 0.69 |
+| sigreg | cam shift | BN-adapted | 0.91 | 0.91 | 0.89 | 0.86 | 0.77 | 0.45 | 0.21 |
+| jac | floor 0.1 | BN-adapted | 0.36 | 0.26 | 0.13 | 0.03 | 0.02 | 0.01 | 0.12 |
+| jac | floor 0.3 | unadapted | 0.83 | 0.82 | 0.68 | 0.42 | 0.12 | 0.03 | 0.37 |
+| jac | floor 0.3 | BN-adapted | 0.74 | 0.67 | 0.47 | 0.21 | 0.05 | 0.02 | 0.28 |
+| jac | floor 0.4 | BN-adapted | 0.94 | 0.95 | 0.95 | 0.96 | 0.96 | 0.79 | 0.83 |
+| jac | white balance | BN-adapted | 0.36 | 0.25 | 0.12 | 0.03 | 0.02 | 0.01 | 0.12 |
+| jac | occlusion | unadapted | 0.88 | 0.87 | 0.85 | 0.80 | 0.56 | 0.16 | 0.48 |
+| jac | occlusion | BN-adapted | 0.87 | 0.87 | 0.84 | 0.79 | 0.53 | 0.14 | 0.47 |
+| jac | cam shift | unadapted | 0.90 | 0.90 | 0.86 | 0.75 | 0.52 | 0.21 | 0.22 |
+| jac | cam shift | BN-adapted | 0.88 | 0.86 | 0.80 | 0.69 | 0.46 | 0.16 | 0.13 |
+
+Table 23. CEM with the BN-adapted world model, 50 box-crossing pairs: collision / safe success / progress. Unadapted = the same margin function and CCEM on the original model (Tables 5, 11). jac under light and exposure: adaptation hit a transient render error, rerunning.
+
+| WM | Condition | CCEM MLP, unadapted | CCEM MLP, BN-adapted | CCEM linear, unadapted | CCEM linear, BN-adapted | CCEM MLP, BN + safe-q10 | raw CEM, BN-adapted |
+|---|---|---|---|---|---|---|---|
+| sigreg | floor 0.1 | 0.480 / 0.300 / 0.732 | 0.060 / 0.680 / 0.926 | 0.480 / 0.300 / 0.729 | 0.040 / 0.540 / 0.894 | 0.020 / 0.080 / 0.118 | 0.560 / 0.340 / 0.918 |
+| sigreg | floor 0.3 | 0.380 / 0.180 / 0.409 | 0.140 / 0.600 / 0.931 | 0.380 / 0.180 / 0.409 | 0.120 / 0.480 / 0.905 | 0.020 / 0.180 / 0.368 | 0.380 / 0.380 / 0.940 |
+| sigreg | floor 0.4 | 0.420 / 0.180 / 0.368 | 0.280 / 0.440 / 0.930 | 0.420 / 0.180 / 0.368 | 0.120 / 0.280 / 0.867 | 0.060 / 0.140 / 0.276 | 0.360 / 0.340 / 0.900 |
+| sigreg | light | 0.420 / 0.120 / 0.359 | 0.440 / 0.200 / 0.828 | 0.420 / 0.120 / 0.359 | 0.340 / 0.260 / 0.794 | 0.140 / 0.200 / 0.462 | 0.460 / 0.180 / 0.849 |
+| sigreg | exposure | 0.280 / 0.120 / 0.296 | 0.280 / 0.260 / 0.808 | 0.280 / 0.120 / 0.296 | 0.360 / 0.260 / 0.772 | 0.200 / 0.140 / 0.328 | 0.280 / 0.260 / 0.807 |
+| sigreg | white balance | 0.600 / 0.100 / 0.324 | 0.240 / 0.380 / 0.873 | 0.600 / 0.100 / 0.324 | 0.160 / 0.460 / 0.865 | 0.040 / 0.220 / 0.638 | 0.380 / 0.320 / 0.879 |
+| sigreg | occlusion | 0.280 / 0.180 / 0.553 | 0.220 / 0.260 / 0.675 | 0.260 / 0.180 / 0.460 | 0.180 / 0.260 / 0.565 | 0.180 / 0.140 / 0.443 | 0.340 / 0.220 / 0.676 |
+| sigreg | cam shift | 0.160 / 0.080 / 0.268 | 0.500 / 0.140 / 0.788 | 0.160 / 0.080 / 0.268 | 0.280 / 0.160 / 0.530 | 0.200 / 0.080 / 0.057 | 0.680 / 0.180 / 0.748 |
+| jac | floor 0.1 | 0.060 / 0.660 / 0.919 | 0.060 / 0.560 / 0.920 | 0.060 / 0.540 / 0.899 | 0.080 / 0.400 / 0.857 | 0.020 / 0.100 / 0.019 | 0.600 / 0.360 / 0.901 |
+| jac | floor 0.3 | 0.140 / 0.440 / 0.898 | 0.160 / 0.420 / 0.898 | 0.100 / 0.460 / 0.874 | 0.100 / 0.440 / 0.886 | 0.040 / 0.100 / 0.281 | 0.520 / 0.380 / 0.918 |
+| jac | floor 0.4 | 0.240 / 0.280 / 0.646 | 0.240 / 0.300 / 0.725 | 0.220 / 0.260 / 0.662 | 0.220 / 0.280 / 0.713 | 0.180 / 0.140 / 0.341 | 0.260 / 0.260 / 0.703 |
+| jac | light | 0.060 / 0.580 / 0.919 | n/a | 0.060 / 0.520 / 0.885 | n/a | n/a | n/a |
+| jac | exposure | 0.080 / 0.640 / 0.927 | n/a | 0.060 / 0.620 / 0.905 | n/a | n/a | n/a |
+| jac | white balance | 0.060 / 0.560 / 0.908 | 0.060 / 0.540 / 0.902 | 0.060 / 0.460 / 0.883 | 0.100 / 0.440 / 0.884 | 0.020 / 0.080 / 0.015 | 0.640 / 0.280 / 0.896 |
+| jac | occlusion | 0.240 / 0.440 / 0.897 | 0.300 / 0.400 / 0.888 | 0.260 / 0.400 / 0.859 | 0.240 / 0.400 / 0.893 | 0.060 / 0.100 / 0.271 | 0.440 / 0.400 / 0.903 |
+| jac | cam shift | 0.320 / 0.160 / 0.736 | 0.240 / 0.240 / 0.763 | 0.220 / 0.200 / 0.659 | 0.100 / 0.160 / 0.486 | 0.040 / 0.060 / 0.040 | 0.620 / 0.160 / 0.728 |
+
+- For sigreg, BN adaptation recovers most of what the shift destroyed whenever the shift is largely photometric: floor 0.1-0.4 and white balance. At floor 0.3 the blur curve goes from flat (0.83-0.89 at every distance) to close to in distribution (0.40 / 0.30 / 0.18 / 0.11 / 0.05), and CCEM-MLP goes from 0.380 collision / 0.180 safe success to 0.140 / 0.600, which is jac's level. Raw CEM on the adapted sigreg also reaches the goal again (progress 0.41 to 0.94): the predictor's inputs are corrected too, unlike with an offset on $h$.
+- Correction to the blur reading (Table 6c): sigreg's "wrong state" under small floor shifts was mostly a recoverable per-dimension offset in the projector, not lost information, since re-estimating two BatchNorm layers on unlabeled frames brings the state resolution back. The resolution loss that adaptation cannot undo is what remains after it: floor 0.4 (partial), lighting and exposure (little CEM gain), occlusion and camera shift (none, as rotation on Dubins).
+- For jac, adaptation adds nothing: jac's representation of these shifts is already close to unshifted, and where jac fails (floor 0.4, occlusion, camera shift) the failure is not an offset (CCEM changes within noise; at floor 0.4 the curve stays flat).
+- The safe-q10 threshold stalls (safe success 0.06-0.22, progress 0.02-0.64): after adaptation $h$ is already about right, and the extra margin vetoes the detours, as the real-frame recalibration did (Table 15). Threshold 0 is the right setting on Reacher.
+- Opposite outcome to Dubins, where the same adaptation doubled CCEM collisions under purple: there the unadapted $h$ called nearly every plan unsafe and CCEM's conservative fallback was itself the safety; on Reacher the unadapted $h$ calls everything safe (CCEM = raw CEM), so correcting it can only help.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
@@ -518,4 +574,4 @@ Table 7. False-safe, AUC and mean $h$ on unsafe states, averaged over predicted 
 
 ## Files
 
-Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`, `reacher_within_start.py`, `reacher_calib.py`, `reacher_outcomes.py`, `reacher_calib_pred.py`, `reacher_veto_diag.py`, `adv_sensitivity.py`, `reacher_routes.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
+Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`, `reacher_within_start.py`, `reacher_calib.py`, `reacher_outcomes.py`, `reacher_calib_pred.py`, `reacher_veto_diag.py`, `adv_sensitivity.py`, `reacher_routes.py`, `reacher_bn_adapt.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
