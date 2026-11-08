@@ -336,6 +336,49 @@ Table 17. CCEM collision / safe success / progress: uncalibrated, real-frame off
 - Calibration therefore does not improve the joint outcome; it chooses a more conservative operating point. Only a better ranking can move the trade-off itself, and adv_h's better static ranking does not clearly do so in CEM (at matched collision, its safe success is within noise of jac's).
 - Under calibration, residual collisions are more often noticed (the margin function reads the box once inside: 0.33-1.00 vs 0-0.08 uncalibrated, Table 16 vs `attr/` runs), so the threshold is closer, but still fooled on the plan that entered.
 
+### The blur: veto rate vs distance to the box
+
+Why does no threshold work? `reacher_veto_diag.py` (`CURVE=1`): 200 safe starts near the box × 64 random 5-block plans, each simulated step by step for its closest joint-space distance to the box. For each model and condition the CCEM plan score ($\min$ of $h$ over the current frame and 5 predicted blocks) is thresholded to catch 90% of unsafe plans; the table gives the share of safe plans vetoed, by their true closest distance (rad). In distribution the veto falls off within about 0.1 rad of the box: that is the margin function's resolution. A blurred latent pushes the fall-off outward; a flat row means no distance information.
+
+Table 18. Safe-plan veto rate at 90% unsafe caught, by closest distance to the box (rad).
+
+| WM | Margin fn | Condition | < 0.05 | 0.05-0.1 | 0.1-0.2 | 0.2-0.3 | 0.3-0.5 | 0.5-1 | > 1 |
+|---|---|---|---|---|---|---|---|---|---|
+| sigreg | MLP | in distribution | 0.36 | 0.25 | 0.12 | 0.03 | 0.02 | 0.01 | 0.15 |
+| sigreg | linear | in distribution | 0.48 | 0.40 | 0.23 | 0.05 | 0.02 | 0.01 | 0.04 |
+| sigreg | MLP | floor 0.2 | 0.87 | 0.89 | 0.89 | 0.90 | 0.87 | 0.93 | 0.99 |
+| sigreg | linear | floor 0.2 | 0.93 | 0.95 | 0.95 | 0.97 | 0.97 | 0.98 | 0.99 |
+| sigreg | MLP | floor 0.3 | 0.83 | 0.87 | 0.87 | 0.89 | 0.88 | 0.92 | 0.99 |
+| sigreg | linear | floor 0.3 | 0.93 | 0.95 | 0.96 | 0.97 | 0.97 | 0.96 | 0.98 |
+| sigreg | MLP | occlusion | 0.87 | 0.88 | 0.86 | 0.82 | 0.75 | 0.71 | 0.82 |
+| sigreg | linear | occlusion | 0.85 | 0.87 | 0.85 | 0.82 | 0.80 | 0.78 | 0.83 |
+| sigreg | MLP | cam shift | 0.84 | 0.83 | 0.82 | 0.81 | 0.80 | 0.71 | 0.69 |
+| sigreg | linear | cam shift | 0.87 | 0.88 | 0.86 | 0.85 | 0.86 | 0.83 | 0.87 |
+| jac | MLP | in distribution | 0.35 | 0.25 | 0.12 | 0.03 | 0.02 | 0.01 | 0.12 |
+| jac | linear | in distribution | 0.53 | 0.46 | 0.29 | 0.07 | 0.02 | 0.01 | 0.04 |
+| jac | MLP | floor 0.2 | 0.36 | 0.24 | 0.12 | 0.03 | 0.02 | 0.01 | 0.14 |
+| jac | linear | floor 0.2 | 0.53 | 0.47 | 0.30 | 0.09 | 0.02 | 0.01 | 0.06 |
+| jac | MLP | floor 0.3 | 0.83 | 0.82 | 0.68 | 0.42 | 0.12 | 0.03 | 0.37 |
+| jac | linear | floor 0.3 | 0.72 | 0.71 | 0.56 | 0.35 | 0.11 | 0.08 | 0.29 |
+| jac | MLP | occlusion | 0.88 | 0.87 | 0.85 | 0.80 | 0.56 | 0.16 | 0.48 |
+| jac | linear | occlusion | 0.77 | 0.74 | 0.69 | 0.58 | 0.42 | 0.45 | 0.56 |
+| jac | MLP | cam shift | 0.90 | 0.90 | 0.86 | 0.75 | 0.52 | 0.21 | 0.22 |
+| jac | linear | cam shift | 0.83 | 0.81 | 0.76 | 0.66 | 0.49 | 0.21 | 0.07 |
+| jac+adv_h ep5 | MLP | in distribution | 0.34 | 0.26 | 0.12 | 0.03 | 0.02 | 0.01 | 0.14 |
+| jac+adv_h ep5 | linear | in distribution | 0.55 | 0.47 | 0.29 | 0.08 | 0.02 | 0.01 | 0.04 |
+| jac+adv_h ep5 | MLP | floor 0.2 | 0.37 | 0.27 | 0.13 | 0.03 | 0.02 | 0.01 | 0.12 |
+| jac+adv_h ep5 | linear | floor 0.2 | 0.56 | 0.47 | 0.29 | 0.06 | 0.02 | 0.01 | 0.04 |
+| jac+adv_h ep5 | MLP | floor 0.3 | 0.71 | 0.62 | 0.46 | 0.25 | 0.09 | 0.03 | 0.30 |
+| jac+adv_h ep5 | linear | floor 0.3 | 0.51 | 0.36 | 0.24 | 0.09 | 0.04 | 0.02 | 0.16 |
+| jac+adv_h ep5 | MLP | occlusion | 0.87 | 0.83 | 0.87 | 0.82 | 0.55 | 0.17 | 0.48 |
+| jac+adv_h ep5 | linear | occlusion | 0.74 | 0.71 | 0.68 | 0.49 | 0.28 | 0.19 | 0.48 |
+| jac+adv_h ep5 | MLP | cam shift | 0.80 | 0.79 | 0.67 | 0.51 | 0.32 | 0.15 | 0.09 |
+| jac+adv_h ep5 | linear | cam shift | 0.80 | 0.79 | 0.72 | 0.59 | 0.38 | 0.20 | 0.16 |
+
+- The latent's state resolution under the shift, not the threshold, sets the trade-off. In distribution the 50% veto point is about 0.05 rad from the box; jac at floor 0.3 moves it to about 0.25 rad (matching its nearest-neighbour state error, 0.29-0.41 rad, Table 6c), and the safe detours that make progress pass within 0.15 rad (41% of them). sigreg's rows are flat at about 0.9 (no distance information); jac at floor 0.2 is unchanged from in distribution.
+- jac+adv_h narrows the blur: at floor 0.3 its 50% point is about 0.15 rad (jac 0.25), and under camera shift it vetoes 10-20 points fewer safe plans at every distance; under occlusion it equals jac. The 50-pair CEM comparisons were too noisy to show this. So the adversarial reg acts on the right quantity.
+- Plans more than 1 rad from the box are vetoed 12-15% even in distribution (rarely visited regions); this does not affect the comparison.
+
 ## Separating "cannot plan" from "unsafe"
 
 `reacher_outcomes.py` on the saved trajectories: per episode, reached the goal or not × entered the box or not; progress = fraction of the initial goal distance closed by the closest approach; no-progress share = safe-but-failed episodes with progress < 0.25. For runs with $h$ logging (`reacher_cem.py`), each collision is attributed: fooled = the plan returned at the replan before entry had $\min_k h(\hat z_k) > 0$ (the model judged it safe); forced = $\le 0$ (no feasible plan); noticed = $h$ on the real frame at the entry step is $< 0$.

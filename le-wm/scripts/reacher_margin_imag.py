@@ -20,6 +20,9 @@ G = os.environ.get
 WM, EP, SEED = G("WM", "lewm_reacher"), G("EP", "50"), int(G("SEED", "0"))
 NPC, NPLAN, NTE, STEPS = int(G("N_PER_CLASS", "25000")), int(G("NPLAN", "8000")), int(G("NTE", "1000")), int(G("STEPS", "3000"))
 HEADS, HEADS_OUT = G("HEADS", "/data/seongbin/lewm/reacher_heads"), G("HEADS_OUT", "/data/seongbin/lewm/reacher_heads_imag")
+# TARGET=dist: regress the signed joint-space distance to the box (+ outside, - inside, clipped to [DLO, DHI] rad) with MSE on the same
+# balanced real + imagined batches, instead of the margin_gp classification loss; h then reads in radians (sign = safe/unsafe)
+TARGET, DLO, DHI = G("TARGET", "gp"), float(G("DLO", "-0.5")), float(G("DHI", "1.0"))
 K, FS, LOOK = 5, 5, 25
 rng = np.random.default_rng(SEED)
 
@@ -51,14 +54,20 @@ def plans(n):  # z-scored action blocks (n, K, 2*FS): per-step (a1, a2) flattene
 env = gym.make("swm/ReacherDMControl-v0", task="qpos_match", render_mode="rgb_array").unwrapped
 env.reset(seed=0)
 def in_box(q): q1 = (q[0] + np.pi) % (2 * np.pi) - np.pi; return 0 <= q1 <= np.pi and -2.88 <= q[1] <= -2.45
-def simulate(s, a):  # (n, K) labels at each block's end
-    raw = np.clip(a.reshape(len(a), K * FS, 2) * A_SD + A_MU, -1, 1); out = np.zeros((len(a), K), np.float32)
+def sdist(q):   # signed joint-space distance to the box: + outside (distance), - inside (penetration depth)
+    q1 = (q[0] + np.pi) % (2 * np.pi) - np.pi
+    if in_box(q): return -min(q1, np.pi - q1, q[1] + 2.88, -2.45 - q[1])
+    d1 = 0.0 if 0 <= q1 <= np.pi else min(abs(q1), abs(q1 - np.pi), abs(q1 + np.pi))
+    return float(np.hypot(d1, max(-2.88 - q[1], 0.0, q[1] + 2.45)))
+def simulate(s, a):  # (n, K) labels and signed distances at each block's end
+    raw = np.clip(a.reshape(len(a), K * FS, 2) * A_SD + A_MU, -1, 1); out = np.zeros((len(a), K), np.float32); dist = np.zeros_like(out)
     for i, j in enumerate(s):
         env.set_state(Q[j], V[j])
         for k in range(K * FS):
             env.step(raw[i, k])
-            if k % FS == FS - 1: out[i, k // FS] = in_box(np.asarray(env.env.physics.data.qpos[:2]))
-    return out
+            if k % FS == FS - 1:
+                q = np.asarray(env.env.physics.data.qpos[:2]); out[i, k // FS] = in_box(q); dist[i, k // FS] = sdist(q)
+    return out, dist
 
 
 m = E.swm.wm.utils.load_pretrained(f"{WM}/weights_epoch_{EP}.pt").to(E.DEV).eval()
@@ -83,11 +92,13 @@ def imagine(px, a, bs=256):  # JEPA.rollout with a 1-frame history: (n, K, D)
 
 
 a_tr, a_te = plans(NPLAN), plans(NTE)
-yi_tr, yi_te = simulate(s_tr, a_tr), simulate(s_te, a_te)
+(yi_tr, di_tr), (yi_te, di_te) = simulate(s_tr, a_tr), simulate(s_te, a_te)
 Zi_tr, Zi_te = imagine(P_tr, a_tr).flatten(0, 1), imagine(P_te, a_te).flatten(0, 1)
 Z, Zte = enc(Xtr), enc(Xte)
 print(f"imagined unsafe frac train {yi_tr.mean():.3f} test {yi_te.mean():.3f}", flush=True)
 Zall, Yall = torch.cat([Z, Zi_tr]), np.r_[ytr, yi_tr.ravel()].astype(int)
+Dall = torch.as_tensor(np.clip(np.r_[[sdist(q) for q in Q[ti]], di_tr.ravel()], DLO, DHI), dtype=torch.float32, device=E.DEV)
+assert ((Dall < 0).cpu().numpy() == Yall.astype(bool)).mean() > 0.99, "signed distance disagrees with failure labels"
 s_idx, u_idx = np.where(Yall == 0)[0], np.where(Yall == 1)[0]
 
 
@@ -103,7 +114,12 @@ for hk in ["linear", "mlp"]:
     torch.manual_seed(SEED); r = np.random.default_rng(SEED)
     head = (torch.nn.Linear(Z.shape[1], 1) if hk == "linear" else E.MarginHead(Z.shape[1])).to(E.DEV); opt = torch.optim.AdamW(head.parameters(), lr=E.LR)
     for _ in range(STEPS):
-        loss = E.gp_loss(head, Zall[r.choice(s_idx, E.BS)], Zall[r.choice(u_idx, E.BS)]); opt.zero_grad(); loss.backward(); opt.step()
+        if TARGET == "dist":
+            b = np.r_[r.choice(s_idx, E.BS), r.choice(u_idx, E.BS)]
+            loss = (head(Zall[b]).view(-1) - Dall[b]).pow(2).mean()
+        else:
+            loss = E.gp_loss(head, Zall[r.choice(s_idx, E.BS)], Zall[r.choice(u_idx, E.BS)])
+        opt.zero_grad(); loss.backward(); opt.step()
     head.eval(); score("real+imag", hk, head)
     sd = head.state_dict()   # same key mapping as reacher_margin.py
     sd = {"margin_gp": {k.replace("l.l", "layers.Margin GP_linear").replace("l.n", "layers.Margin GP_norm").replace("m.", "mean_layer."): v for k, v in sd.items()}} if hk == "mlp" else {"linear": sd}
