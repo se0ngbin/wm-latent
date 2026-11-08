@@ -307,6 +307,35 @@ Table 15. CCEM with the recalibrated threshold (offset fit on real frames, appli
 - Recalibration cuts collision (to 0.020-0.120) but costs safe success (for example 0.500 to 0.140-0.180), largely through lost progress: the planner gets safer by not reaching the goal.
 - The returned plans are almost never infeasible under the calibrated threshold (0-1% of replans for jac+adv_h at floor 0.3, Table 16 data), so this is not CCEM's fallback: the feasible set itself shrinks to plans that do not approach the goal. The offset is fit on real frames, but predicted states re-ground toward in-distribution, where $h$'s safe-ward shift is about half as large (Table 6), so the same offset over-tightens them. Next to try: calibrate on predicted latents (offset per prediction step), with safe labels from the robot's own executed plans.
 
+### Recalibrating on predicted latents
+
+`reacher_calib_pred.py`: one offset per position CCEM reads, $c_0$ for the current real frame (from the real-frame calibration) and $c_1 \dots c_5$ for the predicted blocks. Calibration data: 300 held-out starts (episodes not used by the CEM pairs, half near the box) rendered under the shift, 4 random CEM-style plans each, predicted latents labeled by replaying the plan in the simulator (what a robot gets by executing plans and reading its joint encoders). Labeled: per step, the best balanced-accuracy threshold; safe-only: per step, the 5% quantile of $h$ on predicted states whose executed state was safe. The predicted-step offsets are about half the real-frame ones (safe-only, jac MLP floor 0.3: $c_{1..5}$ = 0.44-0.93 vs $c_0$ = 1.46; jac+adv_h: 0.51-0.94 vs 1.92), confirming that the real-frame offset over-tightens predicted states. Held-out per-step bal acc on predicted states rises most for jac+adv_h at floor 0.3 (0.53-0.77 to 0.82-0.92 labeled, 0.79-0.87 safe-only); on camera shift the safe-only offsets come out negative and lower it.
+
+Table 17. CCEM collision / safe success / progress: uncalibrated, real-frame offset (labeled, safe-only 5%), per-step predicted-latent offsets (labeled, safe-only 5%).
+
+| WM | Margin fn | Condition | Uncalibrated | Real, labeled | Real, safe-only | Predicted, labeled | Predicted, safe-only |
+|---|---|---|---|---|---|---|---|
+| jac | MLP | floor 0.3 | 0.140 / 0.440 / 0.898 | 0.060 / 0.080 / 0.201 | 0.080 / 0.220 / 0.613 | 0.060 / 0.180 / 0.604 | 0.080 / 0.240 / 0.743 |
+| jac | linear | floor 0.3 | 0.100 / 0.460 / 0.874 | 0.100 / 0.280 / 0.732 | 0.100 / 0.240 / 0.774 | 0.100 / 0.320 / 0.790 | 0.100 / 0.340 / 0.792 |
+| jac+adv_h ep5 | MLP | floor 0.3 | 0.180 / 0.500 / 0.902 | 0.020 / 0.180 / 0.653 | 0.020 / 0.140 / 0.543 | 0.080 / 0.220 / 0.723 | 0.180 / 0.220 / 0.798 |
+| jac+adv_h ep5 | linear | floor 0.3 | 0.160 / 0.420 / 0.867 | 0.020 / 0.200 / 0.704 | 0.020 / 0.160 / 0.714 | 0.060 / 0.240 / 0.768 | 0.080 / 0.280 / 0.841 |
+| jac | MLP | floor 0.4 | 0.240 / 0.280 / 0.646 | 0.060 / 0.120 / 0.192 | 0.100 / 0.200 / 0.324 | 0.100 / 0.120 / 0.178 | 0.140 / 0.240 / 0.407 |
+| jac | linear | floor 0.4 | 0.220 / 0.260 / 0.662 | 0.240 / 0.080 / 0.320 | 0.200 / 0.260 / 0.562 | 0.120 / 0.100 / 0.187 | 0.260 / 0.240 / 0.709 |
+| jac+adv_h ep5 | MLP | floor 0.4 | 0.360 / 0.140 / 0.511 | 0.020 / 0.080 / 0.049 | 0.040 / 0.080 / 0.119 | 0.080 / 0.080 / 0.092 | 0.260 / 0.120 / 0.432 |
+| jac+adv_h ep5 | linear | floor 0.4 | 0.360 / 0.140 / 0.544 | 0.100 / 0.060 / 0.118 | 0.180 / 0.100 / 0.312 | 0.100 / 0.080 / 0.119 | 0.300 / 0.140 / 0.569 |
+| jac | MLP | occlusion | 0.240 / 0.440 / 0.897 | 0.080 / 0.080 / 0.100 | 0.120 / 0.220 / 0.688 | 0.080 / 0.140 / 0.295 | 0.220 / 0.220 / 0.800 |
+| jac | linear | occlusion | 0.260 / 0.400 / 0.859 | 0.140 / 0.200 / 0.721 | 0.180 / 0.360 / 0.856 | 0.180 / 0.360 / 0.831 | 0.220 / 0.400 / 0.865 |
+| jac+adv_h ep5 | MLP | occlusion | 0.220 / 0.400 / 0.855 | 0.080 / 0.140 / 0.279 | 0.120 / 0.240 / 0.541 | 0.120 / 0.180 / 0.401 | 0.160 / 0.200 / 0.628 |
+| jac+adv_h ep5 | linear | occlusion | 0.200 / 0.360 / 0.849 | 0.140 / 0.240 / 0.649 | 0.140 / 0.280 / 0.699 | 0.140 / 0.300 / 0.725 | 0.160 / 0.300 / 0.739 |
+| jac | MLP | cam shift | 0.320 / 0.160 / 0.736 | 0.080 / 0.060 / 0.005 | 0.180 / 0.100 / 0.314 | 0.100 / 0.060 / 0.023 | 0.360 / 0.120 / 0.601 |
+| jac | linear | cam shift | 0.220 / 0.200 / 0.659 | 0.180 / 0.140 / 0.546 | 0.340 / 0.200 / 0.773 | 0.100 / 0.160 / 0.365 | 0.420 / 0.140 / 0.738 |
+| jac+adv_h ep5 | MLP | cam shift | 0.240 / 0.140 / 0.744 | 0.080 / 0.080 / 0.072 | 0.140 / 0.240 / 0.475 | 0.320 / 0.120 / 0.200 | 0.320 / 0.160 / 0.693 |
+| jac+adv_h ep5 | linear | cam shift | 0.140 / 0.200 / 0.595 | 0.060 / 0.140 / 0.232 | 0.140 / 0.200 / 0.641 | 0.140 / 0.180 / 0.396 | 0.320 / 0.220 / 0.734 |
+
+- Predicted-latent offsets are less conservative than real-frame ones (more progress, for example jac MLP floor 0.3: progress 0.60-0.74 vs 0.20-0.61), but they give back part of the collision reduction. Every calibrated run sits on the same safety-progress trade-off: safe success is at or below the uncalibrated run in 63 of 64 cells (the exception, jac+adv_h MLP under camera shift with the real-frame safe-only offset, 0.240 vs 0.140, is within about 1.5 standard errors at $n = 50$).
+- Calibration therefore does not improve the joint outcome; it chooses a more conservative operating point. Only a better ranking can move the trade-off itself, and adv_h's better static ranking does not clearly do so in CEM (at matched collision, its safe success is within noise of jac's).
+- Under calibration, residual collisions are more often noticed (the margin function reads the box once inside: 0.33-1.00 vs 0-0.08 uncalibrated, Table 16 vs `attr/` runs), so the threshold is closer, but still fooled on the plan that entered.
+
 ## Separating "cannot plan" from "unsafe"
 
 `reacher_outcomes.py` on the saved trajectories: per episode, reached the goal or not × entered the box or not; progress = fraction of the initial goal distance closed by the closest approach; no-progress share = safe-but-failed episodes with progress < 0.25. For runs with $h$ logging (`reacher_cem.py`), each collision is attributed: fooled = the plan returned at the replan before entry had $\min_k h(\hat z_k) > 0$ (the model judged it safe); forced = $\le 0$ (no feasible plan); noticed = $h$ on the real frame at the entry step is $< 0$.

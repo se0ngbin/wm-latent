@@ -42,6 +42,15 @@ if HEAD == "linear":
     solver.model.head = lambda z: lin(z).squeeze(-1)
 if E("H_OFFSET"):   # test-time recalibration (reacher_calib.py): plan with h - c
     _h0, _c = solver.model.head, float(E("H_OFFSET")); solver.model.head = lambda z: _h0(z) - _c
+if E("H_OFFSETS"):   # per-position recalibration (reacher_calib_pred.py): c_0 current frame, c_1..K predicted blocks
+    _h1, _cv = solver.model.head, torch.tensor([float(v) for v in E("H_OFFSETS").split(",")], device=DEV)
+    def _hoff(z):
+        o = _h1(z); n = o.shape[-1]
+        if n == len(_cv): return o - _cv.to(o.dtype)            # CCEM: current + K predicted
+        if n == len(_cv) - 1: return o - _cv[1:].to(o.dtype)    # predicted only (attribution plan_h)
+        return o - _cv[0]                                       # single real frames (attribution h_real; n = N_EPS != K, K+1)
+    assert N_EPS not in (len(_cv), len(_cv) - 1)
+    solver.model.head = _hoff
 solver.configure(action_space=gym.spaces.Box(-1, 1, (N_EPS, 2)), n_envs=N_EPS, config=swm.PlanConfig(horizon=H, receding_horizon=REC, action_block=FS))
 
 rng = np.random.default_rng(0)
