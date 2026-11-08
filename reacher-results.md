@@ -644,6 +644,28 @@ Table 29. jac → other: rate (episodes better for jac / better for the other mo
 - No general OOD improvement over jac in planning. The only significant gain is lower collision under camera shift for adv_h with the BN split planner (p = 0.035), with adv_h alone borderline under camera shift and tilt (p ≈ 0.06); about 20 tests were run here, so one p = 0.035 needs replication. adv_h significantly lowers safe success under large floor shifts (floor 0.4: p = 0.004 / 0.039; floor 0.3 linear: p = 0.049), which BN adaptation repairs only to jac's level.
 - The claim that holds is diagnostic: adv_h sharpens the margin function's boundary under shift (Tables 24-25, 12,800 plans per condition), one training seed. Planning claims need more seeds and more CEM pairs.
 
+### 150 paired episodes
+
+The 50-pair tests left camera shift / tilt and the floor results borderline, so the key conditions were rerun on a new, larger draw of 150 box-crossing pairs (the same 150 for every model), CCEM-minh, epoch-10 models, real+imag margin functions. Each cell: collision / safe success / progress, then paired exact McNemar against jac (episodes better for jac / better for the other model, p). Split = jac+adv_h with the BN-adapted (both sets) planner and $h$ on the unadapted rollout (Table 28).
+
+Table 30.
+
+| Condition | Margin fn | jac | jac+adv_h | jac+adv_h + BN split |
+|---|---|---|---|---|
+| cam shift | MLP | 0.427 / 0.207 / 0.85 | 0.207 / 0.207 / 0.78 | coll 47/14 p=0.000; safe-succ 21/21 p=1.000 | 0.193 / 0.193 / 0.76 | coll 49/14 p=0.000; safe-succ 22/20 p=0.878 |
+| cam shift | linear | 0.253 / 0.133 / 0.73 | 0.147 / 0.173 / 0.69 | coll 29/13 p=0.020; safe-succ 15/21 p=0.405 | 0.133 / 0.233 / 0.72 | coll 28/10 p=0.005; safe-succ 12/27 p=0.024 |
+| cam tilt | MLP | 0.373 / 0.087 / 0.54 | 0.313 / 0.120 / 0.57 | coll 36/27 p=0.314; safe-succ 11/16 p=0.442 | 0.333 / 0.120 / 0.60 | coll 33/27 p=0.519; safe-succ 9/14 p=0.405 |
+| cam tilt | linear | 0.293 / 0.067 / 0.48 | 0.220 / 0.127 / 0.48 | coll 29/18 p=0.144; safe-succ 6/15 p=0.078 | 0.220 / 0.120 / 0.44 | coll 26/15 p=0.117; safe-succ 6/14 p=0.115 |
+| floor 0.3 | MLP | 0.233 / 0.447 / 0.91 | 0.140 / 0.327 / 0.84 | coll 22/8 p=0.016; safe-succ 35/17 p=0.018 | 0.267 / 0.500 / 0.94 | coll 13/18 p=0.473; safe-succ 29/37 p=0.389 |
+| floor 0.3 | linear | 0.133 / 0.460 / 0.90 | 0.113 / 0.260 / 0.83 | coll 10/7 p=0.629; safe-succ 48/18 p=0.000 | 0.220 / 0.520 / 0.93 | coll 6/19 p=0.015; safe-succ 26/35 p=0.306 |
+| floor 0.4 | MLP | 0.340 / 0.100 / 0.57 | 0.227 / 0.060 / 0.27 | coll 27/10 p=0.008; safe-succ 12/6 p=0.238 | 0.473 / 0.160 / 0.71 | coll 13/33 p=0.005; safe-succ 12/21 p=0.163 |
+| floor 0.4 | linear | 0.320 / 0.100 / 0.56 | 0.213 / 0.067 / 0.27 | coll 25/9 p=0.009; safe-succ 11/6 p=0.332 | 0.353 / 0.113 / 0.69 | coll 17/22 p=0.522; safe-succ 13/15 p=0.851 |
+
+- Under camera shift, jac+adv_h beats jac: collision halves (MLP 0.427 → 0.207, 47 / 14 episodes, p < 0.001; linear 0.253 → 0.147, p = 0.020) at the same safe success; with the split planner and the linear margin function safe success also rises (0.133 → 0.233, p = 0.024). One training seed; two margin functions and two planners agree.
+- Under floor shifts adv_h is a more conservative operating point, not a better one: fewer collisions (floor 0.3 MLP p = 0.016; floor 0.4 p ≈ 0.008) because it reaches the goal less (floor 0.3 safe success p = 0.018 / < 0.001; floor 0.4 progress 0.27 vs 0.56). The split restores progress but gives the collisions back (floor 0.3 linear p = 0.015, floor 0.4 MLP p = 0.005 worse than jac).
+- Camera tilt trends the same way as shift (collision 0.373 → 0.313, 0.293 → 0.220) without reaching significance.
+- jac's own rates differ from the 50-pair table (camera shift MLP collision 0.427 vs 0.320): a different, larger draw of pairs.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
