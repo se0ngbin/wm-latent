@@ -122,6 +122,28 @@ Table 6. Floor-colour diagnostic. Imag bal acc = the margin function on $\hat z^
 - The predictor re-grounds small offsets. For jac at $\alpha \le 0.2$ and the official model at 0.1, half of the remaining OOD offset is gone after 5 predicted blocks (rel$_5$ 0.45-0.49); sigreg's offset does not shrink at $\alpha = 0.1$ (rel$_5$ = 1.00).
 - jac at $\alpha = 0.3$: on the real frame the margin function calls everything safe, but on predicted latents it recovers with depth (imag bal acc 0.557 at $k = 1$ to 0.708 at $k = 5$; sigreg and official stay at about 0.5). CCEM requires $h > 0$ on every predicted state, so those deeper states still veto unsafe plans: collision 0.340 raw to 0.100-0.140 with CCEM. Hypothesis, not tested: jac's predictor output lies closer to the training manifold than its OOD encoder output.
 
+Why does jac's CCEM work at floor 0.3, where its static sign acc is 0.500? Sign acc scores single real frames at threshold 0; CCEM vetoes a plan if $h < 0$ on any of its predicted states. Three measurements (same diagnostic, real+imag MLP margin function):
+
+- On real frames nothing is vetoed: at $\alpha = 0.3$ even the deepest quarter of unsafe states reads safe for every model.
+- On predicted states the threshold shift shrinks with depth for every model ($\Delta h$/gap at $k = 1 \to 5$: sigreg 0.440 to 0.205, official 0.459 to 0.188, jac 0.263 to 0.126), and jac starts with the smallest shift and the best ranking (imag AUC 0.726 at $k = 1$ vs sigreg 0.352, official 0.616). So jac's deeper predicted states of box-entering plans go below 0; the others' mostly do not.
+- The CCEM logs agree: per replan, the margin function marks 21-26% of jac's candidates infeasible at floor 0.3 (30-34% in distribution, 39-44% under arm purple), but 0-0.2% for sigreg and the official model.
+
+Table 6b. Plan-level veto, as CCEM uses it: fraction of plans with $\min_k h(\hat z_k) < 0$ over the 5 predicted blocks, among plans that do / do not enter the box. Static bal acc = Table 6.
+
+| WM | $\alpha$ | Static bal acc | Unsafe plans vetoed | Safe plans vetoed |
+|---|---|---|---|---|
+| sigreg | 0 | 0.997 | 0.961 | 0.070 |
+| sigreg | 0.1 | 0.500 | 0.028 | 0.015 |
+| sigreg | 0.3 | 0.500 | 0.069 | 0.023 |
+| jac | 0 | 0.998 | 0.961 | 0.070 |
+| jac | 0.1 | 0.998 | 0.964 | 0.077 |
+| jac | 0.3 | 0.500 | 0.357 | 0.031 |
+| official | 0 | 0.998 | 0.951 | 0.070 |
+| official | 0.1 | 0.687 | 0.900 | 0.039 |
+| official | 0.3 | 0.500 | 0.077 | 0.021 |
+
+- Plan-level veto predicts CCEM; static sign acc does not. Official at $\alpha = 0.1$ has sign acc 0.687 but vetoes 90% of unsafe plans (CCEM collision 0.040-0.060); jac at $\alpha = 0.3$ has sign acc 0.500 but vetoes 36% of unsafe plans at a 3% false-veto rate, against 7% for sigreg and 8% for official. CEM re-samples around the feasible elites for 10 iterations and replans, so a precise partial veto still steers most episodes off the box (collision 0.340 raw to 0.100-0.140).
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
