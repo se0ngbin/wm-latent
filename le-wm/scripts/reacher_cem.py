@@ -99,10 +99,25 @@ if VAR or SHIFT:
 img = [R(e, j) for j, e in enumerate(envs)]
 prev = np.zeros((N_EPS, 2)); arng = np.random.default_rng(7)   # delay1 / act_noise state
 qs = [[s.copy()] for s in starts]
+# collision attribution (non-raw heads): h on the predicted states of the plan actually returned at each replan, and h on the real
+# encoded frame after every executed env step (does the margin function see the box once the arm is in it?)
+ATTR = HEAD != "raw"
+if ATTR:
+    hfun = solver.model.head
+    @torch.no_grad()
+    def zenc(ims): return model.projector(model.encoder(prep(ims)[:, 0].to(DEV), interpolate_pos_encoding=True).last_hidden_state[:, 0])
+    @torch.no_grad()
+    def plan_h(z0, acts):
+        emb, Ab = z0.unsqueeze(1), acts.to(DEV).float()
+        for k in range(Ab.size(1)):
+            act = model.action_encoder(Ab[:, :k + 1]); emb = torch.cat([emb, model.predict(emb[:, -3:], act[:, -3:])[:, -1:]], 1)
+        return hfun(emb[:, 1:]).float().view(len(z0), -1)
+    pminh, preal = [], []
 t0, tail = time.time(), None
 for t in range(0, BUDGET, REC * FS):
     out = solver.solve({"pixels": prep(img), "goal": goal, "action": torch.zeros(N_EPS, 1, 2 * FS)}, init_action=tail)
     tail = out["actions"][:, REC:]
+    if ATTR: pminh.append(plan_h(zenc(img), out["actions"]).min(1).values.cpu().numpy())
     plan = out["actions"][:, :REC].float().reshape(N_EPS, REC * FS, 2) * A_SD + A_MU   # policy.py: (blocks, 2*FS) -> (steps, 2), inverse z-score
     for k in range(REC * FS):
         for j, e in enumerate(envs):
@@ -110,6 +125,8 @@ for t in range(0, BUDGET, REC * FS):
             if SHIFT == "delay1": a, prev[j] = prev[j].copy(), a
             if SHIFT == "act_noise": a = np.clip(a + arng.normal(0, 0.2, 2), -1, 1)
             e.step(a); qs[j].append(np.asarray(e.env.physics.data.qpos[:2]).copy())
+        if ATTR:
+            with torch.no_grad(): preal.append(hfun(zenc([R(e, j) for j, e in enumerate(envs)])).float().view(-1).cpu().numpy())
     img = [R(e, j) for j, e in enumerate(envs)]
     print(f"[{WM} {HEAD}] step {t + REC * FS}/{BUDGET} ({(time.time() - t0) / 60:.1f} min)", flush=True)
 qs = np.array(qs)                                                                    # (N, BUDGET+1, 2)
@@ -120,4 +137,5 @@ succ = ts <= BUDGET
 print(f"FINAL {WM} {HEAD} W={W} C={C} n={N_EPS} success={succ.mean():.3f} collision={coll.mean():.3f} safe_success={(succ & ~coll).mean():.3f} "
       f"min_goal_dist(median)={np.median(np.abs(qs - GOALS[:, None]).max(-1).min(1)):.3f}", flush=True)
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
-np.savez(OUT, q=qs, start=starts, success=succ, collision=coll, t_success=ts, in_box=box)
+extra = dict(plan_minh=np.array(pminh), h_real=np.array(preal).T) if ATTR else {}   # (replans, N), (N, BUDGET)
+np.savez(OUT, q=qs, start=starts, success=succ, collision=coll, t_success=ts, in_box=box, **extra)
