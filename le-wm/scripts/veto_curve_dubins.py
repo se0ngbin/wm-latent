@@ -18,7 +18,7 @@ import stable_worldmodel as swm
 from dubins_swm_env import OBSTACLES
 
 ck, cn, heads = sys.argv[1], sys.argv[2], sys.argv[3:]
-NS, PP, K, DEV = int(os.environ.get("NS", "200")), int(os.environ.get("PP", "64")), 15, E.DEV
+NS, PP, K, DEV = int(os.environ.get("NS", "200")), int(os.environ.get("PP", "64")), int(os.environ.get("K", "15")), E.DEV
 COND = {"red": dict(obstacle="red", shape="circle", rot=0), "purple": dict(obstacle="purple", shape="circle", rot=0),
         "rot90": dict(obstacle="red", shape="circle", rot=90)}[cn]
 rng = np.random.default_rng(5)
@@ -38,7 +38,7 @@ st = np.zeros((0, 3), np.float32)
 while len(st) < NS:
     c = np.stack([rng.uniform(x0, x1, 4 * NS), rng.uniform(y0, y1, 4 * NS), rng.uniform(-np.pi, np.pi, 4 * NS)], 1).astype(np.float32)
     d = edge_dist(c[:, :2])
-    st = np.concatenate([st, c[(d > 0.02) & (d < 0.75)]])
+    st = np.concatenate([st, c[(d > 0.02) & (d < 0.05 * K)]])   # obstacle reachable within K steps
 st = st[:NS]
 A = (rng.standard_normal((NS, PP, 1, 1)) + 0.7 * rng.standard_normal((NS, PP, K, 1))).astype(np.float32)
 env, dmin = E.DubinsSwmEnv(), np.zeros((NS, PP))
