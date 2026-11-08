@@ -21,11 +21,18 @@ with h5py.File("/data/seongbin/lewm/datasets/reacher.h5", "r") as f:
     ep = f["ep_idx"][:]; idx = np.sort(np.random.default_rng(0).choice(np.where(ep >= 9000)[0], N, replace=False))
     Q, V, y, ref = f["qpos"][:][idx], f["qvel"][:][idx], f["failures"][:][idx].astype(int), f["pixels"][idx[:20]]
 env = gym.make("swm/ReacherDMControl-v0", task="qpos_match", render_mode="rgb_array").unwrapped
+if os.environ.get("SHIFTS"):   # sim-to-real shifts (reacher_shift.py), e.g. SHIFTS=all or cam_shift,noise; replaces the views (base kept)
+    import reacher_shift as RS
+    VIEWS = {"base": {}, **{v: {} for v in (RS.APPEARANCE if os.environ["SHIFTS"] == "all" else os.environ["SHIFTS"].split(","))}}
 imgs = {}
 for v, vals in VIEWS.items():
+    if v != "base" and os.environ.get("SHIFTS"): env = gym.make("swm/ReacherDMControl-v0", task="qpos_match", render_mode="rgb_array").unwrapped
     env.reset(seed=0, options={"variation_values": vals} if vals else None)
+    if os.environ.get("SHIFTS"): RS.apply_physics(env, v)
     out = []
-    for q, qd in zip(Q, V): env.set_state(q, qd); out.append(np.ascontiguousarray(env.render()))
+    for k, (q, qd) in enumerate(zip(Q, V)):
+        env.set_state(q, qd); im = np.ascontiguousarray(env.render())
+        out.append(RS.corrupt(im, v, k) if os.environ.get("SHIFTS") else im)
     imgs[v] = np.stack(out)
 print(f"N={N} unsafe={y.mean():.3f} | base render vs dataset frame: mean |diff| {np.abs(imgs['base'][:20].astype(int) - ref).mean():.2f} "
       f"| view vs base mean |diff|: " + " ".join(f"{v}={np.abs(imgs[v].astype(int) - imgs['base']).mean():.1f}" for v in VIEWS), flush=True)

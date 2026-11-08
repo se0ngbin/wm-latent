@@ -194,6 +194,44 @@ Table 6c. kNN / in-support / NN error at step 0 (encoder) and step 5 (predicted)
 - It pulls toward the right state only if the encoder kept the state. jac at $\alpha = 0.3$: the encoder latent is off support but near the right state (0.29 rad); by step 5 it is 93% in support at 0.41 rad, which is why the plan veto works there. sigreg at $\alpha = 0.1$: off support and wrong (2.56 rad); by step 5 it is 88% in support and still wrong (2.16 rad), so re-grounding turns a detectable OOD latent into an in-support alias. Same for official at $\alpha \ge 0.2$ and jac at 0.5.
 - Re-grounding is therefore not a goal in itself: it amplifies whatever state the encoder kept. The quantity to improve is the encoder's state retention under shift. An OOD check belongs on the step-0 encoder latent, where every failing case here is 100% off support (it would also flag jac at 0.3, where it still works).
 
+## adv_h at matched epochs (mid-run checkpoints)
+
+The adv_h runs are paused or still training, so their checkpoints are compared with jac at the same epoch (same seed, same cosine schedule position; neither has finished annealing). jac+adv_h = `rc_jac_safeadv_linf` (MLP adversary head, the Dubins recipe: L∞ 8/255, 2 PGD steps, AUC gate 0.95), epoch 5; jac+adv_h-lin = `rc_jac_safeadv_linf_linhead` (linear adversary head), epoch 4. Same pipeline as above: real+imag margin functions (`reacher_heads_imag_ep<EP>/`), floor sweep, CEM on the 50 box-crossing pairs with the floor shift.
+
+Table 8. Floor sweep, bal acc (AUC) of the real+imag margin functions.
+
+| WM | Margin fn | $\alpha$ = 0.2 | 0.3 | 0.4 | 0.5 |
+|---|---|---|---|---|---|
+| jac ep5 | MLP | 0.998 (0.999) | 0.500 (0.955) | 0.500 (0.746) | 0.500 (0.368) |
+| jac+adv_h ep5 | MLP | 0.997 (1.000) | 0.500 (0.989) | 0.500 (0.853) | 0.500 (0.708) |
+| jac ep5 | linear | 0.992 (0.999) | 0.635 (0.994) | 0.500 (0.661) | 0.500 (0.376) |
+| jac+adv_h ep5 | linear | 0.988 (0.998) | 0.572 (0.997) | 0.500 (0.867) | 0.500 (0.781) |
+| jac ep4 | MLP | 0.997 (0.999) | 0.500 (0.974) | 0.500 (0.756) | 0.500 (0.653) |
+| jac+adv_h-lin ep4 | MLP | 0.981 (0.999) | 0.500 (0.598) | 0.500 (0.281) | 0.500 (0.307) |
+| jac ep4 | linear | 0.992 (0.999) | 0.835 (0.996) | 0.500 (0.832) | 0.500 (0.496) |
+| jac+adv_h-lin ep4 | linear | 0.993 (0.999) | 0.500 (0.474) | 0.500 (0.495) | 0.500 (0.463) |
+
+Table 9. CEM collision (success), in distribution and under the floor shift.
+
+| WM | Planner | $\alpha$ = 0 | 0.1 | 0.2 | 0.3 |
+|---|---|---|---|---|---|
+| jac ep5 | raw | 0.580 (0.620) | 0.580 (0.480) | 0.580 (0.520) | 0.540 (0.660) |
+| jac ep5 | CCEM, MLP | 0.060 (0.560) | 0.060 (0.600) | 0.040 (0.600) | 0.200 (0.540) |
+| jac ep5 | CCEM, linear | 0.060 (0.480) | 0.060 (0.460) | 0.080 (0.440) | 0.140 (0.460) |
+| jac+adv_h ep5 | raw | 0.620 (0.580) | 0.580 (0.600) | 0.580 (0.660) | 0.340 (0.620) |
+| jac+adv_h ep5 | CCEM, MLP | 0.060 (0.680) | 0.060 (0.580) | 0.060 (0.600) | 0.180 (0.580) |
+| jac+adv_h ep5 | CCEM, linear | 0.080 (0.440) | 0.080 (0.500) | 0.060 (0.560) | 0.160 (0.440) |
+| jac ep4 | raw | 0.580 (0.500) | 0.580 (0.480) | 0.600 (0.540) | 0.580 (0.640) |
+| jac ep4 | CCEM, MLP | 0.040 (0.580) | 0.040 (0.620) | 0.060 (0.580) | 0.160 (0.660) |
+| jac ep4 | CCEM, linear | 0.060 (0.520) | 0.040 (0.420) | 0.040 (0.460) | 0.100 (0.480) |
+| jac+adv_h-lin ep4 | raw | 0.600 (0.660) | 0.560 (0.620) | 0.520 (0.640) | 0.280 (0.420) |
+| jac+adv_h-lin ep4 | CCEM, MLP | 0.040 (0.560) | 0.060 (0.620) | 0.080 (0.540) | 0.280 (0.420) |
+| jac+adv_h-lin ep4 | CCEM, linear | 0.040 (0.480) | 0.040 (0.420) | 0.040 (0.400) | 0.280 (0.420) |
+
+- jac+adv_h (MLP adversary) reproduces the Dubins pattern: the margin function's ranking survives larger shifts (AUC at $\alpha = 0.5$: 0.708 / 0.781 vs jac 0.368 / 0.376), but the threshold breaks at the same $\alpha = 0.3$, and CCEM is unchanged (collision at 0.3: 0.180 / 0.160 vs 0.200 / 0.140). In distribution it costs nothing (margin accuracy and CEM equal; CCEM-MLP success 0.680 vs 0.560, within noise).
+- jac+adv_h with a linear adversary head is worse than jac: its ranking collapses at $\alpha = 0.3$ (AUC 0.598 / 0.474 vs 0.974 / 0.996), and CCEM at 0.3 is no better than raw (0.280 vs jac 0.160 / 0.100).
+- Mid-run checkpoints, one seed, $n = 50$ per CEM cell.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
@@ -223,4 +261,4 @@ Table 7. False-safe, AUC and mean $h$ on unsafe states, averaged over predicted 
 
 ## Files
 
-Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
+Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.

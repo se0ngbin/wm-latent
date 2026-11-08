@@ -84,14 +84,18 @@ VAR = {}
 if E("FLOOR"): a = float(E("FLOOR")); VAR["floor.color"] = (1 - a) * np.array([[0.1, 0.2, 0.3], [0.2, 0.3, 0.4]]) + a * np.array([[0.45, 0.3, 0.15], [0.55, 0.38, 0.2]])
 if E("LIGHT"): VAR["light.intensity"] = np.array([float(E("LIGHT"))])
 if E("ARM"): VAR["agent.color"] = np.array([0.55, 0.2, 0.75])
-if VAR:
+SHIFT = E("SHIFT", "")   # sim-to-real shift from reacher_shift.py (camera/light/sensor/dynamics); goal frame rendered under it too
+import reacher_shift as RS
+R = lambda e, j: RS.corrupt(e.render(), SHIFT, j) if SHIFT else e.render()
+if VAR or SHIFT:
     assert MODE in ("data", "lewm")
     gi = []
-    for e, i in zip(envs, sel):
-        e.reset(seed=0, options={"variation_values": VAR})
-        e.set_state(Q[i + GOFF], V[i + GOFF]); gi.append(e.render()); e.set_state(Q[i], V[i])
+    for j, (e, i) in enumerate(zip(envs, sel)):
+        e.reset(seed=0, options={"variation_values": VAR} if VAR else None); RS.apply_physics(e, SHIFT)
+        e.set_state(Q[i + GOFF], V[i + GOFF]); gi.append(R(e, j)); e.set_state(Q[i], V[i])
     goal = prep(gi)
-img = [e.render() for e in envs]
+img = [R(e, j) for j, e in enumerate(envs)]
+prev = np.zeros((N_EPS, 2)); arng = np.random.default_rng(7)   # delay1 / act_noise state
 qs = [[s.copy()] for s in starts]
 t0, tail = time.time(), None
 for t in range(0, BUDGET, REC * FS):
@@ -100,8 +104,11 @@ for t in range(0, BUDGET, REC * FS):
     plan = out["actions"][:, :REC].float().reshape(N_EPS, REC * FS, 2) * A_SD + A_MU   # policy.py: (blocks, 2*FS) -> (steps, 2), inverse z-score
     for k in range(REC * FS):
         for j, e in enumerate(envs):
-            e.step(np.clip(plan[j, k].numpy(), -1, 1)); qs[j].append(np.asarray(e.env.physics.data.qpos[:2]).copy())
-    img = [e.render() for e in envs]
+            a = np.clip(plan[j, k].numpy(), -1, 1)
+            if SHIFT == "delay1": a, prev[j] = prev[j].copy(), a
+            if SHIFT == "act_noise": a = np.clip(a + arng.normal(0, 0.2, 2), -1, 1)
+            e.step(a); qs[j].append(np.asarray(e.env.physics.data.qpos[:2]).copy())
+    img = [R(e, j) for j, e in enumerate(envs)]
     print(f"[{WM} {HEAD}] step {t + REC * FS}/{BUDGET} ({(time.time() - t0) / 60:.1f} min)", flush=True)
 qs = np.array(qs)                                                                    # (N, BUDGET+1, 2)
 hit = np.all(np.abs(qs - GOALS[:, None]) < 0.05, -1); ts = np.where(hit.any(1), hit.argmax(1), BUDGET + 1)
