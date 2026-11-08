@@ -122,6 +122,33 @@ Table 6. Floor-colour diagnostic. Imag bal acc = the margin function on $\hat z^
 - The predictor re-grounds small offsets. For jac at $\alpha \le 0.2$ and the official model at 0.1, half of the remaining OOD offset is gone after 5 predicted blocks (rel$_5$ 0.45-0.49); sigreg's offset does not shrink at $\alpha = 0.1$ (rel$_5$ = 1.00).
 - jac at $\alpha = 0.3$: on the real frame the margin function calls everything safe, but on predicted latents it recovers with depth (imag bal acc 0.557 at $k = 1$ to 0.708 at $k = 5$; sigreg and official stay at about 0.5). CCEM requires $h > 0$ on every predicted state, so those deeper states still veto unsafe plans: collision 0.340 raw to 0.100-0.140 with CCEM. Hypothesis, not tested: jac's predictor output lies closer to the training manifold than its OOD encoder output.
 
+## Prediction depth (in distribution)
+
+On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
+
+Table 7. False-safe, AUC and mean $h$ on unsafe states, averaged over predicted blocks 1-5 | 6-10 | 11-15. The real+imag margin functions saw predicted latents of blocks 1-5 only.
+
+| WM | Margin fn | Trained on | False-safe | AUC | Mean $h$ on unsafe |
+|---|---|---|---|---|---|
+| sigreg | MLP | real-only | 0.096 / 0.154 / 0.148 | 0.986 / 0.964 / 0.943 | -0.182 / -0.017 / 0.035 |
+| sigreg | MLP | real+imag | 0.066 / 0.129 / 0.131 | 0.984 / 0.961 / 0.940 | -0.247 / -0.140 / -0.073 |
+| sigreg | linear | real-only | 0.050 / 0.108 / 0.120 | 0.984 / 0.963 / 0.946 | -0.326 / -0.309 / -0.310 |
+| sigreg | linear | real+imag | 0.025 / 0.087 / 0.104 | 0.984 / 0.955 / 0.942 | -0.523 / -0.495 / -0.510 |
+| jac | MLP | real-only | 0.100 / 0.160 / 0.151 | 0.986 / 0.963 / 0.945 | -0.156 / 0.006 / 0.065 |
+| jac | MLP | real+imag | 0.059 / 0.120 / 0.123 | 0.984 / 0.962 / 0.944 | -0.271 / -0.164 / -0.091 |
+| jac | linear | real-only | 0.037 / 0.102 / 0.109 | 0.984 / 0.959 / 0.941 | -0.426 / -0.397 / -0.396 |
+| jac | linear | real+imag | 0.024 / 0.088 / 0.101 | 0.984 / 0.955 / 0.938 | -0.599 / -0.564 / -0.576 |
+| official | MLP | real-only | 0.097 / 0.175 / 0.175 | 0.985 / 0.958 / 0.931 | -0.137 / 0.054 / 0.110 |
+| official | MLP | real+imag | 0.073 / 0.132 / 0.139 | 0.983 / 0.960 / 0.938 | -0.181 / -0.068 / 0.006 |
+| official | linear | real-only | 0.043 / 0.133 / 0.128 | 0.984 / 0.957 / 0.937 | -0.318 / -0.279 / -0.278 |
+| official | linear | real+imag | 0.036 / 0.124 / 0.127 | 0.984 / 0.952 / 0.935 | -0.433 / -0.390 / -0.401 |
+
+- The Dubins effect is present but much weaker. False-safe roughly doubles from blocks 1-5 to 6-15 (for example jac real+imag MLP 0.059 to 0.12), but stays at 0.10-0.18; it then plateaus.
+- Two mechanisms. The MLP margin function drifts optimistic: mean $h$ on unsafe predicted states rises toward 0 with depth and crosses it for the real-only MLP (sigreg -0.182 to 0.035, official -0.137 to 0.110), as on Dubins. The linear margin function does not drift (mean $h$ on unsafe flat); its false-safe rise comes from the ranking blurring (AUC 0.984 to 0.94).
+- Training on predicted latents of blocks 1-5 lowers false-safe at every depth, also beyond the depths it saw, and slows the MLP's drift, without removing it.
+- The three world models behave the same here; jac's advantage is OOD only.
+- Within the CEM horizon (blocks 1-5) false-safe is 0.024-0.073 for the real+imag margin functions, so depth is not what limits the in-distribution CEM results.
+
 ## Files
 
-Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
+Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
