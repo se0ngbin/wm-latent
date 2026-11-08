@@ -439,6 +439,22 @@ Table 9. CEM collision (success), in distribution and under the floor shift.
 - jac+adv_h with a linear adversary head is worse than jac: its ranking collapses at $\alpha = 0.3$ (AUC 0.598 / 0.474 vs 0.974 / 0.996), and CCEM at 0.3 is no better than raw (0.280 vs jac 0.160 / 0.100).
 - Mid-run checkpoints, one seed, $n = 50$ per CEM cell.
 
+### Why the adversarial reg costs Reacher little: not because Reacher's $h$ is already robust
+
+On Dubins adv_h raised prediction loss 1.7-6x and was mostly worse in CCEM on the jac base; on Reacher, jac+adv_h's prediction loss is within 0-5% of jac's from epoch 3 on (epoch 1-7: 0.0867 / 0.0426 / 0.0316 / 0.0289 / 0.0263 / 0.0246 / 0.0238 vs jac 0.0873 / 0.0355 / 0.0297 / 0.0276 / 0.0254 / 0.0243 / 0.0237; +20% only at epoch 2, when the penalty switches on). Hypothesis tested: on Reacher the safety signal is arm geometry, which a small pixel perturbation cannot move, so the reg has little to remove. `adv_sensitivity.py`: PGD (10 sign steps, random start) in an L∞ ball on [0, 1] pixels, unsafe states pushed toward safe and safe toward unsafe; held-out frames (last 10% of each dataset, 200 per class), real+imag MLP margin functions.
+
+Table 19. Adversarial movability of $h$: median $|\Delta h|$ / clean safe-unsafe gap, and flip rates unsafe→safe / safe→unsafe.
+
+| Benchmark | WM | 8/255 | 16/255 |
+|---|---|---|---|
+| Dubins | jac | 0.048, 0.09 / 0.02 | 0.106, 0.23 / 0.04 |
+| Dubins | jac+adv_h | 0.018, 0.01 / 0.00 | 0.041, 0.02 / 0.01 |
+| Reacher | jac | 0.070, 0.24 / 0.03 | 0.351, 1.00 / 0.05 |
+| Reacher | jac+adv_h ep5 | 0.021, 0.02 / 0.00 | 0.085, 0.77 / 0.00 |
+
+- Rejected: Reacher's $h$ is more movable than Dubins' (8/255 flips 24% of unsafe states to safe for jac, against 9%; 16/255 flips all of them), so the reg has more to remove on Reacher yet costs less. The cost must depend on whether making $h$ insensitive discards information the predictor uses (plausible: Reacher's arm is a high-contrast shape the reg can keep while dropping intensity sensitivity), not on how sensitive $h$ was; untested.
+- adv_h cuts $h$'s movability about 3x within its own ball on both benchmarks. Even after the reg, 16/255 flips 77% of Reacher's unsafe states, so a 16/255 adversary would push much harder than the current one (expect a real prediction-loss cost).
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
@@ -468,4 +484,4 @@ Table 7. False-safe, AUC and mean $h$ on unsafe states, averaged over predicted 
 
 ## Files
 
-Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`, `reacher_within_start.py`, `reacher_calib.py`, `reacher_outcomes.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
+Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`, `reacher_jac_aniso.py`, `reacher_pull_ratio.py`, `reacher_shift.py`, `reacher_within_start.py`, `reacher_calib.py`, `reacher_outcomes.py`, `reacher_calib_pred.py`, `reacher_veto_diag.py`, `adv_sensitivity.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
