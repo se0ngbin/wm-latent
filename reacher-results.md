@@ -169,6 +169,31 @@ Table 6b. Plan-level veto, as CCEM uses it: fraction of plans with $\min_k h(\ha
 - Not luck: the veto decays smoothly with $\alpha$ (jac 0.961 / 0.357 / 0.224 / 0.121 / 0 at $\alpha$ = 0 / 0.3 / 0.4 / 0.5 / 0.75), and CCEM's benefit ends between 0.3 and 0.4: at 0.4 a 22% veto no longer lowers collision (0.220-0.240 vs raw 0.240), and from 0.5 on CCEM is identical to raw CEM for every model (Table 5). Goal reaching also collapses past 0.3 (jac raw success 0.640 at 0.3, 0.320 at 0.4, 0.120 at 1); jac's low raw collision at 0.4 reflects less movement, not avoidance. Beyond $\alpha \approx 0.5$ no model plans (success 0.060-0.280).
 - Plan-level veto predicts CCEM; static sign acc does not. Official at $\alpha = 0.1$ has sign acc 0.687 but vetoes 90% of unsafe plans (CCEM collision 0.040-0.060); jac at $\alpha = 0.3$ has sign acc 0.500 but vetoes 36% of unsafe plans at a 3% false-veto rate, against 7% for sigreg and 8% for official. CEM re-samples around the feasible elites for 10 iterations and replans, so a precise partial veto still steers most episodes off the box (collision 0.340 raw to 0.100-0.140).
 
+### Re-grounding: toward known states, but the right ones?
+
+`reacher_nn_diag.py`: bank = encoder latents of 20k training frames (base appearance) with their joint angles; 1000 held-out states (500 unsafe) at floor $\alpha$, one random 5-block plan each. For the encoder latent (step 0) and each predicted latent (steps 1-5): kNN = median distance to the 10 nearest bank latents relative to the same at $\alpha = 0$; in-support = fraction within the $\alpha = 0$ q99 distance; NN error = median joint error (max over $q_1, q_2$, wrapped, rad) between the true state (simulated for steps $\ge 1$) and the nearest bank latent's state. In distribution the NN error is 0.02 at step 0 and 0.20 at step 5 (the bank's resolution plus prediction error). Low kNN with high NN error = aliasing (in support, wrong state).
+
+Table 6c. kNN / in-support / NN error at step 0 (encoder) and step 5 (predicted).
+
+| WM | $\alpha$ | Step 0 | Step 5 |
+|---|---|---|---|
+| sigreg | 0.1 | 5.74 / 0.00 / 2.56 | 1.10 / 0.88 / 2.16 |
+| sigreg | 0.2 | 8.86 / 0.00 / 1.85 | 1.52 / 0.48 / 1.65 |
+| sigreg | 0.3 | 8.67 / 0.00 / 1.74 | 2.51 / 0.35 / 1.55 |
+| sigreg | 0.5 | 8.76 / 0.00 / 1.90 | 3.59 / 0.08 / 1.89 |
+| jac | 0.1 | 1.04 / 0.99 / 0.02 | 1.00 / 0.99 / 0.20 |
+| jac | 0.2 | 1.24 / 0.94 / 0.03 | 1.01 / 0.99 / 0.21 |
+| jac | 0.3 | 3.96 / 0.00 / 0.29 | 1.05 / 0.93 / 0.41 |
+| jac | 0.5 | 5.96 / 0.00 / 1.54 | 2.06 / 0.44 / 1.53 |
+| official | 0.1 | 1.91 / 0.16 / 0.04 | 1.00 / 0.99 / 0.23 |
+| official | 0.2 | 5.19 / 0.00 / 0.91 | 1.11 / 0.80 / 1.02 |
+| official | 0.3 | 6.01 / 0.00 / 1.12 | 1.39 / 0.53 / 1.15 |
+| official | 0.5 | 6.63 / 0.00 / 1.21 | 2.03 / 0.32 / 1.82 |
+
+- The predictor pulls every model's OOD latents back toward the training latents (kNN falls toward 1 and in-support rises with each predicted step), as the windowed transformer predictor did on Dubins (`regrounding_gru.py`: transformer contracts, GRU diverges).
+- It pulls toward the right state only if the encoder kept the state. jac at $\alpha = 0.3$: the encoder latent is off support but near the right state (0.29 rad); by step 5 it is 93% in support at 0.41 rad, which is why the plan veto works there. sigreg at $\alpha = 0.1$: off support and wrong (2.56 rad); by step 5 it is 88% in support and still wrong (2.16 rad), so re-grounding turns a detectable OOD latent into an in-support alias. Same for official at $\alpha \ge 0.2$ and jac at 0.5.
+- Re-grounding is therefore not a goal in itself: it amplifies whatever state the encoder kept. The quantity to improve is the encoder's state retention under shift. An OOD check belongs on the step-0 encoder latent, where every failing case here is 100% off support (it would also flag jac at 0.3, where it still works).
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
@@ -198,4 +223,4 @@ Table 7. False-safe, AUC and mean $h$ on unsafe states, averaged over predicted 
 
 ## Files
 
-Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
+Code on branch `worktree-reacher-imag-margin`: `le-wm/scripts/reacher_margin.py`, `reacher_margin_imag.py`, `reacher_ood.py` (`FLOOR_SWEEP`), `reacher_cem.py` (`CCEM=minh`, `FLOOR`, `LIGHT`, `ARM`), `reacher_floor_diag.py`, `reacher_depth_diag.py`, `reacher_nn_diag.py`; `le-wm/safe_solver.py` (CCEM, from `imag-margin`). Margin functions: `/data/seongbin/lewm/reacher_heads/<wm>/` (real-only), `/data/seongbin/lewm/reacher_heads_imag/<wm>/` (real+imag). CEM trajectories: `/data/seongbin/lewm/reacher_cem/`. Logs: `/data/seongbin/lewm/reacher_eval_logs/`.
