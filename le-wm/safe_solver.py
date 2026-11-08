@@ -61,6 +61,26 @@ class _MarginHead(torch.nn.Module):
         return self.mean_layer(self.layers(x)).squeeze(-1)
 
 
+class _LinMarginHead(torch.nn.Module):
+    """Linear margin function h(z) = w.z + b (saved as {"margin_lin": ...} by train_lin_margin_dubins.py). Under recolor
+    the MLP margin function flattens in the shifted region (gap/noise 1.3 at step 1 on purple rollouts) while a linear
+    readout of the same latents keeps 4x more (5.0)."""
+
+    def __init__(self, inp_dim=192):
+        super().__init__()
+        self.lin = torch.nn.Linear(inp_dim, 1)
+
+    def forward(self, x):
+        return self.lin(x).squeeze(-1)
+
+
+def _load_margin_head(path, device):
+    ck = torch.load(path, map_location=device)
+    head = _LinMarginHead() if "margin_lin" in ck else _MarginHead()
+    head.load_state_dict(ck["margin_lin"] if "margin_lin" in ck else ck["margin_gp"])
+    return head.to(device)
+
+
 class _SafeJEPA:
     """Model proxy: safe-maps candidate actions (state-space, gt h) before
     delegating cost evaluation to the wrapped JEPA unchanged."""
@@ -262,13 +282,40 @@ class _SoftCostJEPA:
     """Model proxy: goal cost + w * sum_t relu(m - h(z_t)) over the imagined
     rollout. Unsafe-looking candidates just rank badly; no action map."""
 
-    def __init__(self, jepa, head, weight, margin, const, goal_cost="final"):
+    def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None, h_rel=False,
+                 ccem=False, ccem_cost_limit=2.0, ccem_fallback="count"):
+        # ccem: SafeDreamer's constrained-CEM elite rule (OSRP CCEPlanner, SafeDreamer/behaviors.py:316-391) on top of
+        # LeWM's CEM: per-candidate cost = (number of states on the plan, current one included, with h < 0) * 1000/H,
+        # feasible iff cost < ccem_cost_limit (SafeDreamer default 2.0). If >= topk candidates are feasible, the elites
+        # are the feasible ones with the best goal cost; otherwise the topk lowest-cost candidates (ties: lower index
+        # first, as jax.lax.top_k). Encoded as the score CEMSolver takes the topk smallest of. weight/const unused.
+        # ccem_fallback="minh": feasible = h > 0 on every state of the plan (current included); if fewer than topk are
+        # feasible, all feasible plans are kept and the rest of the elites are the infeasible plans with the highest
+        # worst-case margin min_k h(z_k). ("count" = SafeDreamer: fewest states with h < 0.)
+        # threshold-free rules (only the ranking of the safety score min_k h(z_k) is used, never its sign):
+        # "safe_task": keep the ccem_pre_k safest candidates, elites = the topk with the best goal cost among them;
+        # "task_safe": keep the ccem_pre_k with the best goal cost, elites = the topk safest among them.
+        # "safe_task_norm": safe_task with h z-scored per imagined step across the candidates before the min over steps
+        # (cancels a depth-dependent or OOD offset of h shared by all candidates; the current state is shared, so excluded)
+        assert ccem_fallback in ("count", "minh", "safe_task", "task_safe", "safe_task_norm"), ccem_fallback
+        self.ccem_pre_k = 50
+        self.ccem, self.ccem_cost_limit, self.ccem_fallback, self.topk = ccem, ccem_cost_limit, ccem_fallback, None
         self.jepa, self.head, self.weight, self.margin = jepa, head, weight, margin
         self.const = const  # flat cost for ANY violation: safe beats unsafe lexicographically
         # "final": JEPA.criterion, goal distance of the last imagined step only (receding-horizon replanning
         # then keeps pushing arrival later). "mean": goal distance averaged over every imagined step.
         assert goal_cost in ("final", "mean"), goal_cost
         self.goal_cost = goal_cost
+        # h_quantile=p: rank-normalize h per replan over all candidates x imagined steps, h' = (h - Q_p) / (Q_.5 - Q_p),
+        # so the bottom p of imagined latents read unsafe. Label-free fix for OOD h that keeps its ranking but collapses
+        # its scale (purple: safe/unsafe medians 1.56/-0.53 -> 0.38/0.32 at AUC 0.95).
+        self.h_quantile = h_quantile
+        # h_steps=n: safety cost on the first n imagined steps only (under purple, h ranks imagined latents for ~5
+        # steps, then the predictor drifts to chance; with replanning every 5 only those steps are executed)
+        self.h_steps = h_steps
+        # h_rel: penalize relu(h(z_0) - h(z_t)), z_0 = current real frame: plans that go lower on h than where the agent
+        # is now. Needs only h's ranking along the plan, not its sign (purple keeps the ranking, loses the sign).
+        self.h_rel = h_rel
 
     def parameters(self):
         return self.jepa.parameters()
@@ -283,9 +330,65 @@ class _SoftCostJEPA:
                 g = g.unsqueeze(1)
             g = g[..., -1:, :]                                    # same goal latent JEPA.criterion uses
             cost = (z - g.detach()).pow(2).sum(-1).mean(-1).to(cost.dtype)
+        if self.ccem:
+            zc = info_dict["predicted_emb"][:, :, H - 1:]          # current (real) state + imagined, as SafeDreamer's traj
+            hc = self.head(zc.float())                             # (B, S, 1 + T')
+            if self.ccem_fallback == "safe_task_norm":
+                hi = hc[..., 1:]                                   # imagined steps only (B, S, T')
+                hn = (hi - hi.mean(1, keepdim=True)) / hi.std(1, keepdim=True).clamp_min(1e-6)
+                worst = hn.min(-1).values                          # worst per-step-normalized margin
+                J = cost.float()
+                pre = min(self.ccem_pre_k, J.size(1))
+                keep = torch.zeros_like(J, dtype=torch.bool).scatter_(1, torch.topk(worst, pre, dim=1).indices, True)
+                self.last_h = hc
+                self.last = (cost.mean().item(), worst.mean().item(), (hc.min(-1).values <= 0).float().mean().item())
+                return torch.where(keep, J, J + 1e9).to(cost.dtype)
+            if self.ccem_fallback in ("safe_task", "task_safe"):
+                worst = hc.min(-1).values                          # safety score: worst-case margin over the plan
+                J = cost.float()
+                pre = min(self.ccem_pre_k, J.size(1))
+                if self.ccem_fallback == "safe_task":
+                    keep = torch.zeros_like(J, dtype=torch.bool).scatter_(1, torch.topk(worst, pre, dim=1).indices, True)
+                    score = torch.where(keep, J, J + 1e9)          # topk smallest = best goal cost among the pre safest
+                else:
+                    keep = torch.zeros_like(J, dtype=torch.bool).scatter_(1, torch.topk(J, pre, dim=1, largest=False).indices, True)
+                    score = torch.where(keep, -worst, torch.full_like(J, 1e9))   # topk smallest = safest among the pre best-goal
+                self.last_h = hc
+                self.last = (cost.mean().item(), worst.mean().item(), (worst <= 0).float().mean().item())
+                return score.to(cost.dtype)
+            if self.ccem_fallback == "minh":
+                worst = hc.min(-1).values                          # worst-case margin over the plan
+                feas = worst > 0
+                enough = feas.sum(1, keepdim=True) >= self.topk
+                # enough: feasible ranked by J, infeasible excluded; else: all feasible first, then highest worst-case h
+                score = torch.where(feas, cost.float() - torch.where(enough, 0.0, 1e9), torch.where(enough, cost.float() + 1e9, -worst))
+                self.last_h = hc
+                self.last = (cost.mean().item(), worst.mean().item(), (~feas).float().mean().item())
+                return score.to(cost.dtype)
+            c = (hc < 0).float().sum(-1) * (1000.0 / z.size(2))    # SafeDreamer: cost.sum(0) * (1000 / horizon)
+            feas = c < self.ccem_cost_limit
+            enough = feas.sum(1, keepdim=True) >= self.topk
+            S = c.size(1)
+            tie = torch.arange(S, device=c.device, dtype=c.dtype) * 1e-6     # lower index first among equal costs
+            score = torch.where(enough, torch.where(feas, cost.float(), cost.float() + 1e9), c + tie)
+            self.last_h = hc
+            self.last = (cost.mean().item(), c.mean().item(), (~feas).float().mean().item())
+            return score.to(cost.dtype)
         h = self.head(z.float())                                  # (B, S, T')
-        pen = torch.relu(self.margin - h).sum(-1)
-        viol = (h < self.margin).any(-1)
+        if self.h_steps is not None:
+            h = h[..., :self.h_steps]
+        # ponytail: S == 1 is _plan_h re-scoring the chosen plan; no candidate set to rank against, so traces keep raw h
+        if self.h_quantile is not None and h.size(1) > 1:
+            q = torch.quantile(h.flatten(1), torch.tensor([self.h_quantile, 0.5], device=h.device), dim=1)  # (2, B)
+            h = (h - q[0, :, None, None]) / (q[1] - q[0]).clamp_min(1e-6)[:, None, None]
+        # margin: scalar, or one value per imagined step (h on imagined latents grows more optimistic further ahead)
+        m = torch.as_tensor(list(self.margin) if hasattr(self.margin, "__len__") else self.margin,
+                            device=h.device, dtype=h.dtype)
+        m = m if m.dim() == 0 else m[:h.size(-1)]
+        if self.h_rel:   # threshold-free: margin = h of the current (real, encoded) frame; a constant OOD shift of h cancels
+            m = m + self.head(info_dict["predicted_emb"][:, :, H - 1].float())[..., None]
+        pen = torch.relu(m - h).sum(-1)
+        viol = (h < m).any(-1)
         self.last_h = h
         self.last =(cost.mean().item(), pen.mean().item(), viol.float().mean().item())
         return cost + (self.weight * pen + self.const * viol).to(cost.dtype)
@@ -323,12 +426,15 @@ class SoftSafeCEMSolver(CEMSolver):
     """Plain CEM with the learned margin's unsafe region as a soft cost."""
 
     def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
-                 unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final", **kwargs):
+                 unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final",
+                 h_quantile: float | None = None, h_steps: int | None = None, h_rel: bool = False,
+                 ccem: bool = False, ccem_cost_limit: float = 2.0, ccem_fallback: str = "count", **kwargs):
         device = kwargs.get("device", "cuda")
-        head = _MarginHead().to(device)
-        head.load_state_dict(torch.load(margin_ckpt, map_location=device)["margin_gp"])
-        super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost),
+        head = _load_margin_head(margin_ckpt, device)
+        super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost,
+                                       h_quantile, h_steps, h_rel, ccem, ccem_cost_limit, ccem_fallback),
                          **kwargs)
+        self.model.topk = self.topk   # the CCEM rule needs the elite count
         self._trace = []
         if os.environ.get("SOFTCEM_SPREAD"):
             self._spread = _EliteSpread(self.n_steps, unsafe_const)
