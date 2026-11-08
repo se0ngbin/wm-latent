@@ -40,6 +40,9 @@ solver = (swm.solver.CEMSolver(model, **kw) if HEAD == "raw" else
 if HEAD == "linear":
     lin = torch.nn.Linear(192, 1).to(DEV); lin.load_state_dict(torch.load(f"{HEADS}/{WM}/linear_s0.pt", map_location=DEV)["linear"])
     solver.model.head = lambda z: lin(z).squeeze(-1)
+HM = None
+if E("H_WM"):   # split: h reads predicted latents of this (e.g. unadapted) model; the goal cost uses WM
+    HM = swm.wm.utils.load_pretrained(E("H_WM")).to(DEV).eval().requires_grad_(False); solver.model.h_jepa = HM
 if E("H_OFFSET"):   # test-time recalibration (reacher_calib.py): plan with h - c
     _h0, _c = solver.model.head, float(E("H_OFFSET")); solver.model.head = lambda z: _h0(z) - _c
 if E("H_OFFSETS"):   # per-position recalibration (reacher_calib_pred.py): c_0 current frame, c_1..K predicted blocks
@@ -114,12 +117,13 @@ ATTR = HEAD != "raw"
 if ATTR:
     hfun = solver.model.head
     @torch.no_grad()
-    def zenc(ims): return model.projector(model.encoder(prep(ims)[:, 0].to(DEV), interpolate_pos_encoding=True).last_hidden_state[:, 0])
+    def zenc(ims): am = HM or model; return am.projector(am.encoder(prep(ims)[:, 0].to(DEV), interpolate_pos_encoding=True).last_hidden_state[:, 0])
     @torch.no_grad()
     def plan_h(z0, acts):
         emb, Ab = z0.unsqueeze(1), acts.to(DEV).float()
         for k in range(Ab.size(1)):
-            act = model.action_encoder(Ab[:, :k + 1]); emb = torch.cat([emb, model.predict(emb[:, -3:], act[:, -3:])[:, -1:]], 1)
+            am = HM or model
+            act = am.action_encoder(Ab[:, :k + 1]); emb = torch.cat([emb, am.predict(emb[:, -3:], act[:, -3:])[:, -1:]], 1)
         return hfun(emb[:, 1:]).float().view(len(z0), -1)
     pminh, preal = [], []
 t0, tail = time.time(), None

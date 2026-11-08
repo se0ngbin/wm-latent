@@ -321,7 +321,15 @@ class _SoftCostJEPA:
         return self.jepa.parameters()
 
     def get_cost(self, info_dict, action_candidates):
+        # h_jepa (optional, set by the caller): a second world model whose predicted latents h reads, e.g. the unadapted model
+        # while the goal cost uses a BatchNorm-adapted one. Its rollout gets a clean copy of the inputs (get_cost mutates them).
+        h_jepa = getattr(self, "h_jepa", None)
+        info_h = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in info_dict.items()} if h_jepa is not None else None
         cost = self.jepa.get_cost(info_dict, action_candidates)   # (B, S)
+        if h_jepa is not None:
+            dev = next(h_jepa.parameters()).device
+            info_h = h_jepa.rollout({k: (v.to(dev) if torch.is_tensor(v) else v) for k, v in info_h.items()}, action_candidates.to(dev))
+            info_dict = {**info_dict, "predicted_emb": info_h["predicted_emb"]}   # h reads the second model's rollout
         H = info_dict["pixels"].size(2)
         z = info_dict["predicted_emb"][:, :, H:]                  # imagined only
         if self.goal_cost == "mean":
