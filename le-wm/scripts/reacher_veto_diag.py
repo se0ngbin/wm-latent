@@ -88,6 +88,11 @@ for wm, epn, hd in WMS:
                 v = sc[te_] - cpl < 0; gt, pt = grp[te_], prg[te_]
                 plan_row = f"plan_q05 (c={cpl:+.2f}, test half): unsafe {v[gt == 0].mean():.2f} near {v[gt == 1].mean():.2f} far {v[gt == 2].mean():.2f} prog-safe {v[pt].mean():.2f}"
             row = [plan_row] if c != "floor0" else []
+            if G("CURVE"):   # blur curve: threshold catching 90% of unsafe plans (CCEM score incl. current frame), safe-plan veto vs closest distance
+                sca = hv.min(-1); thr = np.quantile(sca[grp == 0], 0.9)
+                edges = [0, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 9]
+                cells = [f"[{lo},{hi}): {(sca[(mind > lo) & (mind < hi)] < thr).mean():.2f} (n={((mind > lo) & (mind < hi)).sum()})" for lo, hi in zip(edges[:-1], edges[1:])]
+                print(f"CURVE {wm} ep{epn} {kind} {c} @90% unsafe caught | " + " ".join(cells), flush=True)
             for nm, o in offs.items():
                 veto = (hv - o).min(-1) < 0
                 row.append(f"{nm}: unsafe {veto[grp == 0].mean():.2f} near {veto[grp == 1].mean():.2f} far {veto[grp == 2].mean():.2f} prog-safe {veto[prg].mean():.2f}")
