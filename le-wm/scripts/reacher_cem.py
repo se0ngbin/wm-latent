@@ -40,6 +40,8 @@ solver = (swm.solver.CEMSolver(model, **kw) if HEAD == "raw" else
 if HEAD == "linear":
     lin = torch.nn.Linear(192, 1).to(DEV); lin.load_state_dict(torch.load(f"{HEADS}/{WM}/linear_s0.pt", map_location=DEV)["linear"])
     solver.model.head = lambda z: lin(z).squeeze(-1)
+if E("H_OFFSET"):   # test-time recalibration (reacher_calib.py): plan with h - c
+    _h0, _c = solver.model.head, float(E("H_OFFSET")); solver.model.head = lambda z: _h0(z) - _c
 solver.configure(action_space=gym.spaces.Box(-1, 1, (N_EPS, 2)), n_envs=N_EPS, config=swm.PlanConfig(horizon=H, receding_horizon=REC, action_block=FS))
 
 rng = np.random.default_rng(0)
