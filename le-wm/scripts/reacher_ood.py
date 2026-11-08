@@ -14,6 +14,9 @@ WMS, EP = os.environ.get("WMS", "lewm_reacher").split(","), os.environ.get("EP",
 HEADS, N = os.environ.get("HEADS", "/data/seongbin/lewm/reacher_heads"), int(os.environ.get("N", "5000"))
 VIEWS = {"base": {}, "arm_color": {"agent.color": np.array([0.55, 0.2, 0.75])},
          "floor_color": {"floor.color": np.array([[0.45, 0.3, 0.15], [0.55, 0.38, 0.2]])}, "light": {"light.intensity": np.array([0.3])}}
+if os.environ.get("FLOOR_SWEEP"):   # e.g. "0.1,0.3,1": floor = (1-a) default checker + a brown; replaces the views above (base kept)
+    F0, F1 = np.array([[0.1, 0.2, 0.3], [0.2, 0.3, 0.4]]), VIEWS["floor_color"]["floor.color"]
+    VIEWS = {"base": {}, **{f"floor_{a}": {"floor.color": (1 - float(a)) * F0 + float(a) * F1} for a in os.environ["FLOOR_SWEEP"].split(",")}}
 with h5py.File("/data/seongbin/lewm/datasets/reacher.h5", "r") as f:
     ep = f["ep_idx"][:]; idx = np.sort(np.random.default_rng(0).choice(np.where(ep >= 9000)[0], N, replace=False))
     Q, V, y, ref = f["qpos"][:][idx], f["qvel"][:][idx], f["failures"][:][idx].astype(int), f["pixels"][idx[:20]]
