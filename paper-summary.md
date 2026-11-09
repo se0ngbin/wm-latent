@@ -38,6 +38,7 @@ Goal-distance sweep, 3 seeds, 50 episodes per seed (`paper-results.tex` Table "K
 - Over the 21-model grid, no model beats jac in paired CCEM tests at any goal distance (10/15/20). jac+pull, the encoder-only safety regs and jac+pull+adv_λ tie it; full safety regs on the jac base are mostly worse.
 - 200 paired episodes, goals 15 steps out, linear $h$ on uniform + predicted latents: jac+pull+adv_h encoder-only (3f) and its linear-head variant (3g) collide 2-4× more than jac on red (10.5-18.5% vs 4-8.5%); jac+pull collides more than jac under rotation (30.0% vs 20.0%, p = 0.006).
 - So the robustness on real frames from adv_h (Claim 1, last row) does not reach planning.
+- Label-free and label-based gap terms (readout consistency, encoder gap, predictor gap, predictor Jacobian; 15-epoch screen) do not keep the purple ranking either; the one that beat its 15-epoch control (predictor gap) is worse than jac at 50 epochs in every cell (see Pending, resolved).
 - Pull: its target 1 was never tuned; the unregularized predictor's action ratio is 2.2-2.3, and pull only constrains the 3-frame context (1-frame context stays at 2.04), so it halves control authority at full context. Measured (`reg_target_check.py`).
 
 ## Claim 4 (mechanism): out of distribution, $h$ loses its distance information within about 10 environment steps of imagination
@@ -82,7 +83,7 @@ Procedure (`bn_adapt_save.py`): recompute the running statistics of the two Batc
 
 ## Unconfirmed or pending (not paper-ready yet)
 
-- jac + predictor-gap term (imagined latents must stay on the correct side of an online safety head over a 5-step rollout): at 15 epochs it beat its 15-epoch jac control by 12-15 collision points in every condition (p ≤ 0.005), not purple-specific, single seed. 50-epoch run training (`train_jac_predgap50.sh`, ETA about 11:30 pm PST 2026-11-08).
+- jac + predictor-gap term (imagined latents must stay on the correct side of an online safety head over a 5-step rollout): resolved, negative. At 15 epochs it beat its 15-epoch jac control (12-15 fewer collision points), but at 50 epochs it is worse than jac 50 in all 18 cells (goals 10/15/20 steps out, red / purple / rotation, linear and MLP $h$, 100 paired episodes; collisions +11 to +27 points, p ≤ 0.03). On red its veto curve falls off further from the boundary (safe plans 0.1-0.2 radii out vetoed 44% vs 5% for jac at 10 steps) and its $h$ is optimistic on imagined states; purple stays flat (`predgap50_eval.sh`, logs `run_logs/predgap50_*`, `softcem_jacpredgap50_*`). The 15-epoch screen's gain reflected an undertrained control.
 - Seed variance is large for planning: jac's three seeds span 15.5-29.5% purple collision under one protocol, so single-seed model comparisons within about 10 points are not claims.
 - Rows 2c, 2g, 3c and several second/third seeds of the 21-model grid are not trained; CEM tables in `paper-results.tex` are mostly seed 3072.
 - Not run: diamond in the planning tables; replanning (every 5 steps) beyond the archived ablation.
