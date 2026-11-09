@@ -75,11 +75,31 @@ Procedure (`bn_adapt_save.py`): recompute the running statistics of the two Batc
 - CCEM on purple (100 paired episodes): at $K = 10$ success rises 73% → 85-86% (p = 0.024 / 0.036) with collisions unchanged (13-14% → 15%); at $K$ = 15-25 collisions roughly double (36-62% vs 17-28%), because adaptation removes the conservative fallback while plans still carry no distance information. A threshold from the safe frames (10% quantile) does not help.
 - sigreg: adaptation lowers purple collisions in 17 of 18 cells (up to −27 points, 7 significant), as on Reacher, but adapted sigreg (38-70%) stays far worse than unadapted jac (17-28%).
 
+## Claim 7 (test-time, label-free): BN adaptation restores the CBF safety filter under purple
+
+Dreamer-framework CBF on the LeWM (red-trained margin function → reachability critic trained by DDPG in the world model's imagination → CBF-filtered diffusion policy, 1000 trajectories, `cbf-results.md`). The filter only reads the current frame and one predicted step, the depth where BN adaptation recovers the ranking. jac, purple obstacles, red-trained margin head and critic unchanged; world model unadapted vs BN-adapted on 500 safe purple frames (`le-wm/scripts/cbf_bn_purple.sh`, outcomes `cbf_outcomes.py`), rates over 1000 trajectories:
+
+| Run | Collision | Success | Safe success | Safe fail | Unsafe success |
+| --- | --- | --- | --- | --- | --- |
+| no filter | 0.537 | 0.869 | 0.456 | 0.007 | 0.413 |
+| jac, red (in distribution), gpfail | 0.065 | 0.761 | 0.759 | 0.176 | 0.002 |
+| jac, red (in distribution), gpimag | 0.006 | 0.785 | 0.785 | 0.209 | 0.000 |
+| jac, purple, gpfail, unadapted | 0.529 | 0.827 | 0.430 | 0.041 | 0.397 |
+| jac, purple, gpfail, BN-adapted | 0.280 | 0.614 | 0.480 | 0.240 | 0.134 |
+| jac, purple, gpimag, unadapted | 0.507 | 0.851 | 0.459 | 0.034 | 0.392 |
+| jac, purple, gpimag, BN-adapted | 0.211 | 0.576 | 0.461 | 0.328 | 0.115 |
+
+- Unadapted, the filter does nothing under purple (collision equals no filter): the red-trained critic reads purple states as safe.
+- BN adaptation halves collision (gpfail 0.529 → 0.280, gpimag 0.507 → 0.211; paired McNemar on the same 1000 starts, p < 1e-30 for both). The drop in raw success is entirely unsafe successes (reaching the goal after driving through an obstacle); safe success is held or higher (0.430 → 0.480, 0.459 → 0.461). The cost is more safe failures (the filter stops the car short of the goal).
+- Gap to in distribution: red collision 0.6-6.5%, so adaptation recovers about half to two thirds of the lost safety. Single world-model seed; rotation not tested (BN adaptation does not fix rotation on the imagined screen).
+- Contrast with CEM (Claim 6): there BN adaptation hurt beyond 10-step plans, because CCEM scores 10-25 imagined steps, where distance information stays lost.
+
 ## Suggested paper framing
 
 - Main result: an encoder Jacobian regularizer (jac) makes a margin function trained on in-distribution frames transfer to appearance and geometric shifts on real frames, which is what lets constrained CEM stay safer out of distribution than the LeWM default (Claims 1-2).
 - Negative results that sharpen it: label-based adversarial safety regularizers improve real-frame robustness but not planning (Claim 3).
 - Limitation, with a precise diagnosis: imagined OOD states lose distance information within about 10 environment steps (Claim 4); planner-side fixes cannot recover information that is not there (Claim 5); test-time BN adaptation recovers the average ranking and helps only for short horizons (Claim 6).
+- Positive OOD result for short-horizon safety: a CBF filter, which needs only the current frame and one predicted step, recovers under purple with label-free BN adaptation on 500 safe frames (collision halved, safe success held; Claim 7). This fits the diagnosis: the shift is fixable where imagination is shallow.
 
 ## Unconfirmed or pending (not paper-ready yet)
 
