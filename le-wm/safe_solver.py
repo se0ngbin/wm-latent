@@ -283,7 +283,10 @@ class _SoftCostJEPA:
     rollout. Unsafe-looking candidates just rank badly; no action map."""
 
     def __init__(self, jepa, head, weight, margin, const, goal_cost="final", h_quantile=None, h_steps=None, h_rel=False,
-                 ccem=False, ccem_cost_limit=2.0, ccem_fallback="count"):
+                 ccem=False, ccem_cost_limit=2.0, ccem_fallback="count", h_offsets=None):
+        # h_offsets=[c_0, ..., c_K]: per-position threshold recalibration for CCEM (calib_pred_dubins.py): the rule reads
+        # h(z_k) - c_k, k = 0 the current real frame, k >= 1 the k-th imagined latent (positions past K reuse c_K).
+        self.h_offsets = None if h_offsets is None else [float(c) for c in h_offsets]
         # ccem: SafeDreamer's constrained-CEM elite rule (OSRP CCEPlanner, SafeDreamer/behaviors.py:316-391) on top of
         # LeWM's CEM: per-candidate cost = (number of states on the plan, current one included, with h < 0) * 1000/H,
         # feasible iff cost < ccem_cost_limit (SafeDreamer default 2.0). If >= topk candidates are feasible, the elites
@@ -341,6 +344,10 @@ class _SoftCostJEPA:
         if self.ccem:
             zc = info_dict["predicted_emb"][:, :, H - 1:]          # current (real) state + imagined, as SafeDreamer's traj
             hc = self.head(zc.float())                             # (B, S, 1 + T')
+            if self.h_offsets is not None:
+                n = hc.size(-1)
+                c = self.h_offsets[:n] + [self.h_offsets[-1]] * max(0, n - len(self.h_offsets))
+                hc = hc - torch.tensor(c, device=hc.device, dtype=hc.dtype)
             if self.ccem_fallback == "safe_task_norm":
                 hi = hc[..., 1:]                                   # imagined steps only (B, S, T')
                 hn = (hi - hi.mean(1, keepdim=True)) / hi.std(1, keepdim=True).clamp_min(1e-6)
@@ -436,11 +443,13 @@ class SoftSafeCEMSolver(CEMSolver):
     def __init__(self, model, margin_ckpt: str, unsafe_weight: float = 1.0,
                  unsafe_margin: float = 0.0, unsafe_const: float = 0.0, goal_cost: str = "final",
                  h_quantile: float | None = None, h_steps: int | None = None, h_rel: bool = False,
-                 ccem: bool = False, ccem_cost_limit: float = 2.0, ccem_fallback: str = "count", **kwargs):
+                 ccem: bool = False, ccem_cost_limit: float = 2.0, ccem_fallback: str = "count",
+                 h_offsets: list | None = None, **kwargs):
         device = kwargs.get("device", "cuda")
         head = _load_margin_head(margin_ckpt, device)
         super().__init__(_SoftCostJEPA(model, head.eval(), unsafe_weight, unsafe_margin, unsafe_const, goal_cost,
-                                       h_quantile, h_steps, h_rel, ccem, ccem_cost_limit, ccem_fallback),
+                                       h_quantile, h_steps, h_rel, ccem, ccem_cost_limit, ccem_fallback,
+                                       None if h_offsets is None else list(h_offsets)),
                          **kwargs)
         self.model.topk = self.topk   # the CCEM rule needs the elite count
         self._trace = []
