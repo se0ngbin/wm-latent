@@ -696,6 +696,27 @@ Table 31.
 - A planning gain needs both headroom and reach. If jac is already good (exposure, light, white balance, small floor shifts, Dubins diamond), adv_h still improves $h$, but CCEM is already at its in-distribution level, so planning cannot improve. If the shift is too big for jac (floor ≥ 0.3, tilt, occlusion, Dubins purple, rotation), adv_h cannot improve $h$. Only a shift in between pays off: Reacher camera shift (jac's $h$ moves 0.20 of the gap, enough to cost collisions; adv_h halves it), which is exactly where adv_h beat jac in CCEM (Table 30). Dubins has no shift in that band, which is why adv_h never helped planning there. Under camera shift adv_h redirects the displacement rather than shrinking it (latent shift ×0.89, change in $h$ ×0.49).
 - One training seed per model; the boundary (about 0.2-0.3 of the gap) is read off 16 shifts, not fitted.
 
+## Varying adversary radius (jac+adv_h, radius log-uniform in [4/255, 32/255] per sequence)
+
+`rc_jac_safeadv_linf_epsmix` (snapshot `code_point_92e7589_epsmix`, kwarg `eps_pix_max`): identical to jac+adv_h except that each training sequence's L∞ radius is drawn fresh every step. Prediction loss equals jac's (0.0220 vs 0.0218 at epoch 10). Reach (`adv_align.py MODEL2=...`, change in $h$ / gap, jac → model): floor 0.3 0.325 → 0.007 (fixed-radius adv_h 0.423), floor 0.4 0.860 → 0.075 (0.721), occlusion 0.086 → 0.022 (0.121), camera shift 0.200 → 0.107 (0.099), camera tilt 0.340 → 0.505 (0.337).
+
+Table 32. 150 paired episodes, collision / safe success (progress); exact McNemar vs jac.
+
+| Condition | Margin fn | jac | jac+adv_h | jac + whole-latent adv | jac+adv_h, varying radius | varying vs jac |
+|---|---|---|---|---|---|---|
+| floor 0.3 | MLP | 0.233 / 0.447 | 0.140 / 0.327 | 0.113 / 0.460 | 0.040 / 0.673 (0.94) | collision 29 / 0, p < 0.001; safe success 11 / 45, p < 0.001 |
+| floor 0.3 | linear | 0.133 / 0.460 | 0.113 / 0.260 | 0.033 / 0.287 | 0.033 / 0.573 (0.92) | collision 15 / 0, p < 0.001; safe success p = 0.024 |
+| floor 0.4 | MLP | 0.340 / 0.100 | 0.227 / 0.060 | 0.327 / 0.160 | 0.087 / 0.653 (0.94) | collision 43 / 5, p < 0.001; safe success 2 / 85, p < 0.001 |
+| floor 0.4 | linear | 0.320 / 0.100 | 0.213 / 0.067 | 0.300 / 0.153 | 0.060 / 0.587 (0.92) | collision 42 / 3, p < 0.001; safe success 1 / 74, p < 0.001 |
+| camera shift | MLP | 0.427 / 0.207 | 0.207 / 0.207 | 0.160 / 0.313 | 0.287 / 0.193 (0.66) | collision 37 / 16, p = 0.005 |
+| camera shift | linear | 0.253 / 0.133 | 0.147 / 0.173 | 0.087 / 0.180 | 0.160 / 0.167 (0.63) | collision p = 0.038 |
+| camera tilt | MLP | 0.373 / 0.087 | 0.313 / 0.120 | 0.240 / 0.140 | 0.480 / 0.047 (0.51) | collision 27 / 43, p = 0.072 (worse) |
+| camera tilt | linear | 0.293 / 0.067 | 0.220 / 0.127 | 0.227 / 0.127 | 0.420 / 0.067 (0.40) | collision 20 / 39, p = 0.018 (worse) |
+
+- The reach analysis predicted planning: the shifts the varying radius brought within reach (floor 0.3 / 0.4, occlusion) improve, at both collision and safe success, not as a trade. At floor 0.4 safe success rises from 0.10 to 0.59-0.65, close to the in-distribution level (0.58), and progress returns to 0.92-0.94: making the latent nearly invariant to the floor also fixes the goal cost, so fixed-radius adv_h's floor trade-off disappears. 50 pairs, occlusion: collision 0.24 → 0.10, safe success 0.44 → 0.62.
+- The camera-shift gain survives but is smaller than fixed adv_h's or the whole-latent model's; camera tilt, the one shift the reach analysis showed getting worse, is worse than jac in planning too.
+- No in-distribution cost (50 pairs, CCEM-MLP 0.04 / 0.64 vs jac 0.06 / 0.58), and at jac's level or better under every photometric, sensor and dynamics shift. One training seed.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
