@@ -23,6 +23,8 @@ if BENCH == "reacher":
     import h5py, gymnasium as gym, reacher_shift as RS
     MODELS = {"jac": ("rc_jacobian/weights_epoch_10.pt", "/data/seongbin/lewm/reacher_heads_imag/rc_jacobian/mlp_s0.pt"),
               "jac+adv_h": ("rc_jac_safeadv_linf/weights_epoch_10.pt", "/data/seongbin/lewm/reacher_heads_imag/rc_jac_safeadv_linf/mlp_s0.pt")}
+    if G("MODEL2"):   # compare jac with another Reacher model instead (its name as in checkpoints/ and reacher_heads_imag/)
+        MODELS = {"jac": MODELS["jac"], "jac+adv_h": (f"{G('MODEL2')}/weights_epoch_10.pt", f"/data/seongbin/lewm/reacher_heads_imag/{G('MODEL2')}/mlp_s0.pt")}
     with h5py.File("/data/seongbin/lewm/datasets/reacher.h5", "r") as f:
         y_all, ep, Q, V = f["failures"][:].astype(int), f["ep_idx"][:], f["qpos"][:], f["qvel"][:]
     ho = np.where(ep >= 9000)[0]
