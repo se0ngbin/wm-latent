@@ -201,6 +201,21 @@ Same procedure as Dubins (`reacher_bn_adapt.py`, 2000 safe shifted frames, both 
 - jac gains nothing. For jac+adv_h, adaptation repairs goal reaching under floor shifts but blurs its sharper $h$; the projector BatchNorm carries both effects. The safe-only 10% quantile threshold stalls on Reacher; threshold 0 is the right setting.
 - Opposite sign to Dubins: Reacher's unadapted $h$ errs optimistic (CCEM = raw CEM), so correcting it can only help; Dubins' errs pessimistic, and adaptation removes the conservative fallback that was the safety.
 
+## R7 (both benchmarks): adv_h helps only where jac is hurt moderately
+
+Why adv_h beat jac only under Reacher camera shift (`adv_align.py`, `reacher-results.md` Table 31; jac vs jac+adv_h on 400 held-out states per shift, both benchmarks, MLP real+imag margin functions):
+
+| Shift | Change in $h$ / gap: jac → adv_h | Planning gain? |
+| --- | --- | --- |
+| Reacher exposure, light, white balance, floor ≤ 0.2 | 0.002-0.078 → 0.001-0.004 | no: jac already at its in-distribution CCEM level |
+| Dubins diamond | 0.040 → 0.007 | no: little headroom |
+| Reacher camera shift | 0.200 → 0.099 | yes (Table 30: collision halved) |
+| Reacher floor 0.3 / 0.4, camera tilt, occlusion | 0.086-0.860 → 0.12-0.72 (ratio 0.84-1.41) | no: out of reach |
+| Dubins purple / rotation 90° | 0.343 → 0.446 / 0.145 → 0.149 | no: out of reach |
+
+- adv_h's robustness is local: it shrinks the change in $h$ 2-25x where the shift moves jac's $h$ by up to about 0.2 of the safe/unsafe gap, and does nothing (or worse) beyond about 0.3. A planning gain needs both headroom (jac is hurt enough to collide) and reach (the shift is small enough for adv_h). Only Reacher camera shift has both; Dubins has no shift in that band, which is why Claim 3 found no planning gain there.
+- Alignment of a shift with the adversary's own directions does not predict any of this (0.17-0.43 for every real shift).
+
 ## How the Reacher results change the framing
 
 - Main result (Claims 1-2) generalizes to a second environment, more strongly: jac keeps even the threshold under realistic photometric and sensor shifts.

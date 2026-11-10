@@ -666,6 +666,36 @@ Table 30.
 - Camera tilt trends the same way as shift (collision 0.373 → 0.313, 0.293 → 0.220) without reaching significance.
 - jac's own rates differ from the 50-pair table (camera shift MLP collision 0.427 vs 0.320): a different, larger draw of pairs.
 
+### When does adv_h help? (both benchmarks)
+
+`adv_align.py`: jac vs jac+adv_h on 400 held-out states per shift (Reacher epoch 10; Dubins `jacobian_w1_dubins` vs `lewm_dubins_jac_safeadv_linf50`, MLP real+imag margin functions). Alignment = fraction of jac's latent displacement under the shift that lies in the top-10 directions of jac's own 8/255 PGD displacements (random directions: 0.052; the PGD displacements themselves: 0.53 Reacher, 0.72 Dubins). Change in $h$ = median $|\Delta h|$ / safe-unsafe gap; latent shift = mean $\lVert \Delta z \rVert$ / spread. Pixel columns: mean $|\Delta x|$ / median per-image max / fraction of pixels beyond 8/255 / high-frequency energy share (the PGD perturbation itself: 0.02-0.03 / 0.031 / 0 / 0.88-0.96).
+
+Table 31.
+
+| Benchmark | Shift | Alignment (jac) | Change in $h$: jac → adv_h (ratio) | Latent shift: jac → adv_h (ratio) | Pixel mean / max / frac > 8/255 / hi-freq |
+|---|---|---|---|---|---|
+| Reacher | floor 0.1 | 0.239 | 0.002 -> 0.001 (0.42) | 0.035 -> 0.022 (0.62) | 0.028 / 0.067 / 0.916 / 0.018 |
+| Reacher | floor 0.2 | 0.208 | 0.010 -> 0.004 (0.36) | 0.112 -> 0.096 (0.86) | 0.057 / 0.129 / 0.917 / 0.016 |
+| Reacher | floor 0.3 | 0.248 | 0.325 -> 0.423 (1.30) | 0.764 -> 0.828 (1.08) | 0.084 / 0.196 / 0.917 / 0.016 |
+| Reacher | floor 0.4 | 0.172 | 0.860 -> 0.721 (0.84) | 1.126 -> 1.042 (0.93) | 0.113 / 0.259 / 0.935 / 0.016 |
+| Reacher | light | 0.273 | 0.015 -> 0.003 (0.18) | 0.138 -> 0.073 (0.53) | 0.064 / 0.192 / 0.995 / 0.011 |
+| Reacher | exposure | 0.241 | 0.078 -> 0.003 (0.04) | 0.346 -> 0.079 (0.23) | 0.132 / 0.149 / 1.000 / 0.003 |
+| Reacher | white balance | 0.228 | 0.004 -> 0.002 (0.48) | 0.075 -> 0.055 (0.73) | 0.050 / 0.200 / 1.000 / 0.008 |
+| Reacher | noise | 0.175 | 0.001 -> 0.000 (0.64) | 0.015 -> 0.014 (0.90) | 0.031 / 0.180 / 0.782 / 0.985 |
+| Reacher | blur | 0.173 | 0.003 -> 0.004 (1.36) | 0.065 -> 0.080 (1.23) | 0.007 / 0.376 / 0.086 / 0.966 |
+| Reacher | cam zoom | 0.431 | 0.011 -> 0.010 (0.88) | 0.278 -> 0.278 (1.00) | 0.024 / 0.843 / 0.172 / 0.574 |
+| Reacher | cam shift | 0.211 | 0.200 -> 0.099 (0.49) | 0.802 -> 0.718 (0.89) | 0.061 / 0.839 / 0.344 / 0.229 |
+| Reacher | cam tilt | 0.205 | 0.340 -> 0.337 (0.99) | 0.991 -> 1.001 (1.01) | 0.076 / 0.847 / 0.479 / 0.166 |
+| Reacher | occlusion | 0.263 | 0.086 -> 0.121 (1.41) | 0.646 -> 0.758 (1.17) | 0.007 / 0.365 / 0.046 / 0.106 |
+| Dubins | purple | 0.259 | 0.343 -> 0.446 (1.30) | 1.116 -> 1.202 (1.08) | 0.059 / 0.545 / 0.185 / 0.065 |
+| Dubins | diamond | 0.376 | 0.040 -> 0.007 (0.18) | 0.190 -> 0.168 (0.88) | 0.043 / 1.000 / 0.082 / 0.393 |
+| Dubins | rot90 | 0.222 | 0.145 -> 0.149 (1.03) | 1.380 -> 1.395 (1.01) | 0.200 / 1.000 / 0.320 / 0.093 |
+
+- Alignment with the adversary's directions does not predict the benefit: every real shift sits at 0.17-0.43, and shifts with the same alignment go opposite ways (camera shift and tilt both 0.21: helped / not; exposure 0.24 helped 25x, floor 0.3 0.25 worse). Real shifts also look nothing like the adversary (small, high-frequency): photometric shifts are dense and low-frequency, camera shifts sparse large edits.
+- What predicts it is how far the shift already moves jac's $h$. Where it moves $h$ by up to about 0.2 of the gap, adv_h shrinks that 2-25x (exposure, light, white balance, floor ≤ 0.2, camera shift, Dubins diamond). Where it moves $h$ by about 0.3 of the gap or more, adv_h does nothing or makes it worse (floor 0.3 / 0.4, camera tilt, occlusion, Dubins purple and rotation): adv_h's robustness is local, consistent with jac breaking by shift size, not direction.
+- A planning gain needs both headroom and reach. If jac is already good (exposure, light, white balance, small floor shifts, Dubins diamond), adv_h still improves $h$, but CCEM is already at its in-distribution level, so planning cannot improve. If the shift is too big for jac (floor ≥ 0.3, tilt, occlusion, Dubins purple, rotation), adv_h cannot improve $h$. Only a shift in between pays off: Reacher camera shift (jac's $h$ moves 0.20 of the gap, enough to cost collisions; adv_h halves it), which is exactly where adv_h beat jac in CCEM (Table 30). Dubins has no shift in that band, which is why adv_h never helped planning there. Under camera shift adv_h redirects the displacement rather than shrinking it (latent shift ×0.89, change in $h$ ×0.49).
+- One training seed per model; the boundary (about 0.2-0.3 of the gap) is read off 16 shifts, not fitted.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
