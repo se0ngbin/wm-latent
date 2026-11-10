@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sg_point_eval as E
 
 WMS, EP = os.environ.get("WMS", "lewm_reacher").split(","), os.environ.get("EP", "50")
-HEADS, N = os.environ.get("HEADS", "/data/seongbin/lewm/reacher_heads"), int(os.environ.get("N", "5000"))
+HEADS, N = os.environ.get("HEADS", "/data/seongbin/lewm/reacher_heads_imag"), int(os.environ.get("N", "5000"))
 VIEWS = {"base": {}, "arm_color": {"agent.color": np.array([0.55, 0.2, 0.75])},
          "floor_color": {"floor.color": np.array([[0.45, 0.3, 0.15], [0.55, 0.38, 0.2]])}, "light": {"light.intensity": np.array([0.3])}}
 if os.environ.get("FLOOR_SWEEP"):   # e.g. "0.1,0.3,1": floor = (1-a) default checker + a brown; replaces the views above (base kept)

@@ -14,7 +14,7 @@ from safe_solver import SoftSafeCEMSolver
 
 E = os.environ.get
 WM, EP, HEAD = E("WM", "lewm_reacher"), E("EP", "50"), E("HEAD", "raw")
-HEADS = E("HEADS", "/data/seongbin/lewm/reacher_heads")
+HEADS = E("HEADS", "/data/seongbin/lewm/reacher_heads_imag")   # real+imag margin functions; real-only (reacher_heads) is an ablation
 W, C = float(E("W", "1000")), float(E("C", "1e4"))
 CCEM = E("CCEM", "")   # e.g. minh: constrained elite rule (as Dubins CCEM); empty = legacy safety-first soft cost
 MODE = E("MODE", "data")   # data: LeWM protocol pairs that cross the box (default); sls: SLS-squared's 2.7 rad sweep (fails: goal cost flat)
