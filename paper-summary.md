@@ -153,7 +153,7 @@ CCEM-MLP on 50 pairs, collision (success): sigreg vs jac. In distribution: sigre
 
 - Wherever sigreg's $h$ calls everything safe, its CCEM equals raw CEM; jac's CCEM stays at 0.04-0.12 collision under every photometric and sensor shift.
 
-## R3 (differs from Claim 3): jac+adv_h beats jac under camera shift
+## R3 (differs from Claim 3): adversarial safety regs on top of jac beat jac, where the shift is within their reach (camera shift; with a varying radius also floor shifts and occlusion; see R8)
 
 150 paired episodes, CCEM, collision / safe success; exact McNemar vs jac (episodes better for jac / for the other model, p). Split = jac+adv_h planning with its BN-adapted model while $h$ reads the unadapted model's rollout (see R6).
 
@@ -230,7 +230,9 @@ Planning gains appear exactly where reach and headroom coincide: camera shift (j
 
 Why Dubins differs. Its planning shifts fail the conditions: purple is an intensity shift but out of reach for an 8/255 adversary (it moves jac's $h$ by 0.34 of the gap), rotation is a viewpoint change, and diamond is within reach but has no headroom. Dubins also draws safety in colour, so intensity perturbations overlap the safety signal and invariance to them costs the predictor (1.7-6x prediction loss vs about 1% on Reacher, where the box is invisible and every intensity change is nuisance). Dubins purple is largely affine, which is why BN adaptation repairs its per-step ranking and halves collision for the one-step CBF filter (Claim 7), while CCEM's 10-25-step plans still carry no distance information (Claim 6).
 
-Predictions still open: the varying-radius adv_h should beat jac in CCEM under floor 0.3 / 0.4 (150-pair test running); the varying-radius whole-latent model (training) should be the best overall except under tilt; on Dubins a larger or varying radius may bring purple within reach but, with colour carrying safety, at a higher cost than on Reacher.
+Confirmed prediction (150 paired episodes, `reacher-results.md` Table 32): jac+adv_h with a varying radius (4-32/255 per sequence), which the reach analysis showed bringing floor 0.3 / 0.4 and occlusion within reach, beats jac in CCEM there on both collision and safe success: floor 0.3 0.233 / 0.447 → 0.040 / 0.673, floor 0.4 0.340 / 0.100 → 0.087 / 0.653 (p < 0.001 for both measures and both margin functions), occlusion 0.24 / 0.44 → 0.10 / 0.62 (50 pairs); the camera-shift gain survives (0.427 → 0.287, p = 0.005), and camera tilt, the one shift the reach analysis showed getting worse, is worse than jac (linear 0.293 → 0.420, p = 0.018). No in-distribution or prediction cost. One training seed.
+
+Predictions still open: the varying-radius whole-latent model (training) should combine these floor gains with the whole latent's camera gains, except under tilt; on Dubins a larger or varying radius may bring purple within reach but, with colour carrying safety, at a higher cost than on Reacher.
 
 ## Pending or not paper-ready (Reacher)
 
