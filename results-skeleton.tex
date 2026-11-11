@@ -88,21 +88,13 @@ occlusion & 0.500 (0.691) & 0.592 (0.956) & 0.707 (0.955) & 0.701 (0.976) \\
 
 \begin{itemize}
   \item Claim: jac keeps $h$'s ranking under appearance and geometric shift (Dubins purple linear 0.970 vs 0.543; rotation 0.984 vs 0.637) with no in-distribution cost; on Reacher jac keeps even the threshold under all photometric/sensor shifts.
-  \item Why it works: plain invariance. Jacobian pinned to 1 limits how far a pixel change can move the latent; Reacher latent moves 10--20$\times$ less than sigreg's under light / floor 0.2 / white balance. sigreg's damage is mostly a shared affine offset (next paragraph).
+  \item Why it works: plain invariance. Jacobian pinned to 1 limits how far a pixel change can move the latent; Reacher latent moves 10--20$\times$ less than sigreg's under light / floor 0.2 / white balance. sigreg's damage is mostly a shared per-dimension offset (about 0.55 of its floor shift vs.\ 0.13--0.22 for jac), which jac's invariance removes in training.
   \item Thresholds: Dubins purple sign acc is 0.500 for every model (ranking survives, threshold does not); Reacher keeps it. On Dubins safety is drawn in colour, so recolouring moves exactly the safety feature; on Reacher the box is invisible, every intensity change is nuisance.
   \item Linear $h$ is the more robust readout (Dubins purple jac 0.970 vs 0.648 MLP; Reacher camera shift 0.860 vs 0.506).
   \item Where jac breaks (Reacher floor $\ge 0.3$, camera, occlusion; Dubins purple threshold): ranking survives longer than threshold; failure is by shift \emph{size} (sets up sec.~\ref{sec:adv}).
   \item Other world models: each fails on some Dubins shift, jac on none (ranking). SafeDreamer loses colour and rotation (0.436 / 0.554) and keeps shape; jac on SafeDreamer does not fix it (0.496 / 0.619) --- the regularizer's effect is not architecture-free (target 1 does not transfer to the RSSM encoder; \texttt{dreamerdino.md}). DINO-WM (frozen foundation encoder) keeps colour and rotation (0.993 / 0.978) but its shape threshold collapses (sign acc 0.500); on imagined latents it holds colour better than jac (25-step AUC 0.91 vs.\ $\approx 0.5$).
   \item Reacher: SafeDreamer's $h$ is at least as robust as jac's under every listed shift (floor 0.3 0.613 vs 0.500; exposure 0.989 vs 0.735); jac's advantage on Reacher is in planning (sec.~\ref{sec:cem}), not in reading the box.
   \item \todo{Fig: Reacher floor-$\alpha$ sweep of sign acc / AUC per model; first threshold lost, then ranking.}
-\end{itemize}
-
-\paragraph{Baseline: test-time adaptation is not a substitute for jac.}
-Label-free BatchNorm adaptation (BN): re-estimate the running statistics of LeWM's two BatchNorm layers on unlabeled \emph{safe} frames of the shifted condition (Reacher 2000, Dubins 500); weights and $h$ unchanged. Table~\ref{tab:bn_baseline} (appendix).
-\begin{itemize}
-  \item BN brings sigreg to jac's level only under small photometric shifts (Reacher floor 0.1--0.3: CCEM 0.38 / 0.18 $\to$ 0.14 / 0.60 at floor 0.3): there sigreg's damage is mostly one shared per-dimension offset (about 0.55 of its floor shift vs.\ 0.13--0.22 for jac).
-  \item Elsewhere it does not close the gap: lighting / exposure / occlusion barely move, camera shift gets worse (0.16 $\to$ 0.50 collision), Dubins purple $K=15$ stays at 40--50\% vs.\ jac's 19--22\%.
-  \item BN gives jac nothing: jac's invariance already removed the shared offset during training. Framing: jac does what test-time adaptation does, without test-time data, and also where it cannot.
 \end{itemize}
 
 %=====================================================================
@@ -219,7 +211,7 @@ jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  \\
   \item Imagined-state training (gpimag) is the best margin function on jac-base models: imagined false-safe gpfail $\to$ gpimag: jac+pull 0.240 $\to$ 0.093, sigreg 0.968 $\to$ 0.302.
   \item Pull: jac+pull $\approx$ jac with MLP margins (buffer 1.6\% vs 7.1\%, gpimag 0.8\% vs 0.6\%). \todo{say whether pull is kept; pull target 1 was never tuned.}
   \item Negative: adv$_h$ on top hurts the CBF in distribution with every margin (jac+pull+adv$_h$ gpfail 10.0\% vs 2.4\%, gpimag 2.1\% vs 0.8\% at lower success). Linear margins block the goal (success 0.16--0.52).
-  \item OOD (Table~\ref{tab:cbf_ood}, appendix) follows the same reach story as CEM: diamond (in reach) works for jac / jac+pull (3--4\%) and SafeDreamer (2.9\%), not sigreg (43\%); purple (out of reach) gives no-filter collision for every model incl.\ SafeDreamer (51\%). Label-free test-time adaptation halves jac's purple collision (Appendix~\ref{app:bn}).
+  \item OOD (Table~\ref{tab:cbf_ood}, appendix) follows the same reach story as CEM: diamond (in reach) works for jac / jac+pull (3--4\%) and SafeDreamer (2.9\%), not sigreg (43\%); purple (out of reach) gives no-filter collision for every model incl.\ SafeDreamer (51\%).
   \item \todo{Fig: example CBF trajectories, jac vs sigreg, red / diamond / purple.}
 \end{itemize}
 
@@ -305,7 +297,7 @@ camera zoom & 0.899 / 0.106 / 0.040 & 0.905 / 0.092 / 0.021 \\
 \begin{itemize}
   \item jac: needed for any safety constraint (CEM or CBF) to survive appearance shift on LeWM; robust across all three Dubins shifts where SafeDreamer and DINO-WM each fail one; matches DINO-WM's planning safety without a pretrained encoder. Fails when the shift is large.
   \item Adversarial on top: helps planning only with reach $\times$ headroom; varying $\varepsilon$ extends reach; the adversary's target shifts which shifts are in reach. Reach must be read where the planner reads $h$.
-  \item Test-time BN adaptation: a baseline that matches jac only under small photometric shifts; not a substitute.
+  \item One sentence, test-time alternative: re-estimating normalization statistics on unlabeled shifted frames recovers only the shared offset that jac already removes in training (it lifts sigreg to jac's level under small photometric shifts) and does not help where the latent loses state information (Appendix~\ref{app:bn}).
   \item Detection covers what robustness cannot reach; in-support aliasing remains.
   \item \todo{Limitations: single WM seed on Reacher and for Dubins jac+adv$_h$; CBF single seed; cross-model Dubins CEM protocol-unmatched; purple beyond reach of every training-time method.}
 \end{itemize}
