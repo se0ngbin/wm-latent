@@ -247,23 +247,25 @@ occlusion & MLP &  & & & & \\
 \end{table}
 
 \begin{table}[t]\centering\small
-\caption{Reach: median $|\Delta h|$ under the shift / safe--unsafe gap of $h$, jac $\to$ model (400 held-out states; ratio $<1$ = model is more robust). From \texttt{adv\_align.py} (reacher-results Table 31 and varying-radius section).}
+\caption{Reach: median $|\Delta h|$ under the shift / safe--unsafe gap of $h$, jac $\to$ model (400 held-out states; ratio $<1$ = model is more robust). From \texttt{adv\_align.py} (reacher-results Table 31 and varying-radius section; whole-latent columns: \texttt{MODEL2=rc\_jac\_safeadv\_latent[\_epsmix]}, logs \texttt{reacher\_eval\_logs/adv\_align\_*.log}, 2026-11-11). Blank = not run.}
 \label{tab:reach}
-\begin{tabular}{llccc}
+\begin{tabular}{llccccc}
 \toprule
-Benchmark & Shift & jac & jac+adv$_h$ & jac+adv$_h$, varying $\varepsilon$ \\
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){6-7}
+Benchmark & Shift & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
 \midrule
-Reacher & exposure & 0.078 & 0.003 &  \\
-Reacher & light & 0.015 & 0.003 &  \\
-Reacher & floor 0.2 & 0.010 & 0.004 &  \\
-Reacher & camera shift & 0.200 & 0.099 & 0.107 \\
-Reacher & floor 0.3 & 0.325 & 0.423 & 0.007 \\
-Reacher & floor 0.4 & 0.860 & 0.721 & 0.075 \\
-Reacher & occlusion & 0.086 & 0.121 & 0.022 \\
-Reacher & camera tilt & 0.340 & 0.337 & 0.505 \\
-Dubins & diamond & 0.040 & 0.007 & \\
-Dubins & purple & 0.343 & 0.446 & \\
-Dubins & rot.\ 90° & 0.145 & 0.149 & \\
+Reacher & exposure & 0.078 & 0.003 & 0.005  &  & 0.003  \\
+Reacher & light & 0.015 & 0.003 & 0.003  &  & 0.003  \\
+Reacher & floor 0.2 & 0.010 & 0.004 & 0.003  &  & 0.003  \\
+Reacher & camera shift & 0.200 & 0.099 & 0.104  & 0.107 & 0.123  \\
+Reacher & floor 0.3 & 0.325 & 0.423 & 0.058  & 0.007 & 0.008  \\
+Reacher & floor 0.4 & 0.860 & 0.721 & 0.417  & 0.075 & 0.262  \\
+Reacher & occlusion & 0.086 & 0.121 & 0.093  & 0.022 & 0.019  \\
+Reacher & camera tilt & 0.340 & 0.337 & 0.407  & 0.505 & 0.309  \\
+Dubins & diamond & 0.040 & 0.007 & & & \\
+Dubins & purple & 0.343 & 0.446 & & & \\
+Dubins & rot.\ 90° & 0.145 & 0.149 & & & \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -272,17 +274,18 @@ Dubins & rot.\ 90° & 0.145 & 0.149 & \\
 
 \begin{itemize}
   \item Dubins (negative): jac+adv$_h$ (1 seed) is worse than jac at $K=10$ and $K=15$ under every OOD condition (e.g.\ $K=10$ purple CCEM-MLP 38\% vs 14\%), despite better real-frame AUC (Table~\ref{tab:dubins_auc}). Same for jac+pull+adv$_h$ (3 seeds). Over the 21-model grid no model beats jac in paired CCEM. 200-paired-episode test: adv$_h$ encoder-only variants collide $2$--$4\times$ more than jac on red.
-  \item Why Dubins fails: (i) no Dubins shift is in the adversary's band --- purple moves jac's $h$ by 0.34 of the gap (out of reach), rotation is a viewpoint change (wrong type), diamond is in reach but has no headroom; (ii) Dubins draws safety in colour, so intensity invariance overlaps the safety signal and costs the predictor $1.7$--$6\times$ prediction loss (vs.\ $\approx 1\%$ on Reacher); (iii) imagined OOD states lose distance info anyway (sec.~\ref{sec:limits}).
+  \item Why Dubins fails: (i) no Dubins shift is in the adversary's band --- purple moves jac's $h$ by 0.34 of the gap (out of reach), rotation is a viewpoint change (out of reach for the head-only adversary, $0.145 \to 0.149$), diamond is in reach but has no headroom; (ii) Dubins draws safety in colour, so intensity invariance overlaps the safety signal and costs the predictor $1.7$--$6\times$ prediction loss (vs.\ $\approx 1\%$ on Reacher); (iii) imagined OOD states lose distance info anyway (sec.~\ref{sec:limits}).
   \item Reacher fixed radius: adv$_h$ halves camera-shift collision at equal safe success (0.427 $\to$ 0.207, $p<0.001$; linear $p=0.020$). Under floor shifts it is a more conservative operating point, not a better one (fewer collisions because less goal reaching; floor 0.4 progress 0.27 vs 0.57). Why: $h$ is invariant, the goal latent is not.
-  \item Whole latent (adv$_z$): protects $h$ \emph{and} the goal cost $\Rightarrow$ camera shift 0.427 $\to$ 0.160 with higher safe success (0.313); floor 0.3 within reach (ratio 0.18). Also matches the earlier finding that the adversary must search the penalized quantity.
+  \item Whole latent (adv$_z$), fixed radius: penalizing the whole latent also protects the goal cost, and here that wins: camera shift 0.427 $\to$ 0.160 with higher safe success (0.313); floor 0.3 within reach (ratio 0.18). Also matches the earlier finding that the adversary must search the penalized quantity.
+  \item No fixed ordering of targets: the adversary's target trades reach on one shift against another. Fixed radius: whole latent $>$ head-only under camera shift. Varying radius: head-only $>$ whole latent at floor 0.4 (0.087 vs.\ 0.200 collision), whole latent $>$ head-only under camera tilt. Whole latent has a small in-distribution cost.
   \item Varying radius: extends reach (floor 0.3 $|\Delta h|$ 0.325 $\to$ 0.007, floor 0.4 0.860 $\to$ 0.075, occlusion 0.086 $\to$ 0.022) and that predicts planning: floor 0.4 0.340 / 0.100 $\to$ 0.087 / 0.653 ($p<0.001$ both), floor 0.3 0.233 / 0.447 $\to$ 0.040 / 0.673, occlusion (50 pairs) 0.24 / 0.44 $\to$ 0.10 / 0.62. Gains on both axes because near-invariance to the floor also fixes the goal cost. No in-distribution or prediction-loss cost.
-  \item Where it does not work: camera tilt gets worse with varying $\varepsilon$ (0.373 $\to$ 0.480; linear $p=0.018$) --- the reach analysis predicted this (0.340 $\to$ 0.505). Viewpoint change scrambles state info (linear joint readout error 50--110° vs 1° clean); pixel-intensity adversary is the wrong type.
-  \item Account: reach (shift size $\lesssim 0.2$ of the gap for 8/255; larger with varying $\varepsilon$) $\times$ headroom (jac must be hurt) $\times$ type (intensity, not viewpoint). Alignment of the shift with the adversary's directions does not predict gains (0.17--0.43 for every shift).
+  \item Where it does not work: camera tilt gets worse with varying-radius adv$_h$ (0.373 $\to$ 0.480; linear $p=0.018$) --- the reach analysis predicted this (0.340 $\to$ 0.505). Viewpoint change scrambles state info under jac (linear joint readout error 50--110° vs.\ 1° clean), and the head-only adversary does not bring it back.
+  \item Account: reach $\times$ headroom. Reach = how far the shift moves jac's $h$ relative to what the adversary covers ($\lesssim 0.2$ of the gap at 8/255; more with varying $\varepsilon$; which shifts depends on the adversary's target). Headroom = jac must be hurt enough to collide. Reach, measured per model, predicts the planning gains for every intensity-type shift (incl.\ the whole-latent models: floor 0.4 0.262 vs.\ 0.075 for varying adv$_h$ matches its weaker planning; occlusion 0.019 in reach and planning good). Viewpoint change stays out of reach for every adversary we trained (camera tilt ratio 0.91--1.48), but the whole-latent models still plan better under tilt (see below), which reach does not explain. Alignment of the shift with the adversary's directions does not predict gains either (0.17--0.43 for every shift).
   \item Varying-radius whole latent (150 pairs, exact McNemar vs.\ jac): floor 0.3 matches varying-radius adv$_h$ (MLP 0.233 / 0.447 $\to$ 0.040 / 0.653; collision 0 / 29, $p<0.001$; safe success $p<0.001$); floor 0.4 only partly (MLP 0.200 / 0.333, collision $p=0.004$; varying adv$_h$ 0.087 / 0.653); camera shift lowers collision (MLP 0.427 $\to$ 0.233, $p<0.001$; linear 0.253 $\to$ 0.107, $p=0.001$) but not safe success (0.207 $\to$ 0.140, n.s.), weaker than fixed-radius whole latent (0.160 / 0.313).
-  \item Camera tilt contradicts the open prediction: it improves instead of getting worse (linear 0.293 $\to$ 0.140, $p=0.001$, safe success $p=0.043$; MLP 0.373 $\to$ 0.280, $p=0.087$), unlike varying-radius adv$_h$ (0.420). \todo{explain: reach for tilt under this model not measured (\texttt{adv\_align.py MODEL2}); whole-latent target may keep state info a head-only adversary lets go.}
+  \item Camera tilt is the exception to the reach account. Both whole-latent models plan better than jac under tilt (varying $\varepsilon$: linear 0.293 $\to$ 0.140, $p=0.001$, safe success $p=0.043$; MLP 0.373 $\to$ 0.280, $p=0.087$; fixed radius: MLP 0.373 $\to$ 0.240, linear 0.293 $\to$ 0.227), yet neither brings tilt within reach on real frames ($|\Delta h|$/gap 0.340 $\to$ 0.407 fixed, 0.309 varying; latent shift ratio 0.92--0.98). So the tilt gain does not come from a more invariant $h$ on the current frame. \todo{candidates, untested: $h$ on predicted states under tilt (\texttt{adv\_depth\_diag.py}), goal-cost invariance, plan-level veto curve; or single-seed noise (MLP $p=0.087$).}
   \item Cost: in distribution (50 pairs) CCEM-MLP 0.10 / 0.72 vs.\ jac 0.06 / 0.58; linear safe success 0.38 vs.\ 0.44 (per-shift table). \todo{prediction loss at epoch 10.} One training seed.
   \item \todo{seeds: Reacher jac s1 (ETA $\approx$ 5 PM PST Nov 11), jac+adv$_h$ varying s1 (ETA $\approx$ 6 AM PST Nov 12); camera-shift and floor claims need these.}
-  \item \todo{Dubins: decide whether to train jac+adv$_z$ / varying-$\varepsilon$ on Dubins (prediction: larger radius may bring purple within reach but at higher predictor cost since colour carries safety).}
+  \item Scope: the positive adversarial result is Reacher-only. On Dubins only fixed-radius head-only variants (jac+adv$_h$, jac+pull+adv$_h$) were trained, so Dubins is the case where the conditions are not met, not a test of extended reach. \todo{Dubins: decide whether to train jac+adv$_z$ / varying-$\varepsilon$ on Dubins (prediction: larger radius may bring purple within reach but at higher predictor cost since colour carries safety).}
 \end{itemize}
 
 %=====================================================================
@@ -445,8 +448,8 @@ rot.\ 90° &  &  &  &  &  &  \\
 %=====================================================================
 \subsection{Summary of when things work}
 \begin{itemize}
-  \item jac: always helps OOD perception of safety; needed for any safety constraint (CEM or CBF) to survive appearance shift. Fails when the shift is large or a viewpoint change.
-  \item Adversarial on top: helps planning only with reach $\times$ headroom $\times$ right perturbation type; whole latent $>$ head-only because it also protects the goal cost; varying $\varepsilon$ extends reach. Never helps on Dubins (colour = safety; no shift in band).
+  \item jac: always helps OOD perception of safety; needed for any safety constraint (CEM or CBF) to survive appearance shift. Fails when the shift is large (incl.\ viewpoint changes).
+  \item Adversarial on top: helps planning only with reach $\times$ headroom; varying $\varepsilon$ extends reach; the adversary's target (head vs.\ whole latent) shifts which shifts are in reach, with no uniform winner. On Dubins the fixed-radius head-only variants never help (colour = safety; no shift in band); extended-reach variants untested there.
   \item Pull: neutral in CEM, roughly neutral-to-helpful in the CBF; untuned target.
   \item Detection: shifts beyond reach leave the latent's support and are caught label-free (kNN, clean 99th-percentile threshold); moderate in-support aliasing (camera zoom) is not. Robustness within reach, abstention beyond it.
   \item Test-time BN adaptation: a baseline that matches jac only under small photometric shifts (shared offset, which jac already removes during training); not a substitute.
