@@ -138,7 +138,7 @@ jac+pull+adv$_h$ & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 7
 \end{table}
 
 \begin{table}[t]\centering\small
-\caption{Reacher CEM, 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column \todo{fills when \texttt{rc\_jac\_safeadv\_latent\_epsmix} finishes (ETA $\approx$ 6 AM PST Nov 11)}.}
+\caption{Reacher CEM, 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
 \label{tab:reacher_cem50}
 \begin{tabular}{lcccccc}
 \toprule
@@ -146,29 +146,29 @@ jac+pull+adv$_h$ & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 7
 \cmidrule(lr){6-7}
 Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
 \midrule
-in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & \\
+in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & 0.10 / 0.72 \\
 \midrule
-floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & \\
-floor 0.2 & 0.46 / 0.24 & 0.08 / 0.68 & 0.04 / 0.64 & 0.08 / 0.64 & 0.06 / 0.56 & \\
-floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & \\
-floor 0.4 & 0.42 / 0.18 & 0.24 / 0.28 & 0.20 / 0.10 & 0.36 / 0.20 & 0.04 / 0.56 & \\
-light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & \\
-exposure & 0.28 / 0.12 & 0.08 / 0.64 & 0.06 / 0.66 & 0.06 / 0.70 & 0.04 / 0.58 & \\
-white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & \\
-JPEG & 0.26 / 0.18 & 0.04 / 0.56 & 0.06 / 0.52 & 0.06 / 0.64 & 0.08 / 0.60 & \\
-sensor noise & 0.12 / 0.60 & 0.06 / 0.66 & 0.06 / 0.60 & 0.08 / 0.66 & 0.06 / 0.64 & \\
-blur & 0.04 / 0.72 & 0.08 / 0.62 & 0.06 / 0.66 & 0.08 / 0.54 & 0.06 / 0.66 & \\
-camera zoom & 0.28 / 0.42 & 0.12 / 0.64 & 0.12 / 0.66 & 0.08 / 0.70 & 0.10 / 0.68 & \\
-camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & \\
-camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & \\
-occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & \\
+floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & 0.06 / 0.66 \\
+floor 0.2 & 0.46 / 0.24 & 0.08 / 0.68 & 0.04 / 0.64 & 0.08 / 0.64 & 0.06 / 0.56 & 0.10 / 0.70 \\
+floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & 0.08 / 0.70 \\
+floor 0.4 & 0.42 / 0.18 & 0.24 / 0.28 & 0.20 / 0.10 & 0.36 / 0.20 & 0.04 / 0.56 & 0.22 / 0.34 \\
+light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & 0.10 / 0.66 \\
+exposure & 0.28 / 0.12 & 0.08 / 0.64 & 0.06 / 0.66 & 0.06 / 0.70 & 0.04 / 0.58 & 0.06 / 0.64 \\
+white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & 0.06 / 0.68 \\
+JPEG & 0.26 / 0.18 & 0.04 / 0.56 & 0.06 / 0.52 & 0.06 / 0.64 & 0.08 / 0.60 & 0.08 / 0.64 \\
+sensor noise & 0.12 / 0.60 & 0.06 / 0.66 & 0.06 / 0.60 & 0.08 / 0.66 & 0.06 / 0.64 & 0.10 / 0.70 \\
+blur & 0.04 / 0.72 & 0.08 / 0.62 & 0.06 / 0.66 & 0.08 / 0.54 & 0.06 / 0.66 & 0.08 / 0.66 \\
+camera zoom & 0.28 / 0.42 & 0.12 / 0.64 & 0.12 / 0.66 & 0.08 / 0.70 & 0.10 / 0.68 & 0.12 / 0.68 \\
+camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & 0.32 / 0.12 \\
+camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & 0.18 / 0.18 \\
+occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & 0.06 / 0.58 \\
 \midrule
-weaker motors (gear 0.7) & 0.04 / 0.48 & 0.04 / 0.38 & 0.06 / 0.38 & 0.04 / 0.42 & 0.04 / 0.40 & \\
-damping $\times 10$ & 0.02 / 0.06 & 0.02 / 0.06 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.04 & \\
-1-step latency & 0.08 / 0.52 & 0.12 / 0.48 & 0.10 / 0.48 & 0.16 / 0.52 & 0.08 / 0.46 & \\
-actuation noise & 0.22 / 0.30 & 0.22 / 0.30 & 0.24 / 0.22 & 0.28 / 0.30 & 0.20 / 0.32 & \\
+weaker motors (gear 0.7) & 0.04 / 0.48 & 0.04 / 0.38 & 0.06 / 0.38 & 0.04 / 0.42 & 0.04 / 0.40 & 0.04 / 0.48 \\
+damping $\times 10$ & 0.02 / 0.06 & 0.02 / 0.06 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.06 \\
+1-step latency & 0.08 / 0.52 & 0.12 / 0.48 & 0.10 / 0.48 & 0.16 / 0.52 & 0.08 / 0.46 & 0.16 / 0.52 \\
+actuation noise & 0.22 / 0.30 & 0.22 / 0.30 & 0.24 / 0.22 & 0.28 / 0.30 & 0.20 / 0.32 & 0.20 / 0.30 \\
 \midrule
-raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & \\
+raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & 0.46 / 0.46 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -233,14 +233,14 @@ Dubins & rot.\ 90°, $K=15$, MLP $h$ &  &  &  \\
 \cmidrule(lr){6-7}
 Condition & $h$ & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
 \midrule
-floor 0.3 & MLP & 0.233 / 0.447 & 0.140 / 0.327 & 0.113 / 0.460 & 0.040 / 0.673 &  \\
-floor 0.3 & linear & 0.133 / 0.460 & 0.113 / 0.260 & 0.033 / 0.287 & 0.033 / 0.573 &  \\
-floor 0.4 & MLP & 0.340 / 0.100 & 0.227 / 0.060 & 0.327 / 0.160 & 0.087 / 0.653 &  \\
-floor 0.4 & linear & 0.320 / 0.100 & 0.213 / 0.067 & 0.300 / 0.153 & 0.060 / 0.587 &  \\
-camera shift & MLP & 0.427 / 0.207 & 0.207 / 0.207 & 0.160 / 0.313 & 0.287 / 0.193 &  \\
-camera shift & linear & 0.253 / 0.133 & 0.147 / 0.173 & 0.087 / 0.180 & 0.160 / 0.167 &  \\
-camera tilt & MLP & 0.373 / 0.087 & 0.313 / 0.120 & 0.240 / 0.140 & 0.480 / 0.047 &  \\
-camera tilt & linear & 0.293 / 0.067 & 0.220 / 0.127 & 0.227 / 0.127 & 0.420 / 0.067 &  \\
+floor 0.3 & MLP & 0.233 / 0.447 & 0.140 / 0.327 & 0.113 / 0.460 & 0.040 / 0.673 & 0.040 / 0.653 \\
+floor 0.3 & linear & 0.133 / 0.460 & 0.113 / 0.260 & 0.033 / 0.287 & 0.033 / 0.573 & 0.033 / 0.427 \\
+floor 0.4 & MLP & 0.340 / 0.100 & 0.227 / 0.060 & 0.327 / 0.160 & 0.087 / 0.653 & 0.200 / 0.333 \\
+floor 0.4 & linear & 0.320 / 0.100 & 0.213 / 0.067 & 0.300 / 0.153 & 0.060 / 0.587 & 0.073 / 0.160 \\
+camera shift & MLP & 0.427 / 0.207 & 0.207 / 0.207 & 0.160 / 0.313 & 0.287 / 0.193 & 0.233 / 0.140 \\
+camera shift & linear & 0.253 / 0.133 & 0.147 / 0.173 & 0.087 / 0.180 & 0.160 / 0.167 & 0.107 / 0.127 \\
+camera tilt & MLP & 0.373 / 0.087 & 0.313 / 0.120 & 0.240 / 0.140 & 0.480 / 0.047 & 0.280 / 0.133 \\
+camera tilt & linear & 0.293 / 0.067 & 0.220 / 0.127 & 0.227 / 0.127 & 0.420 / 0.067 & 0.140 / 0.140 \\
 occlusion & MLP &  & & & & \\
 \bottomrule
 \end{tabular}
@@ -278,7 +278,9 @@ Dubins & rot.\ 90° & 0.145 & 0.149 & \\
   \item Varying radius: extends reach (floor 0.3 $|\Delta h|$ 0.325 $\to$ 0.007, floor 0.4 0.860 $\to$ 0.075, occlusion 0.086 $\to$ 0.022) and that predicts planning: floor 0.4 0.340 / 0.100 $\to$ 0.087 / 0.653 ($p<0.001$ both), floor 0.3 0.233 / 0.447 $\to$ 0.040 / 0.673, occlusion (50 pairs) 0.24 / 0.44 $\to$ 0.10 / 0.62. Gains on both axes because near-invariance to the floor also fixes the goal cost. No in-distribution or prediction-loss cost.
   \item Where it does not work: camera tilt gets worse with varying $\varepsilon$ (0.373 $\to$ 0.480; linear $p=0.018$) --- the reach analysis predicted this (0.340 $\to$ 0.505). Viewpoint change scrambles state info (linear joint readout error 50--110° vs 1° clean); pixel-intensity adversary is the wrong type.
   \item Account: reach (shift size $\lesssim 0.2$ of the gap for 8/255; larger with varying $\varepsilon$) $\times$ headroom (jac must be hurt) $\times$ type (intensity, not viewpoint). Alignment of the shift with the adversary's directions does not predict gains (0.17--0.43 for every shift).
-  \item \todo{varying-radius whole-latent result (prediction: floor gains + camera-shift gain, tilt still worse).}
+  \item Varying-radius whole latent (150 pairs, exact McNemar vs.\ jac): floor 0.3 matches varying-radius adv$_h$ (MLP 0.233 / 0.447 $\to$ 0.040 / 0.653; collision 0 / 29, $p<0.001$; safe success $p<0.001$); floor 0.4 only partly (MLP 0.200 / 0.333, collision $p=0.004$; varying adv$_h$ 0.087 / 0.653); camera shift lowers collision (MLP 0.427 $\to$ 0.233, $p<0.001$; linear 0.253 $\to$ 0.107, $p=0.001$) but not safe success (0.207 $\to$ 0.140, n.s.), weaker than fixed-radius whole latent (0.160 / 0.313).
+  \item Camera tilt contradicts the open prediction: it improves instead of getting worse (linear 0.293 $\to$ 0.140, $p=0.001$, safe success $p=0.043$; MLP 0.373 $\to$ 0.280, $p=0.087$), unlike varying-radius adv$_h$ (0.420). \todo{explain: reach for tilt under this model not measured (\texttt{adv\_align.py MODEL2}); whole-latent target may keep state info a head-only adversary lets go.}
+  \item Cost: in distribution (50 pairs) CCEM-MLP 0.10 / 0.72 vs.\ jac 0.06 / 0.58; linear safe success 0.38 vs.\ 0.44 (per-shift table). \todo{prediction loss at epoch 10.} One training seed.
   \item \todo{seeds: Reacher jac s1 (ETA $\approx$ 5 PM PST Nov 11), jac+adv$_h$ varying s1 (ETA $\approx$ 6 AM PST Nov 12); camera-shift and floor claims need these.}
   \item \todo{Dubins: decide whether to train jac+adv$_z$ / varying-$\varepsilon$ on Dubins (prediction: larger radius may bring purple within reach but at higher predictor cost since colour carries safety).}
 \end{itemize}
@@ -429,21 +431,6 @@ rot.\ 90° &  &  &  &  &  &  \\
 \end{tabular}
 \end{table}
 
-\begin{table}[t]\centering\small
-\caption{Reacher CCEM with abstention (stop when the support detector fires on the current frame at a replan), 150 paired episodes, MLP $h$: collision / safe success / abstained. Blank = not run.}
-\label{tab:abstain}
-\begin{tabular}{lcccc}
-\toprule
-Condition & jac & jac + abstain & jac+adv$_h$, varying $\varepsilon$ & + abstain \\
-\midrule
-floor 0.5 &  &  &  &  \\
-floor 1 &  &  &  &  \\
-camera tilt &  &  &  &  \\
-camera zoom &  &  &  &  \\
-occlusion &  &  &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
 
 \begin{itemize}
   \item Claim: once a shift is too big for every model (floor $\ge 0.5$: $h$ calls everything safe and CCEM silently becomes raw CEM), it announces itself. Support flags 100\% of frames and catches all false-safe failures; over all 66 (model, shift) cells with bal acc $\le 0.85$ (six models incl.\ the official checkpoint) it catches $\ge 0.897$ of them, mostly 1.000.
@@ -451,7 +438,7 @@ occlusion &  &  &  &  \\
   \item Why: large shifts push the encoder off the training support, even for jac (invariance is local); the readout then extrapolates (all-safe). Detection and robustness are two sides of the same reach: within reach the latent stays put and $h$ works; beyond it the latent leaves and the detector fires.
   \item Prediction surprise is a poor detector (Appendix~\ref{app:surprise}): catch 0.000--0.500 for the jac family up to floor 0.5, 0.000 for jac+adv$_h$ at floor 0.4--0.75. The predictor stays self-consistent on shifted latents (maps the shifted frame to the shifted next frame), so dynamics error does not reveal an encoder shift.
   \item The undetected case: camera zoom. Every jac-family model degrades moderately (bal acc 0.897--0.905) and support catches 0.000--0.176 of failures: the zoomed frame lands among training latents of other poses (in-support aliasing, the Dubins colour failure mode). This is the regime only robustness training addresses.
-  \item Pipeline: robustness training for shifts within reach; a support check once per replan turns shifts beyond reach into an abstention instead of a silent all-safe planner; residual risk = moderate in-support aliasing.
+  \item Pipeline: robustness training for shifts within reach; a support check once per replan could turn shifts beyond reach into an abstention instead of a silent all-safe planner; residual risk = moderate in-support aliasing. Closed-loop CCEM with abstention not run (future work).
   \item Contrast with test-time BN adaptation (Table~\ref{tab:bn_baseline}): BN tries to repair beyond-reach shifts and mostly cannot; detection only needs to notice them.
 \end{itemize}
 
