@@ -317,6 +317,56 @@ Table 4. Median $h$ on safe / unsafe states, red and purple.
 - Diamond and rotated 90°: equal AUC, and the linear margin function has higher sign accuracy on every jac-base model (rotated 90°: +0.03 to +0.05, e.g. jac 0.862 -> 0.899, jac+adv_h encoder-only 0.905 -> 0.958). Its red values are symmetric around 0 (about ±0.35) where the GP one's are not (about +1.6 / −0.5).
 - sigreg is beyond either readout: rotated 90° is inverted for both (0.056, 0.097), the support failure of Diagnostics.
 
+## Red to purple color sweep (2026-11-11)
+
+Purple saturates both metrics: every model's threshold is gone (balanced sign accuracy 0.500) while the linear margin function still ranks purple at 0.96-0.99 on the jac-base models. To see where each model breaks, as in the Reacher floor sweep, the obstacle color is interpolated, $C(\alpha) = \mathrm{round}((1-\alpha)\,(255, 0, 0) + \alpha\,(128, 0, 128))$, so $\alpha = 1$ is the purple view. Models: sigreg, jac, jac+adv_h (3 WM seeds for sigreg and jac; jac seed 2 = `jacw1_s100`; jac+adv_h seeds 1 and 2 are not trained, so n = 1). Margin functions: the real+imag GP and linear ones (`margin_{gp,lin}_imag_red_s0.pt`, trained by `train_gp_margin_imag_dubins.py` where missing). Real: the 4000 seed-1 uniform states of `eval_head_color_dubins.py`. Imagined: the 600 held-out start frames, CEM-style 25-step plans and simulator labels of `diag_imag_color_dubins.py`, start frame rendered at $C(\alpha)$; AUC pooled over all 25 steps. Header: $\alpha$ (mean pixel change vs red, 0-255). Script `le-wm/scripts/color_sweep_dubins.py`, launcher `color_sweep_dubins.sh`, tables `color_sweep_tables.py` (also prints sign accuracy on imagined states and AUC at steps 1, 5, 10, 25), logs `run_logs/color_sweep/`. The $\alpha = 0$ and $\alpha = 1$ rows reproduce the existing red and purple logs exactly (checked on jac seed 3072).
+
+Table S1. Real frames, GP margin function: AUC.
+
+| WM | 0 (0.0) | 0.1 (1.5) | 0.2 (2.9) | 0.3 (4.4) | 0.4 (6.0) | 0.5 (7.4) | 0.75 (11.2) | 1 (15.0) |
+|---|---|---|---|---|---|---|---|---|
+| sigreg (n=3) | 0.981 ± 0.006 | 0.839 ± 0.183 | 0.653 ± 0.249 | 0.364 ± 0.237 | 0.265 ± 0.148 | 0.234 ± 0.111 | 0.236 ± 0.107 | 0.276 ± 0.115 |
+| jac (n=3) | 0.998 ± 0.000 | 0.997 ± 0.000 | 0.994 ± 0.001 | 0.991 ± 0.000 | 0.980 ± 0.005 | 0.936 ± 0.026 | 0.820 ± 0.076 | 0.575 ± 0.082 |
+| jac+adv_h (n=1) | 0.998 | 0.998 | 0.998 | 0.993 | 0.867 | 0.679 | 0.779 | 0.276 |
+
+Table S2. Real frames, GP margin function: balanced sign accuracy (0.500 = every state on one side of 0).
+
+| WM | 0 (0.0) | 0.1 (1.5) | 0.2 (2.9) | 0.3 (4.4) | 0.4 (6.0) | 0.5 (7.4) | 0.75 (11.2) | 1 (15.0) |
+|---|---|---|---|---|---|---|---|---|
+| sigreg (n=3) | 0.941 ± 0.007 | 0.772 ± 0.192 | 0.681 ± 0.137 | 0.545 ± 0.060 | 0.418 ± 0.101 | 0.378 ± 0.164 | 0.482 ± 0.026 | 0.500 ± 0.000 |
+| jac (n=3) | 0.975 ± 0.003 | 0.973 ± 0.001 | 0.965 ± 0.006 | 0.955 ± 0.005 | 0.932 ± 0.016 | 0.722 ± 0.157 | 0.672 ± 0.110 | 0.524 ± 0.040 |
+| jac+adv_h (n=1) | 0.966 | 0.966 | 0.965 | 0.940 | 0.643 | 0.482 | 0.663 | 0.500 |
+
+Table S3. Real frames, linear margin function: AUC / balanced sign accuracy.
+
+| WM | 0 (0.0) | 0.1 (1.5) | 0.2 (2.9) | 0.3 (4.4) | 0.4 (6.0) | 0.5 (7.4) | 0.75 (11.2) | 1 (15.0) |
+|---|---|---|---|---|---|---|---|---|
+| sigreg (n=3) | 0.975 ± 0.005 / 0.923 ± 0.007 | 0.962 ± 0.009 / 0.754 ± 0.183 | 0.947 ± 0.017 / 0.676 ± 0.168 | 0.912 ± 0.038 / 0.590 ± 0.087 | 0.862 ± 0.062 / 0.516 ± 0.014 | 0.821 ± 0.078 / 0.505 ± 0.007 | 0.729 ± 0.110 / 0.499 ± 0.001 | 0.676 ± 0.103 / 0.489 ± 0.016 |
+| jac (n=3) | 0.996 ± 0.001 / 0.972 ± 0.001 | 0.996 ± 0.000 / 0.966 ± 0.007 | 0.995 ± 0.001 / 0.945 ± 0.020 | 0.994 ± 0.001 / 0.913 ± 0.037 | 0.994 ± 0.003 / 0.831 ± 0.134 | 0.993 ± 0.003 / 0.701 ± 0.166 | 0.989 ± 0.004 / 0.503 ± 0.004 | 0.973 ± 0.012 / 0.500 ± 0.000 |
+| jac+adv_h (n=1) | 0.997 / 0.966 | 0.997 / 0.966 | 0.997 / 0.964 | 0.996 / 0.937 | 0.989 / 0.759 | 0.781 / 0.501 | 0.816 / 0.500 | 0.988 / 0.500 |
+
+Table S4. Imagined latents (25-step rollouts from a start frame at $C(\alpha)$), AUC over all steps: GP / linear.
+
+| WM | 0 (0.0) | 0.1 (1.5) | 0.2 (2.9) | 0.3 (4.4) | 0.4 (6.0) | 0.5 (7.4) | 0.75 (11.2) | 1 (15.0) |
+|---|---|---|---|---|---|---|---|---|
+| sigreg (n=3) | 0.828 ± 0.010 / 0.814 ± 0.006 | 0.611 ± 0.067 / 0.615 ± 0.071 | 0.467 ± 0.017 / 0.474 ± 0.015 | 0.491 ± 0.046 / 0.463 ± 0.018 | 0.494 ± 0.055 / 0.456 ± 0.021 | 0.492 ± 0.058 / 0.449 ± 0.019 | 0.490 ± 0.059 / 0.439 ± 0.013 | 0.487 ± 0.059 / 0.433 ± 0.003 |
+| jac (n=3) | 0.978 ± 0.000 / 0.970 ± 0.001 | 0.959 ± 0.017 / 0.952 ± 0.016 | 0.891 ± 0.029 / 0.884 ± 0.025 | 0.806 ± 0.011 / 0.797 ± 0.011 | 0.663 ± 0.048 / 0.664 ± 0.031 | 0.512 ± 0.038 / 0.531 ± 0.039 | 0.421 ± 0.013 / 0.425 ± 0.018 | 0.434 ± 0.013 / 0.430 ± 0.008 |
+| jac+adv_h (n=1) | 0.965 / 0.938 | 0.964 / 0.937 | 0.964 / 0.935 | 0.961 / 0.932 | 0.901 / 0.880 | 0.428 / 0.426 | 0.441 / 0.445 | 0.454 / 0.460 |
+
+Table S5. Imagined latents, GP margin function: AUC at step 10 of the rollout.
+
+| WM | 0 (0.0) | 0.1 (1.5) | 0.2 (2.9) | 0.3 (4.4) | 0.4 (6.0) | 0.5 (7.4) | 0.75 (11.2) | 1 (15.0) |
+|---|---|---|---|---|---|---|---|---|
+| sigreg (n=3) | 0.873 ± 0.019 | 0.700 ± 0.066 | 0.464 ± 0.133 | 0.512 ± 0.075 | 0.512 ± 0.059 | 0.502 ± 0.050 | 0.487 ± 0.041 | 0.498 ± 0.028 |
+| jac (n=3) | 0.991 ± 0.001 | 0.988 ± 0.003 | 0.975 ± 0.003 | 0.949 ± 0.009 | 0.819 ± 0.036 | 0.597 ± 0.060 | 0.534 ± 0.062 | 0.515 ± 0.078 |
+| jac+adv_h (n=1) | 0.980 | 0.979 | 0.978 | 0.968 | 0.935 | 0.544 | 0.536 | 0.608 |
+
+- Purple is not a uniquely hard color: it is past every model's break point. The red to purple change is 15 pixel levels on average, about a fifth of Reacher's floor change (71.7), and each model breaks well before it.
+- sigreg breaks almost at once. By $\alpha = 0.2$ (2.9 pixel levels) the GP margin function's ranking is gone (0.653 ± 0.249, inverting further at larger $\alpha$) and imagined AUC is at chance (0.467 ± 0.017). The linear one keeps a degrading ranking on real frames (0.912 at $\alpha = 0.3$, 0.676 at purple) but loses the threshold by $\alpha = 0.4$ and the imagined ranking by $\alpha = 0.2$.
+- jac degrades gradually. On real frames the GP threshold holds to $\alpha = 0.4$ (sign accuracy 0.932 ± 0.016) and the linear ranking never breaks (0.973 ± 0.012 at purple); the threshold goes between $\alpha = 0.4$ and $0.75$ depending on the seed. Imagined states go first: AUC 0.891 at $\alpha = 0.2$, 0.806 at 0.3, chance by 0.5, while real frames are almost untouched at those $\alpha$.
+- jac+adv_h (one seed) has a plateau, then a cliff. Up to $\alpha = 0.3$ it is flat on every metric, including imagined AUC (0.961 vs jac 0.806 ± 0.011 at $\alpha = 0.3$; 0.901 vs 0.663 ± 0.048 at 0.4), consistent with the adversary's small L∞ radius covering small shifts. Between $\alpha = 0.4$ and $0.5$ it falls below jac (imagined 0.428 vs 0.512) and its real-frame metrics turn non-monotone (linear AUC 0.781 at $\alpha = 0.5$, 0.988 at purple). Needs the other two seeds before reading more into the shape.
+- Ordering where models separate most: $\alpha = 0.3$-$0.4$, imagined AUC jac+adv_h > jac > sigreg (0.961 / 0.806 / 0.491 at 0.3 with the GP margin function). These are the candidate colors for CCEM; at purple every model's imagined ranking is at chance, so purple CEM cannot separate them.
+
 # Dubins: planning with soft-cost CEM
 
 CEM with the margin function's unsafe region as an extra cost on the imagined rollout: $\text{cost} = \text{goal MSE} + w \sum_t \mathrm{relu}(-h(\hat z_t)) + C\,\mathbb{1}[\min_t h(\hat z_t) < 0]$. Unsafe-looking candidates rank badly instead of being removed (the earlier hard filter, `safe_solver.py` gauge map, collided more than plain CEM). Safety-first adds $C = 10^4$ (larger than any goal cost, about 130), so every candidate $h$ calls safe beats every unsafe one, while the hinge still ranks the unsafe ones; graded has $C = 0$. Code: `SoftSafeCEMSolver` in `le-wm/safe_solver.py` (`solver=soft_cem`), runs `le-wm/scripts/soft_cem*.sh`, logs `run_logs/softcem_<model>_w<w>[_c<C>]_<condition>.log`.
