@@ -115,10 +115,30 @@ jac+pull+adv$_h$ & 93 / 11 & 73 / 43 & 66 / 42 & 84 / 11 & 65 / 25 & 61 / 32 & 8
 \end{tabular}
 \end{table}
 
-
+\begin{table}[t]\centering\small
+\caption{Dubins CEM, goal distance $K=15$ (secondary), as Table~\ref{tab:dubins_k10}.}
+\label{tab:dubins_k15}
+\begin{tabular}{lccccccccc}
+\toprule
+ & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & \multicolumn{3}{c}{CCEM, linear $h$} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+Model & red & purple & rot. & red & purple & rot. & red & purple & rot. \\
+\midrule
+sigreg & 88 / 25 & 39 / 69 & 45 / 56 & 87 / 25 & 40 / 71 & 45 / 56 & 85 / 27 & 40 / 67 & 43 / 57 \\
+jac & 93 / 12 & 22 / 74 & 46 / 69 & 87 / 13 & 43 / 32 & 50 / 33 & 90 / 7 & 49 / 31 & 53 / 37 \\
+jac+adv$_h^\dagger$ & 86 / 18 & 10 / 82 & 16 / 78 & 80 / 22 & 26 / 62 & 20 / 62 & 90 / 12 & 28 / 50 & 26 / 62 \\
+jac+adv$_z$ &  &  &  &  &  &  &  &  &  \\
+jac+adv$_h$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
+jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
+\midrule
+jac+pull & 83 / 33 & 29 / 55 & 39 / 41 & 77 / 25 & 24 / 42 & 29 / 36 & 87 / 17 & 33 / 37 & 41 / 31 \\
+jac+pull+adv$_h$ & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 73 / 31 & 30 / 55 & 32 / 48 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[t]\centering\small
-\caption{Reacher CEM, key shifts (all shifts incl.\ sensor and dynamics: Table~\ref{tab:reacher_cem50_full}), 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
+\caption{Reacher CEM, 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
 \label{tab:reacher_cem50}
 \begin{tabular}{lcccccc}
 \toprule
@@ -129,12 +149,24 @@ Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$
 in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & 0.10 / 0.72 \\
 \midrule
 floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & 0.06 / 0.66 \\
+floor 0.2 & 0.46 / 0.24 & 0.08 / 0.68 & 0.04 / 0.64 & 0.08 / 0.64 & 0.06 / 0.56 & 0.10 / 0.70 \\
 floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & 0.08 / 0.70 \\
+floor 0.4 & 0.42 / 0.18 & 0.24 / 0.28 & 0.20 / 0.10 & 0.36 / 0.20 & 0.04 / 0.56 & 0.22 / 0.34 \\
 light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & 0.10 / 0.66 \\
+exposure & 0.28 / 0.12 & 0.08 / 0.64 & 0.06 / 0.66 & 0.06 / 0.70 & 0.04 / 0.58 & 0.06 / 0.64 \\
 white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & 0.06 / 0.68 \\
+JPEG & 0.26 / 0.18 & 0.04 / 0.56 & 0.06 / 0.52 & 0.06 / 0.64 & 0.08 / 0.60 & 0.08 / 0.64 \\
+sensor noise & 0.12 / 0.60 & 0.06 / 0.66 & 0.06 / 0.60 & 0.08 / 0.66 & 0.06 / 0.64 & 0.10 / 0.70 \\
+blur & 0.04 / 0.72 & 0.08 / 0.62 & 0.06 / 0.66 & 0.08 / 0.54 & 0.06 / 0.66 & 0.08 / 0.66 \\
+camera zoom & 0.28 / 0.42 & 0.12 / 0.64 & 0.12 / 0.66 & 0.08 / 0.70 & 0.10 / 0.68 & 0.12 / 0.68 \\
 camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & 0.32 / 0.12 \\
 camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & 0.18 / 0.18 \\
 occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & 0.06 / 0.58 \\
+\midrule
+weaker motors (gear 0.7) & 0.04 / 0.48 & 0.04 / 0.38 & 0.06 / 0.38 & 0.04 / 0.42 & 0.04 / 0.40 & 0.04 / 0.48 \\
+damping $\times 10$ & 0.02 / 0.06 & 0.02 / 0.06 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.06 \\
+1-step latency & 0.08 / 0.52 & 0.12 / 0.48 & 0.10 / 0.48 & 0.16 / 0.52 & 0.08 / 0.46 & 0.16 / 0.52 \\
+actuation noise & 0.22 / 0.30 & 0.22 / 0.30 & 0.24 / 0.22 & 0.28 / 0.30 & 0.20 / 0.32 & 0.20 / 0.30 \\
 \midrule
 raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & 0.46 / 0.46 \\
 \bottomrule
@@ -154,6 +186,32 @@ raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46
 \paragraph{Baseline: test-time adaptation is not a substitute for jac.}
 Label-free BatchNorm adaptation (BN): re-estimate the running statistics of LeWM's two BatchNorm layers (encoder projector, predictor output projection) on unlabeled \emph{safe} frames of the shifted condition (Reacher 2000, Dubins 500); weights and $h$ unchanged.
 
+\begin{table}[t]\centering\small
+\caption{Test-time adaptation baseline, CCEM. Reacher: 50 box-crossing pairs, MLP $h$, collision / safe success, one seed. Dubins purple: 100-episode protocol (same episodes for every row; not the 50-episode protocol of Tables~\ref{tab:dubins_k10}--\ref{tab:dubins_k15}), collision / safe success (\%), sigreg mean $\pm$ std over 3 seeds, jac seed 3072. Blank = not run.}
+\label{tab:bn_baseline}
+\begin{tabular}{llccc}
+\toprule
+Benchmark & Condition & sigreg & sigreg + BN & jac (no adaptation) \\
+\midrule
+Reacher & floor 0.1 & 0.48 / 0.30 & 0.06 / 0.68 & 0.06 / 0.66 \\
+Reacher & floor 0.3 & 0.38 / 0.18 & 0.14 / 0.60 & 0.14 / 0.44 \\
+Reacher & floor 0.4 & 0.42 / 0.18 & 0.28 / 0.44 & 0.24 / 0.28 \\
+Reacher & white balance & 0.60 / 0.10 & 0.24 / 0.38 & 0.06 / 0.56 \\
+Reacher & light 0.3 & 0.42 / 0.12 & 0.44 / 0.20 & 0.06 / 0.58 \\
+Reacher & exposure & 0.28 / 0.12 & 0.28 / 0.26 & 0.08 / 0.64 \\
+Reacher & occlusion & 0.28 / 0.18 & 0.22 / 0.26 & 0.24 / 0.44 \\
+Reacher & camera shift & 0.16 / 0.08 & 0.50 / 0.14 & 0.32 / 0.16 \\
+Reacher & camera tilt & 0.26 / 0.14 &  & 0.44 / 0.10 \\
+\midrule
+Dubins & purple, $K=10$, MLP $h$ &  &  & 13.0 / 72.0 \\
+Dubins & purple, $K=10$, linear $h$ &  &  & 14.0 / 70.0 \\
+Dubins & purple, $K=15$, MLP $h$ & $58.0 \pm 9.6$ / $24.3 \pm 3.8$ & $50.3 \pm 5.9$ / $27.3 \pm 7.0$ & 19.0 / 46.0 \\
+Dubins & purple, $K=15$, linear $h$ & $55.3 \pm 6.4$ / $24.7 \pm 2.5$ & $39.7 \pm 1.5$ / $29.3 \pm 2.5$ & 22.0 / 44.0 \\
+Dubins & rot.\ 90°, $K=10$, MLP $h$ &  &  &  \\
+Dubins & rot.\ 90°, $K=15$, MLP $h$ &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{itemize}
   \item BN brings sigreg to jac's level only under small photometric shifts (Reacher floor 0.1--0.3): there sigreg's damage is mostly one shared per-dimension offset (about 0.55 of its floor shift vs.\ 0.13--0.22 for jac in the route decomposition), which re-estimating BatchNorm statistics removes.
@@ -188,9 +246,49 @@ occlusion & MLP &  & & & & \\
 \end{tabular}
 \end{table}
 
+\begin{table}[t]\centering\small
+\caption{Reach: median $|\Delta h|$ under the shift / safe--unsafe gap of $h$, jac $\to$ model (400 held-out states; ratio $<1$ = model is more robust). From \texttt{adv\_align.py} (reacher-results Table 31 and varying-radius section; whole-latent columns: \texttt{MODEL2=rc\_jac\_safeadv\_latent[\_epsmix]}, logs \texttt{reacher\_eval\_logs/adv\_align\_*.log}, 2026-11-11). Blank = not run.}
+\label{tab:reach}
+\begin{tabular}{llccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){6-7}
+Benchmark & Shift & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+\midrule
+Reacher & exposure & 0.078 & 0.003 & 0.005  &  & 0.003  \\
+Reacher & light & 0.015 & 0.003 & 0.003  &  & 0.003  \\
+Reacher & floor 0.2 & 0.010 & 0.004 & 0.003  &  & 0.003  \\
+Reacher & camera shift & 0.200 & 0.099 & 0.104  & 0.107 & 0.123  \\
+Reacher & floor 0.3 & 0.325 & 0.423 & 0.058  & 0.007 & 0.008  \\
+Reacher & floor 0.4 & 0.860 & 0.721 & 0.417  & 0.075 & 0.262  \\
+Reacher & occlusion & 0.086 & 0.121 & 0.093  & 0.022 & 0.019  \\
+Reacher & camera tilt & 0.340 & 0.337 & 0.407  & 0.505 & 0.309  \\
+Dubins & diamond & 0.040 & 0.007 & & & \\
+Dubins & purple & 0.343 & 0.446 & & & \\
+Dubins & rot.\ 90° & 0.145 & 0.149 & & & \\
+\bottomrule
+\end{tabular}
+\end{table}
 
+\begin{table}[t]\centering\small
+\caption{Reacher, camera tilt: where unsafe plans get vetoed. 200 safe starts near the box $\times$ 64 random CEM-style 5-block plans, labels from simulating each plan; veto = $h<0$ on the start frame or any predicted block (CCEM's rule, threshold 0). MLP $h$ except the last two columns. Script \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.py} (\texttt{reacher\_veto\_diag.py} + per-step output), log \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.log} (2026-11-11). One world-model seed.}
+\label{tab:tilt_perstep}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+ & \multicolumn{2}{c}{Unsafe plans caught by} & Unsafe with $h<0$ & Near / far-safe & CCEM collision & Linear $h$: unsafe / near / far & CCEM collision \\
+Model & start frame & prediction only & at block 3 & vetoed & (150 pairs) & vetoed & linear (150 pairs) \\
+\midrule
+jac & 0.06 & 0.37 & 0.35 & 0.30 / 0.14 & 0.373 & 0.58 / 0.53 / 0.31 & 0.293 \\
+jac+adv$_h$ & 0.00 & 0.66 & 0.53 & 0.33 / 0.14 & 0.313 & 0.74 / 0.61 / 0.30 & 0.220 \\
+jac+adv$_z$ & 0.17 & 0.43 & 0.45 & 0.29 / 0.10 & 0.240 & 0.69 / 0.46 / 0.18 & 0.227 \\
+jac+adv$_h$, varying $\varepsilon$ & 0.00 & 0.20 & 0.09 & 0.06 / 0.04 & 0.480 & 0.39 / 0.19 / 0.13 & 0.420 \\
+jac+adv$_z$, varying $\varepsilon$ & 0.15 & 0.39 & 0.43 & 0.28 / 0.13 & 0.280 & 0.68 / 0.46 / 0.35 & 0.140 \\
+\bottomrule
+\end{tabular}}
+\end{table}
 
-\figph{Reach $\times$ headroom (numbers: Table~\ref{tab:reach}; tilt per-step: Table~\ref{tab:tilt_perstep}): x = jac's $|\Delta h|$/gap under each shift, y = CCEM collision gain of the adversarial model over jac; points per shift, both benchmarks; colour = fixed vs.\ varying $\varepsilon$, jac+adv$_h$ vs.\ jac+adv$_z$. Gains only in the middle band.}{When adversarial invariance pays off in planning.}
+\figph{Reach $\times$ headroom: x = jac's $|\Delta h|$/gap under each shift, y = CCEM collision gain of the adversarial model over jac; points per shift, both benchmarks; colour = fixed vs.\ varying $\varepsilon$, jac+adv$_h$ vs.\ jac+adv$_z$. Gains only in the middle band.}{When adversarial invariance pays off in planning.}
 
 \begin{itemize}
   \item Dubins (negative): jac+adv$_h$ (1 seed) is worse than jac at $K=10$ and $K=15$ under every OOD condition (e.g.\ $K=10$ purple CCEM-MLP 38\% vs 14\%), despite better real-frame AUC (Table~\ref{tab:dubins_auc}). Same for jac+pull+adv$_h$ (3 seeds). Over the 21-model grid no model beats jac in paired CCEM. 200-paired-episode test: adv$_h$ encoder-only variants collide $2$--$4\times$ more than jac on red.
@@ -232,6 +330,35 @@ jac+pull+adv$_h$ & -- & 0.100 / 0.733 & 0.021 / 0.489 & 0.289 / 0.190 \\
 \end{tabular}
 \end{table}
 
+\begin{table}[t]\centering\small
+\caption{Dubins CBF out of distribution, red-trained $h$ and critic unchanged; collision / success / safe success (buffer-margin rows: collision only). Blank = not run (gpfail/gpimag/lin OOD sweep paused; rot.\ 90° never launched; jac+adv$_h$ / jac+adv$_z$ critics not trained).}
+\label{tab:cbf_ood}
+\begin{tabular}{llccc}
+\toprule
+Model & Margin & Purple & Diamond & Rot.\ 90° \\
+\midrule
+no filter & -- & 0.537 / 0.869 / 0.456 &  &  \\
+sigreg & buffer & 0.52--0.55 & 0.432 &  \\
+sigreg & gpfail &  &  &  \\
+sigreg & gpimag &  &  &  \\
+sigreg & lin &  &  &  \\
+jac & buffer & 0.52--0.55 & 0.032 &  \\
+jac & gpfail & 0.529 / 0.827 / 0.430 &  &  \\
+jac & gpimag & 0.507 / 0.851 / 0.459 &  &  \\
+jac & lin &  &  &  \\
+jac+adv$_h$ & gpimag &  &  &  \\
+jac+adv$_z$ & gpimag &  &  &  \\
+\midrule
+jac+pull & buffer & 0.52--0.55 & 0.039 &  \\
+jac+pull & gpfail &  &  &  \\
+jac+pull & gpimag &  &  &  \\
+jac+pull & lin &  &  &  \\
+jac+pull+adv$_h$ & gpfail &  &  &  \\
+jac+pull+adv$_h$ & gpimag &  &  &  \\
+jac+pull+adv$_h$ & lin &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{itemize}
   \item In distribution, jac-base filters work (jac gpimag 0.6\% collision, jac+pull 0.8\%, at $\approx$ 0.79 success); sigreg is at or above no-filter collision with every margin function.
@@ -248,8 +375,20 @@ jac+pull+adv$_h$ & -- & 0.100 / 0.733 & 0.021 / 0.489 & 0.289 / 0.190 \\
 \subsection{Limits: what invariance cannot fix}
 \label{sec:limits}
 
-\figph{Per-step AUC of $h$ on imagined latents vs.\ prediction step (1--25), Dubins jac: red MLP vs.\ purple linear / MLP vs.\ rot.\ 90° linear (numbers: Table~\ref{tab:imag_decay}).}{Out of distribution, imagined states lose distance information within $\approx 10$ env steps.}
-
+\begin{table}[t]\centering\small
+\caption{Dubins, jac: per-step AUC of $h$ on imagined latents (600 held-out starts, CEM-style plans, simulator labels).}
+\label{tab:imag_decay}
+\begin{tabular}{lccccc}
+\toprule
+Start, $h$ & step 1 & 5 & 10 & 15 & 25 \\
+\midrule
+red, MLP & 1.00 & 1.00 & 0.99 & 0.97 & 0.90 \\
+purple, linear & 0.93 & 0.74 & 0.41 & 0.46 & 0.53 \\
+purple, MLP & 0.53 & 0.51 & 0.45 & 0.46 & 0.54 \\
+rot.\ 90°, linear & 0.97 & 0.76 & 0.49 & 0.46 & 0.42 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \figph{Veto-vs-distance curves: fraction of truly safe plans vetoed (threshold at 90\% of unsafe caught), binned by the plan's closest true distance to the obstacle/box. Dubins red (falls 0.76 $\to$ 0.12) vs.\ purple (flat 0.87--0.92); Reacher in-dist vs.\ floor 0.3 for jac / jac+adv$_h$ / varying $\varepsilon$ (blur).}{Dubins OOD: no distance information in imagined plans; Reacher OOD: a blur near the boundary.}
 
@@ -300,6 +439,20 @@ camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 1.000 / 1.000 & 0.500 / 1.000 / 1.
 \end{tabular}}
 \end{table}
 
+\begin{table}[t]\centering\small
+\caption{Dubins, support detector (same layout), corrected (non-transposed) frames. Blank = not run; the earlier Dubins kNN aliasing analysis used transposed frames and must be rerun.}
+\label{tab:detect_dubins}
+\begin{tabular}{lcccccc}
+\toprule
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+pull & jac+pull+adv$_h$ \\
+\midrule
+clean &  &  &  &  &  &  \\
+purple &  &  &  &  &  &  \\
+diamond &  &  &  &  &  &  \\
+rot.\ 90° &  &  &  &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 
 \begin{itemize}
@@ -328,33 +481,6 @@ camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 1.000 / 1.000 & 0.500 / 1.000 / 1.
 \appendix
 \section{Test-time BatchNorm adaptation: full results}
 \label{app:bn}
-\begin{table}[t]\centering\small
-\caption{Test-time adaptation baseline, CCEM. Reacher: 50 box-crossing pairs, MLP $h$, collision / safe success, one seed. Dubins purple: 100-episode protocol (same episodes for every row; not the 50-episode protocol of Tables~\ref{tab:dubins_k10}--\ref{tab:dubins_k15}), collision / safe success (\%), sigreg mean $\pm$ std over 3 seeds, jac seed 3072. Blank = not run.}
-\label{tab:bn_baseline}
-\begin{tabular}{llccc}
-\toprule
-Benchmark & Condition & sigreg & sigreg + BN & jac (no adaptation) \\
-\midrule
-Reacher & floor 0.1 & 0.48 / 0.30 & 0.06 / 0.68 & 0.06 / 0.66 \\
-Reacher & floor 0.3 & 0.38 / 0.18 & 0.14 / 0.60 & 0.14 / 0.44 \\
-Reacher & floor 0.4 & 0.42 / 0.18 & 0.28 / 0.44 & 0.24 / 0.28 \\
-Reacher & white balance & 0.60 / 0.10 & 0.24 / 0.38 & 0.06 / 0.56 \\
-Reacher & light 0.3 & 0.42 / 0.12 & 0.44 / 0.20 & 0.06 / 0.58 \\
-Reacher & exposure & 0.28 / 0.12 & 0.28 / 0.26 & 0.08 / 0.64 \\
-Reacher & occlusion & 0.28 / 0.18 & 0.22 / 0.26 & 0.24 / 0.44 \\
-Reacher & camera shift & 0.16 / 0.08 & 0.50 / 0.14 & 0.32 / 0.16 \\
-Reacher & camera tilt & 0.26 / 0.14 &  & 0.44 / 0.10 \\
-\midrule
-Dubins & purple, $K=10$, MLP $h$ &  &  & 13.0 / 72.0 \\
-Dubins & purple, $K=10$, linear $h$ &  &  & 14.0 / 70.0 \\
-Dubins & purple, $K=15$, MLP $h$ & $58.0 \pm 9.6$ / $24.3 \pm 3.8$ & $50.3 \pm 5.9$ / $27.3 \pm 7.0$ & 19.0 / 46.0 \\
-Dubins & purple, $K=15$, linear $h$ & $55.3 \pm 6.4$ / $24.7 \pm 2.5$ & $39.7 \pm 1.5$ / $29.3 \pm 2.5$ & 22.0 / 44.0 \\
-Dubins & rot.\ 90°, $K=10$, MLP $h$ &  &  &  \\
-Dubins & rot.\ 90°, $K=15$, MLP $h$ &  &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 
 \begin{table}[t]\centering\small
 \caption{Dubins CBF under purple, red-trained $h$ and critic unchanged, world model unadapted vs.\ BN-adapted on 500 safe purple frames. Collision / success / safe success, 1000 trajectories, seed 3072; paired McNemar on the same starts. Blank = not run.}
@@ -430,181 +556,6 @@ camera shift & 0.500 / 1.000 / 1.000 & 0.506 / 0.294 / 0.378 & 0.587 / 0.174 / 0
 camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 0.432 / 0.498 & 0.500 / 0.262 / 0.356 & 0.551 / 0.258 / 0.336 & 0.500 / 0.322 / 0.399 &  \\
 \bottomrule
 \end{tabular}}
-\end{table}
-
-
-\section{Additional planning tables}
-\label{app:planning}
-\begin{table}[t]\centering\small
-\caption{Dubins CEM, goal distance $K=15$ (secondary), as Table~\ref{tab:dubins_k10}.}
-\label{tab:dubins_k15}
-\begin{tabular}{lccccccccc}
-\toprule
- & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & \multicolumn{3}{c}{CCEM, linear $h$} \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
-Model & red & purple & rot. & red & purple & rot. & red & purple & rot. \\
-\midrule
-sigreg & 88 / 25 & 39 / 69 & 45 / 56 & 87 / 25 & 40 / 71 & 45 / 56 & 85 / 27 & 40 / 67 & 43 / 57 \\
-jac & 93 / 12 & 22 / 74 & 46 / 69 & 87 / 13 & 43 / 32 & 50 / 33 & 90 / 7 & 49 / 31 & 53 / 37 \\
-jac+adv$_h^\dagger$ & 86 / 18 & 10 / 82 & 16 / 78 & 80 / 22 & 26 / 62 & 20 / 62 & 90 / 12 & 28 / 50 & 26 / 62 \\
-jac+adv$_z$ &  &  &  &  &  &  &  &  &  \\
-jac+adv$_h$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
-jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
-\midrule
-jac+pull & 83 / 33 & 29 / 55 & 39 / 41 & 77 / 25 & 24 / 42 & 29 / 36 & 87 / 17 & 33 / 37 & 41 / 31 \\
-jac+pull+adv$_h$ & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 73 / 31 & 30 / 55 & 32 / 48 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[t]\centering\small
-\caption{Reacher CEM (all shifts), 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
-\label{tab:reacher_cem50_full}
-\begin{tabular}{lcccccc}
-\toprule
- & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
-\cmidrule(lr){6-7}
-Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
-\midrule
-in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & 0.10 / 0.72 \\
-\midrule
-floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & 0.06 / 0.66 \\
-floor 0.2 & 0.46 / 0.24 & 0.08 / 0.68 & 0.04 / 0.64 & 0.08 / 0.64 & 0.06 / 0.56 & 0.10 / 0.70 \\
-floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & 0.08 / 0.70 \\
-floor 0.4 & 0.42 / 0.18 & 0.24 / 0.28 & 0.20 / 0.10 & 0.36 / 0.20 & 0.04 / 0.56 & 0.22 / 0.34 \\
-light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & 0.10 / 0.66 \\
-exposure & 0.28 / 0.12 & 0.08 / 0.64 & 0.06 / 0.66 & 0.06 / 0.70 & 0.04 / 0.58 & 0.06 / 0.64 \\
-white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & 0.06 / 0.68 \\
-JPEG & 0.26 / 0.18 & 0.04 / 0.56 & 0.06 / 0.52 & 0.06 / 0.64 & 0.08 / 0.60 & 0.08 / 0.64 \\
-sensor noise & 0.12 / 0.60 & 0.06 / 0.66 & 0.06 / 0.60 & 0.08 / 0.66 & 0.06 / 0.64 & 0.10 / 0.70 \\
-blur & 0.04 / 0.72 & 0.08 / 0.62 & 0.06 / 0.66 & 0.08 / 0.54 & 0.06 / 0.66 & 0.08 / 0.66 \\
-camera zoom & 0.28 / 0.42 & 0.12 / 0.64 & 0.12 / 0.66 & 0.08 / 0.70 & 0.10 / 0.68 & 0.12 / 0.68 \\
-camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & 0.32 / 0.12 \\
-camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & 0.18 / 0.18 \\
-occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & 0.06 / 0.58 \\
-\midrule
-weaker motors (gear 0.7) & 0.04 / 0.48 & 0.04 / 0.38 & 0.06 / 0.38 & 0.04 / 0.42 & 0.04 / 0.40 & 0.04 / 0.48 \\
-damping $\times 10$ & 0.02 / 0.06 & 0.02 / 0.06 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.06 \\
-1-step latency & 0.08 / 0.52 & 0.12 / 0.48 & 0.10 / 0.48 & 0.16 / 0.52 & 0.08 / 0.46 & 0.16 / 0.52 \\
-actuation noise & 0.22 / 0.30 & 0.22 / 0.30 & 0.24 / 0.22 & 0.28 / 0.30 & 0.20 / 0.32 & 0.20 / 0.30 \\
-\midrule
-raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & 0.46 / 0.46 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-
-\section{Reach and tilt diagnostics}
-\label{app:reach}
-\begin{table}[t]\centering\small
-\caption{Reach: median $|\Delta h|$ under the shift / safe--unsafe gap of $h$, jac $\to$ model (400 held-out states; ratio $<1$ = model is more robust). From \texttt{adv\_align.py} (reacher-results Table 31 and varying-radius section; whole-latent columns: \texttt{MODEL2=rc\_jac\_safeadv\_latent[\_epsmix]}, logs \texttt{reacher\_eval\_logs/adv\_align\_*.log}, 2026-11-11). Blank = not run.}
-\label{tab:reach}
-\begin{tabular}{llccccc}
-\toprule
- & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
-\cmidrule(lr){6-7}
-Benchmark & Shift & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
-\midrule
-Reacher & exposure & 0.078 & 0.003 & 0.005  &  & 0.003  \\
-Reacher & light & 0.015 & 0.003 & 0.003  &  & 0.003  \\
-Reacher & floor 0.2 & 0.010 & 0.004 & 0.003  &  & 0.003  \\
-Reacher & camera shift & 0.200 & 0.099 & 0.104  & 0.107 & 0.123  \\
-Reacher & floor 0.3 & 0.325 & 0.423 & 0.058  & 0.007 & 0.008  \\
-Reacher & floor 0.4 & 0.860 & 0.721 & 0.417  & 0.075 & 0.262  \\
-Reacher & occlusion & 0.086 & 0.121 & 0.093  & 0.022 & 0.019  \\
-Reacher & camera tilt & 0.340 & 0.337 & 0.407  & 0.505 & 0.309  \\
-Dubins & diamond & 0.040 & 0.007 & & & \\
-Dubins & purple & 0.343 & 0.446 & & & \\
-Dubins & rot.\ 90° & 0.145 & 0.149 & & & \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[t]\centering\small
-\caption{Reacher, camera tilt: where unsafe plans get vetoed. 200 safe starts near the box $\times$ 64 random CEM-style 5-block plans, labels from simulating each plan; veto = $h<0$ on the start frame or any predicted block (CCEM's rule, threshold 0). MLP $h$ except the last two columns. Script \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.py} (\texttt{reacher\_veto\_diag.py} + per-step output), log \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.log} (2026-11-11). One world-model seed.}
-\label{tab:tilt_perstep}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lccccccc}
-\toprule
- & \multicolumn{2}{c}{Unsafe plans caught by} & Unsafe with $h<0$ & Near / far-safe & CCEM collision & Linear $h$: unsafe / near / far & CCEM collision \\
-Model & start frame & prediction only & at block 3 & vetoed & (150 pairs) & vetoed & linear (150 pairs) \\
-\midrule
-jac & 0.06 & 0.37 & 0.35 & 0.30 / 0.14 & 0.373 & 0.58 / 0.53 / 0.31 & 0.293 \\
-jac+adv$_h$ & 0.00 & 0.66 & 0.53 & 0.33 / 0.14 & 0.313 & 0.74 / 0.61 / 0.30 & 0.220 \\
-jac+adv$_z$ & 0.17 & 0.43 & 0.45 & 0.29 / 0.10 & 0.240 & 0.69 / 0.46 / 0.18 & 0.227 \\
-jac+adv$_h$, varying $\varepsilon$ & 0.00 & 0.20 & 0.09 & 0.06 / 0.04 & 0.480 & 0.39 / 0.19 / 0.13 & 0.420 \\
-jac+adv$_z$, varying $\varepsilon$ & 0.15 & 0.39 & 0.43 & 0.28 / 0.13 & 0.280 & 0.68 / 0.46 / 0.35 & 0.140 \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-
-\section{Dubins CBF out of distribution}
-\label{app:cbf_ood}
-\begin{table}[t]\centering\small
-\caption{Dubins CBF out of distribution, red-trained $h$ and critic unchanged; collision / success / safe success (buffer-margin rows: collision only). Blank = not run (gpfail/gpimag/lin OOD sweep paused; rot.\ 90° never launched; jac+adv$_h$ / jac+adv$_z$ critics not trained).}
-\label{tab:cbf_ood}
-\begin{tabular}{llccc}
-\toprule
-Model & Margin & Purple & Diamond & Rot.\ 90° \\
-\midrule
-no filter & -- & 0.537 / 0.869 / 0.456 &  &  \\
-sigreg & buffer & 0.52--0.55 & 0.432 &  \\
-sigreg & gpfail &  &  &  \\
-sigreg & gpimag &  &  &  \\
-sigreg & lin &  &  &  \\
-jac & buffer & 0.52--0.55 & 0.032 &  \\
-jac & gpfail & 0.529 / 0.827 / 0.430 &  &  \\
-jac & gpimag & 0.507 / 0.851 / 0.459 &  &  \\
-jac & lin &  &  &  \\
-jac+adv$_h$ & gpimag &  &  &  \\
-jac+adv$_z$ & gpimag &  &  &  \\
-\midrule
-jac+pull & buffer & 0.52--0.55 & 0.039 &  \\
-jac+pull & gpfail &  &  &  \\
-jac+pull & gpimag &  &  &  \\
-jac+pull & lin &  &  &  \\
-jac+pull+adv$_h$ & gpfail &  &  &  \\
-jac+pull+adv$_h$ & gpimag &  &  &  \\
-jac+pull+adv$_h$ & lin &  &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-
-\section{Imagined-state AUC (Dubins)}
-\label{app:imag}
-\begin{table}[t]\centering\small
-\caption{Dubins, jac: per-step AUC of $h$ on imagined latents (600 held-out starts, CEM-style plans, simulator labels).}
-\label{tab:imag_decay}
-\begin{tabular}{lccccc}
-\toprule
-Start, $h$ & step 1 & 5 & 10 & 15 & 25 \\
-\midrule
-red, MLP & 1.00 & 1.00 & 0.99 & 0.97 & 0.90 \\
-purple, linear & 0.93 & 0.74 & 0.41 & 0.46 & 0.53 \\
-purple, MLP & 0.53 & 0.51 & 0.45 & 0.46 & 0.54 \\
-rot.\ 90°, linear & 0.97 & 0.76 & 0.49 & 0.46 & 0.42 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-
-\section{Dubins OOD detection}
-\label{app:detect_dubins}
-\begin{table}[t]\centering\small
-\caption{Dubins, support detector (same layout), corrected (non-transposed) frames. Blank = not run; the earlier Dubins kNN aliasing analysis used transposed frames and must be rerun.}
-\label{tab:detect_dubins}
-\begin{tabular}{lcccccc}
-\toprule
-Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+pull & jac+pull+adv$_h$ \\
-\midrule
-clean &  &  &  &  &  &  \\
-purple &  &  &  &  &  &  \\
-diamond &  &  &  &  &  &  \\
-rot.\ 90° &  &  &  &  &  &  \\
-\bottomrule
-\end{tabular}
 \end{table}
 
 \end{document}
