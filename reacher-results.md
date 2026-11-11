@@ -717,6 +717,27 @@ Table 32. 150 paired episodes, collision / safe success (progress); exact McNema
 - The camera-shift gain survives but is smaller than fixed adv_h's or the whole-latent model's; camera tilt, the one shift the reach analysis showed getting worse, is worse than jac in planning too.
 - No in-distribution cost (50 pairs, CCEM-MLP 0.04 / 0.64 vs jac 0.06 / 0.58), and at jac's level or better under every photometric, sensor and dynamics shift. One training seed.
 
+## Varying-radius whole latent (jac + whole-latent adversary, radius log-uniform in [4/255, 32/255])
+
+`rc_jac_safeadv_latent_epsmix` (snapshot `code_point_92e7589_epsmix`): the whole-latent target of `rc_jac_safeadv_latent` with the varying radius of `rc_jac_safeadv_linf_epsmix`. Reach (`adv_align.py MODEL2=...`, 400 states, change in $h$ / gap, jac → fixed whole latent / varying whole latent): floor 0.3 0.325 → 0.058 / 0.008, floor 0.4 0.860 → 0.417 / 0.262, occlusion 0.086 → 0.093 / 0.019, camera shift 0.200 → 0.104 / 0.123, camera tilt 0.340 → 0.407 / 0.309, camera zoom 0.011 → 0.019 / 0.017, exposure 0.078 → 0.005 / 0.003 (logs `adv_align_rc_jac_safeadv_latent{,_epsmix}.log`).
+
+Table 35. 150 paired episodes (same pairs as Table 32), collision / safe success; exact McNemar vs jac (episodes better for jac / better for the model).
+
+| Condition | Margin fn | jac | Varying whole latent | Collision | Safe success |
+|---|---|---|---|---|---|
+| floor 0.3 | MLP | 0.233 / 0.447 | 0.040 / 0.653 | 29 / 0, p < 0.001 | 10 / 41, p < 0.001 |
+| floor 0.3 | linear | 0.133 / 0.460 | 0.033 / 0.427 | 15 / 0, p < 0.001 | 27 / 22, p = 0.568 |
+| floor 0.4 | MLP | 0.340 / 0.100 | 0.200 / 0.333 | 35 / 14, p = 0.004 | 7 / 42, p < 0.001 |
+| floor 0.4 | linear | 0.320 / 0.100 | 0.073 / 0.160 | 41 / 4, p < 0.001 | 10 / 19, p = 0.136 |
+| camera shift | MLP | 0.427 / 0.207 | 0.233 / 0.140 | 43 / 14, p < 0.001 | 24 / 14, p = 0.143 |
+| camera shift | linear | 0.253 / 0.133 | 0.107 / 0.127 | 31 / 9, p = 0.001 | 13 / 12, p = 1.000 |
+| camera tilt | MLP | 0.373 / 0.087 | 0.280 / 0.133 | 36 / 22, p = 0.087 | 10 / 17, p = 0.248 |
+| camera tilt | linear | 0.293 / 0.067 | 0.140 / 0.140 | 34 / 11, p = 0.001 | 7 / 18, p = 0.043 |
+
+- The combination only half works. At floor 0.3 it matches varying-radius adv_h (MLP 0.040 / 0.653 vs 0.040 / 0.673); at floor 0.4 it gets about half of that model's gain (MLP 0.200 / 0.333 vs 0.087 / 0.653), as its reach there is smaller (change in $h$ cut to 0.30 of jac's vs 0.09); under camera shift it sits between the fixed whole latent and varying adv_h (collision 0.233 vs 0.160 / 0.287). No variant is best on every shift.
+- Camera tilt breaks the reach account. Neither whole-latent model brings tilt within reach (change in $h$ 0.407 / 0.309 of the gap vs jac's 0.340), yet both collide less than jac under tilt: fixed whole latent MLP 0.373 → 0.240 (39 / 19, p = 0.012), varying whole latent linear 0.293 → 0.140 (p = 0.001), with safe success up (linear 0.067 → 0.140, p = 0.043). Varying-radius adv_h, whose reach under tilt is also out, is worse than jac there. So the tilt gain comes from somewhere the static real-frame measure does not see (candidates: the goal latent or the predicted latents CCEM reads, both of which the whole-latent target also constrains). Not yet tested.
+- One training seed; numbers for the varying whole latent are on the 150 pairs of Table 32 (pair seed and CEM seed identical).
+
 ## Can the too-big shifts be detected?
 
 Beyond some size every model's margin function calls every state safe (floor 0.5 and up for all six models, Table 3, Table 5), and CCEM degenerates to raw CEM. `reacher_detect.py` asks whether those failures announce themselves, with two label-free detectors that need only unlabeled in-distribution data. 1000 held-out states (half unsafe), each with the frame one action block (5 env steps, the recorded actions) later, both rendered under the shift; real+imag MLP margin function.
