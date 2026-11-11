@@ -41,60 +41,67 @@
 \label{sec:r1}
 
 \begin{table}[t]\centering\small
-\caption{Dubins: real-frame AUC of $h$ (trained on red frames), 4000 uniform states per condition, mean $\pm$ std over world-model seeds. $^\ddagger$ other world models (\texttt{dreamerdino.md}, final checkpoints, linear $h$ 5000 steps): SafeDreamer $\pm$ over 3 world-model seeds (MLP not reported there); DINO-WM encoder is frozen DINOv2, so $\pm$ is over 3 margin-function seeds. Shape (diamond) AUC, linear: SafeDreamer 0.993, DINO-WM 0.952 (sign acc 0.500), LeWM jac \todo{matched run; post-oct-21 reports 0.995--0.998}. Blank = not run.}
-\label{tab:dubins_auc}
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{llcccccc}
+\caption{Q1: does a margin function trained on in-distribution frames transfer? AUC (balanced sign accuracy; 0.500 = every state on one side of 0), linear $h$, real frames. Dubins: 4000 uniform states, mean $\pm$ std over 3 world-model seeds (diamond: seed 3072 only, post-oct-21 Tables 2--3). Reacher: 5000 held-out states, real+imag $h$, one world-model seed. $^\ddagger$ other world models (\texttt{dreamerdino.md}; SafeDreamer 3 seeds, DINO-WM frozen encoder, $\pm$ over margin seeds). Per-benchmark tables with MLP $h$ and all models: Appendix~\ref{app:transfer}. Blank = not run.}
+\label{tab:q1_transfer}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccc}
 \toprule
-Model & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90°} \\
-\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
- & & linear & MLP & linear & MLP & linear & MLP \\
+Benchmark & Shift & sigreg & jac & SafeDreamer$^\ddagger$ & DINO-WM$^\ddagger$ \\
 \midrule
-sigreg & 3 & $0.981 \pm 0.005$ & $0.987 \pm 0.006$ & $0.543 \pm 0.100$ & $0.170 \pm 0.116$ & $0.637 \pm 0.503$ & $0.591 \pm 0.428$ \\
-jac & 3 & $0.998 \pm 0.001$ & $0.998 \pm 0.000$ & $0.970 \pm 0.017$ & $0.648 \pm 0.088$ & $0.984 \pm 0.010$ & $0.986 \pm 0.008$ \\
-jac+adv$_h$ & 1 & 0.998 & 0.999 & 0.991 & 0.174 & 0.994 & 0.995 \\
-jac+adv$_z$ & &  &  &  &  &  &  \\
-jac+adv$_h$, varying $\varepsilon$ & &  &  &  &  &  &  \\
-jac+adv$_z$, varying $\varepsilon$ & &  &  &  &  &  &  \\
+Dubins & in distribution & $0.981 \pm 0.005$ ($0.931 \pm 0.021$) & $0.998 \pm 0.001$ ($0.977 \pm 0.001$) & $0.997 \pm 0.000$ ($0.972 \pm 0.002$) & $0.993 \pm 0.002$ ($0.947 \pm 0.017$) \\
+Dubins & purple obstacles & $0.543 \pm 0.100$ ($0.500 \pm 0.000$) & $0.970 \pm 0.017$ ($0.500 \pm 0.000$) & $0.436 \pm 0.134$ ($0.500 \pm 0.000$) & $0.993 \pm 0.001$ ($0.735 \pm 0.110$) \\
+Dubins & diamond obstacles & 0.973 (0.641) & 0.996 (0.954) & $0.993 \pm 0.000$ ($0.955 \pm 0.000$) & $0.952 \pm 0.003$ ($0.500 \pm 0.000$) \\
+Dubins & rotated 90° & $0.637 \pm 0.503$ ($0.570 \pm 0.203$) & $0.984 \pm 0.010$ ($0.891 \pm 0.017$) & $0.554 \pm 0.012$ ($0.498 \pm 0.001$) & $0.978 \pm 0.005$ ($0.893 \pm 0.024$) \\
 \midrule
-jac+pull & 3 & $0.997 \pm 0.000$ & $0.998 \pm 0.001$ & $0.574 \pm 0.362$ & $0.423 \pm 0.396$ & $0.983 \pm 0.004$ & $0.983 \pm 0.004$ \\
-jac+pull+adv$_h$ & 3 & $0.998 \pm 0.000$ & $0.999 \pm 0.000$ & $0.986 \pm 0.015$ & $0.925 \pm 0.030$ & $0.994 \pm 0.002$ & $0.994 \pm 0.001$ \\
+Reacher & in distribution & 0.999 (0.991) & 0.999 (0.989) & 1.000 (0.987) &  \\
+Reacher & floor 0.2 & 0.335 (0.500) & 0.999 (0.990) & 1.000 (0.983) &  \\
+Reacher & exposure & 0.658 (0.500) & 0.998 (0.980) & 0.999 (0.984) &  \\
+Reacher & white balance & 0.348 (0.500) & 0.999 (0.991) & 1.000 (0.984) &  \\
+Reacher & floor 0.3 & 0.283 (0.500) & 0.952 (0.578) & 0.991 (0.789) &  \\
+Reacher & camera shift & 0.892 (0.500) & 0.973 (0.860) & 0.905 (0.712) &  \\
+Reacher & occlusion & 0.683 (0.576) & 0.955 (0.707) & 0.968 (0.810) &  \\
 \midrule
-SafeDreamer$^\ddagger$ & 3 & $0.997 \pm 0.000$ &  & $0.436 \pm 0.134$ &  & $0.554 \pm 0.012$ &  \\
-SafeDreamer + jac$^\ddagger$ & 3 & $0.994 \pm 0.002$ &  & $0.496 \pm 0.112$ &  & $0.619 \pm 0.076$ &  \\
-DINO-WM$^\ddagger$ & frozen & $0.993 \pm 0.002$ & $0.998 \pm 0.001$ & $0.993 \pm 0.001$ & $0.956 \pm 0.008$ & $0.978 \pm 0.005$ & $0.976 \pm 0.015$ \\
+OGBench cube & in distribution &  &  &  &  \\
+OGBench cube & shift 1 \todo{} &  &  &  &  \\
+OGBench cube & shift 2 \todo{} &  &  &  &  \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \begin{table}[t]\centering\small
-\caption{Reacher: balanced sign accuracy (AUC) of real+imag $h$ on 5000 held-out states, one world-model seed (SafeDreamer: mean of 3 seeds, 10-epoch-matched checkpoint, \texttt{dreamerdino.md}). 0.500 = every state called safe.}
-\label{tab:reacher_signacc}
-\begin{tabular}{lcccc}
+\caption{Q1: how a shift moves the latent, sigreg $\to$ jac. For a shift $\Delta z$ and the safety direction $\lambda_n$ (safe-minus-unsafe latent centroid difference, normalized): $\|\Delta z\|$/spread = invariance (lower is better), $\cos(\Delta z, \lambda_n)$ = orthogonality (lower is better), along/gap = $|\Delta z \cdot \lambda_n|$ / class gap = how far states move along the safety axis in units of the safe/unsafe gap (about 1 or more: the threshold breaks). Gap/spread (widening): Dubins sigreg $0.756 \pm 0.052$, jac $0.377 \pm 0.004$; Reacher 0.559, 0.580. PGD = 8/255 $L_\infty$ attack along $\lambda_n$. Dubins: 2000 uniform states, mean over 3 world-model seeds (std $\le 0.15$; \texttt{safeadv\_results/diagnostics/three\_routes\_fixed.\{py,log\}}, corrected frame orientation, 2026-11-11). Reacher: 1000 held-out states, one seed (reacher-results Table 21). OGBench cube: blank = not run.}
+\label{tab:q1_mech}
+\begin{tabular}{llccc}
 \toprule
-Shift & sigreg, MLP & jac, MLP & jac, linear & SafeDreamer, MLP \\
+Benchmark & Shift & $\|\Delta z\|$/spread & $\cos(\Delta z, \lambda_n)$ & along/gap \\
 \midrule
-floor $\alpha=0.2$ & 0.500 (0.493) & 0.997 (0.999) & 0.990 (0.999) & 0.995 (1.000) \\
-light direction & 0.500 (0.906) & 0.997 (1.000) & 0.992 (0.999) & 0.997 (1.000) \\
-JPEG & 0.500 (0.802) & 0.996 (1.000) & 0.991 (0.999) & 0.997 (1.000) \\
-exposure & 0.500 (0.583) & 0.735 (0.998) & 0.980 (0.998) & 0.989 (0.999) \\
-white balance & 0.500 (0.498) & 0.997 (1.000) & 0.991 (0.999) & 0.995 (1.000) \\
-floor $\alpha=0.3$ & 0.500 (0.499) & 0.500 (0.873) & 0.578 (0.952) & 0.613 (0.994) \\
-camera shift & 0.500 (0.838) & 0.506 (0.935) & 0.860 (0.973) & 0.628 (0.907) \\
-occlusion & 0.500 (0.691) & 0.592 (0.956) & 0.707 (0.955) & 0.701 (0.976) \\
+Dubins & PGD 8/255 & 1.486 $\to$ 0.099 & 0.592 $\to$ 0.402 & 1.161 $\to$ 0.105 \\
+Dubins & diamond & 1.101 $\to$ 0.136 & 0.674 $\to$ 0.273 & 1.001 $\to$ 0.096 \\
+Dubins & rotated 90° & 1.617 $\to$ 1.365 & 0.244 $\to$ 0.074 & 0.515 $\to$ 0.269 \\
+Dubins & purple & 1.939 $\to$ 1.123 & 0.564 $\to$ 0.318 & 1.440 $\to$ 0.950 \\
+\midrule
+Reacher & PGD 8/255 & 1.577 $\to$ 0.110 & 0.349 $\to$ 0.609 & 0.986 $\to$ 0.115 \\
+Reacher & floor 0.2 & 1.683 $\to$ 0.113 & 0.250 $\to$ 0.099 & 0.752 $\to$ 0.019 \\
+Reacher & light & 1.405 $\to$ 0.138 & 0.256 $\to$ 0.106 & 0.644 $\to$ 0.025 \\
+Reacher & white balance & 1.544 $\to$ 0.076 & 0.225 $\to$ 0.143 & 0.622 $\to$ 0.019 \\
+Reacher & floor 0.3 & 1.610 $\to$ 0.771 & 0.219 $\to$ 0.298 & 0.632 $\to$ 0.397 \\
+Reacher & camera shift & 1.608 $\to$ 0.817 & 0.289 $\to$ 0.178 & 0.832 $\to$ 0.251 \\
+\midrule
+OGBench cube & \todo{} &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-  \item Claim: jac keeps $h$'s ranking under appearance and geometric shift (Dubins purple linear 0.970 vs 0.543; rotation 0.984 vs 0.637) with no in-distribution cost; on Reacher jac keeps even the threshold under all photometric/sensor shifts.
-  \item Why it works: plain invariance. Jacobian pinned to 1 limits how far a pixel change can move the latent; Reacher latent moves 10--20$\times$ less than sigreg's under light / floor 0.2 / white balance. sigreg's damage is mostly a shared per-dimension offset (about 0.55 of its floor shift vs.\ 0.13--0.22 for jac), which jac's invariance removes in training.
-  \item Thresholds: Dubins purple sign acc is 0.500 for every model (ranking survives, threshold does not); Reacher keeps it. On Dubins safety is drawn in colour, so recolouring moves exactly the safety feature; on Reacher the box is invisible, every intensity change is nuisance.
-  \item Linear $h$ is the more robust readout (Dubins purple jac 0.970 vs 0.648 MLP; Reacher camera shift 0.860 vs 0.506).
-  \item Where jac breaks (Reacher floor $\ge 0.3$, camera, occlusion; Dubins purple threshold): ranking survives longer than threshold; failure is by shift \emph{size} (sets up sec.~\ref{sec:adv}).
-  \item Other world models: each fails on some Dubins shift, jac on none (ranking). SafeDreamer loses colour and rotation (0.436 / 0.554) and keeps shape; jac on SafeDreamer does not fix it (0.496 / 0.619) --- the regularizer's effect is not architecture-free (target 1 does not transfer to the RSSM encoder; \texttt{dreamerdino.md}). DINO-WM (frozen foundation encoder) keeps colour and rotation (0.993 / 0.978) but its shape threshold collapses (sign acc 0.500); on imagined latents it holds colour better than jac (25-step AUC 0.91 vs.\ $\approx 0.5$).
-  \item Reacher: SafeDreamer's $h$ is at least as robust as jac's under every listed shift (floor 0.3 0.613 vs 0.500; exposure 0.989 vs 0.735); jac's advantage on Reacher is in planning (sec.~\ref{sec:cem}), not in reading the box.
-  \item \todo{Fig: Reacher floor-$\alpha$ sweep of sign acc / AUC per model; first threshold lost, then ranking.}
+  \item Claim (Table~\ref{tab:q1_transfer}): jac keeps $h$'s ranking under every appearance and geometric shift that breaks sigreg (Dubins purple 0.970 vs 0.543, rotation 0.984 vs 0.637; Reacher floor 0.2 / exposure / white balance 0.998--0.999 vs 0.34--0.66), with no in-distribution cost; on Reacher it keeps the threshold too (sign acc 0.980--0.991).
+  \item Other world models: each fails on some Dubins shift, jac on none (ranking). SafeDreamer loses colour and rotation; DINO-WM (frozen DINOv2) keeps them but its shape threshold collapses (sign acc 0.500). On Reacher SafeDreamer's $h$ is as robust as jac's; jac's advantage there is in planning (Q2). jac on SafeDreamer does not fix colour / rotation (0.496 / 0.619; target 1 does not transfer to the RSSM encoder).
+  \item Generality beyond these: CartPole and Safety-Gym Point (perception only) show the same pattern for colour (Point: sigreg at chance on unseen layouts, jac 0.953 base / 0.733 colour) (Appendix~\ref{app:transfer}).
+  \item Why it works --- mostly invariance (Table~\ref{tab:q1_mech}). With the encoder Jacobian pinned to 1 (sigreg sits at $\approx 10$), intensity-type shifts move jac's latent 8--20$\times$ less (Reacher floor 0.2 / light / white balance 0.08--0.14 vs 1.41--1.68 of the latent spread; Dubins diamond 0.14 vs 1.10; PGD 0.10--0.11 vs 1.5--1.6), so states move only 0.02--0.11 of a class gap along the safety axis instead of 0.6--1.2. In units of real motion: at Reacher floor 0.1 sigreg's latent moves 1.6$\times$ as far as 5 env steps of motion, jac's 0.06$\times$ (reacher-results Table 6).
+  \item Not compression, on Reacher: class gap / spread and motion / spread are unchanged (0.58 vs 0.56; 0.59 vs 0.60), so jac rejects nuisance while keeping state resolution. On Dubins jac does halve the class gap relative to the spread (0.377 vs 0.756): safety is drawn in the image, so capping pixel sensitivity also caps the safety signal.
+  \item Rotation is the exception to ``invariance'': jac's latent moves almost as far as sigreg's (1.37 vs 1.62 of the spread), but nearly orthogonally to the safety axis ($\cos$ 0.07 vs 0.24) and differently per state (shared-offset share 0.06), so states move only 0.27 of a class gap. jac reaches rotation robustness through orthogonality, not invariance.
+  \item Colour (Dubins purple) is where neither route suffices: the shift still moves states 0.95 of a class gap along the safety axis (sigreg 1.44), so the threshold breaks (sign acc 0.500) while the scale-free separation survives (post-oct-21 Table 1: $d'$ ratio 0.57 vs 0.15) --- hence ranking without threshold. Colour carries safety on Dubins.
+  \item The limit is local (sets up Q3): on Reacher jac's latent shift jumps from 0.19 to 1.27 of 5-step motion between floor 0.2 and 0.3, exactly where its $h$ breaks (floor 0.3: 0.77 of the spread, 0.40 of a gap along the axis).
+  \item Linear $h$ is the more robust readout (Dubins purple jac 0.970 vs 0.648 MLP; Reacher camera shift 0.860 vs 0.506 sign acc), consistent with a mostly linear safety axis.
 \end{itemize}
 
 %=====================================================================
@@ -304,6 +311,77 @@ camera zoom & 0.899 / 0.106 / 0.040 & 0.905 / 0.092 / 0.021 \\
 
 %=====================================================================
 \appendix
+\section{Per-benchmark transfer tables}
+\label{app:transfer}
+\begin{table}[t]\centering\small
+\caption{Dubins: real-frame AUC of $h$ (trained on red frames), 4000 uniform states per condition, mean $\pm$ std over world-model seeds. $^\ddagger$ other world models (\texttt{dreamerdino.md}, final checkpoints, linear $h$ 5000 steps): SafeDreamer $\pm$ over 3 world-model seeds (MLP not reported there); DINO-WM encoder is frozen DINOv2, so $\pm$ is over 3 margin-function seeds. Shape (diamond) AUC, linear: SafeDreamer 0.993, DINO-WM 0.952 (sign acc 0.500), LeWM jac \todo{matched run; post-oct-21 reports 0.995--0.998}. Blank = not run.}
+\label{tab:dubins_auc}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llcccccc}
+\toprule
+Model & Seeds & \multicolumn{2}{c}{Red} & \multicolumn{2}{c}{Purple} & \multicolumn{2}{c}{Rot.\ 90°} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+ & & linear & MLP & linear & MLP & linear & MLP \\
+\midrule
+sigreg & 3 & $0.981 \pm 0.005$ & $0.987 \pm 0.006$ & $0.543 \pm 0.100$ & $0.170 \pm 0.116$ & $0.637 \pm 0.503$ & $0.591 \pm 0.428$ \\
+jac & 3 & $0.998 \pm 0.001$ & $0.998 \pm 0.000$ & $0.970 \pm 0.017$ & $0.648 \pm 0.088$ & $0.984 \pm 0.010$ & $0.986 \pm 0.008$ \\
+jac+adv$_h$ & 1 & 0.998 & 0.999 & 0.991 & 0.174 & 0.994 & 0.995 \\
+jac+adv$_z$ & &  &  &  &  &  &  \\
+jac+adv$_h$, varying $\varepsilon$ & &  &  &  &  &  &  \\
+jac+adv$_z$, varying $\varepsilon$ & &  &  &  &  &  &  \\
+\midrule
+jac+pull & 3 & $0.997 \pm 0.000$ & $0.998 \pm 0.001$ & $0.574 \pm 0.362$ & $0.423 \pm 0.396$ & $0.983 \pm 0.004$ & $0.983 \pm 0.004$ \\
+jac+pull+adv$_h$ & 3 & $0.998 \pm 0.000$ & $0.999 \pm 0.000$ & $0.986 \pm 0.015$ & $0.925 \pm 0.030$ & $0.994 \pm 0.002$ & $0.994 \pm 0.001$ \\
+\midrule
+SafeDreamer$^\ddagger$ & 3 & $0.997 \pm 0.000$ &  & $0.436 \pm 0.134$ &  & $0.554 \pm 0.012$ &  \\
+SafeDreamer + jac$^\ddagger$ & 3 & $0.994 \pm 0.002$ &  & $0.496 \pm 0.112$ &  & $0.619 \pm 0.076$ &  \\
+DINO-WM$^\ddagger$ & frozen & $0.993 \pm 0.002$ & $0.998 \pm 0.001$ & $0.993 \pm 0.001$ & $0.956 \pm 0.008$ & $0.978 \pm 0.005$ & $0.976 \pm 0.015$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{table}[t]\centering\small
+\caption{Reacher: balanced sign accuracy (AUC) of real+imag $h$ on 5000 held-out states, one world-model seed (SafeDreamer: mean of 3 seeds, 10-epoch-matched checkpoint, \texttt{dreamerdino.md}). 0.500 = every state called safe.}
+\label{tab:reacher_signacc}
+\begin{tabular}{lcccc}
+\toprule
+Shift & sigreg, MLP & jac, MLP & jac, linear & SafeDreamer, MLP \\
+\midrule
+floor $\alpha=0.2$ & 0.500 (0.493) & 0.997 (0.999) & 0.990 (0.999) & 0.995 (1.000) \\
+light direction & 0.500 (0.906) & 0.997 (1.000) & 0.992 (0.999) & 0.997 (1.000) \\
+JPEG & 0.500 (0.802) & 0.996 (1.000) & 0.991 (0.999) & 0.997 (1.000) \\
+exposure & 0.500 (0.583) & 0.735 (0.998) & 0.980 (0.998) & 0.989 (0.999) \\
+white balance & 0.500 (0.498) & 0.997 (1.000) & 0.991 (0.999) & 0.995 (1.000) \\
+floor $\alpha=0.3$ & 0.500 (0.499) & 0.500 (0.873) & 0.578 (0.952) & 0.613 (0.994) \\
+camera shift & 0.500 (0.838) & 0.506 (0.935) & 0.860 (0.973) & 0.628 (0.907) \\
+occlusion & 0.500 (0.691) & 0.592 (0.956) & 0.707 (0.955) & 0.701 (0.976) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{table}[t]\centering\small
+\caption{Other benchmarks (perception only, no planning results): margin-function AUC (balanced sign accuracy) on real frames, corrected frame orientation, one world model per model (seed 3072), $\pm$ over 3 margin-function seeds omitted (all $\le 0.04$). CartPole: classic Gym CartPole, color + viewpoint shifts (\texttt{archive.md}, Cartpole section; \texttt{cartpole\_eval\_balanced/fixed\_orient/}). Safety-Gym Point: overhead camera at 224 px, layout-disjoint eval, ``base'' = unseen layouts (post-oct-21, Safety Gym; \texttt{sg\_point\_balanced/fixed/}).}
+\label{tab:other_bench}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llccccc}
+\toprule
+Benchmark & Model & base & color & \multicolumn{3}{c}{viewpoint / other} \\
+\midrule
+CartPole & & & & zoom out & pan $x$ & pan $y$ \\
+ & sigreg & 1.000 (0.992) & 0.853 (0.658) & 0.984 (0.877) & 0.978 (0.873) & 0.971 (0.880) \\
+ & jac & 1.000 (0.990) & 0.978 (0.914) & 0.977 (0.864) & 0.971 (0.847) & 0.928 (0.679) \\
+ & jac+adv$_h$ & 1.000 (0.992) & 0.944 (0.650) & 0.991 (0.846) & 0.993 (0.820) & 0.939 (0.768) \\
+\midrule
+Safety-Gym Point & & & & rotate & shape & agent \\
+ & sigreg & 0.560 (0.475) & 0.501 (0.492) & 0.526 (0.483) & 0.406 (0.481) & 0.559 (0.473) \\
+ & jac & 0.953 (0.782) & 0.733 (0.597) & 0.948 (0.704) & 0.957 (0.757) & 0.863 (0.764) \\
+ & jac+adv$_h$ & 0.980 (0.911) & 0.920 (0.639) & 0.976 (0.839) & 0.979 (0.953) & 0.891 (0.736) \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
 \section{Additional planning tables}
 \label{app:planning}
 \begin{table}[t]\centering\small
