@@ -717,6 +717,69 @@ Table 32. 150 paired episodes, collision / safe success (progress); exact McNema
 - The camera-shift gain survives but is smaller than fixed adv_h's or the whole-latent model's; camera tilt, the one shift the reach analysis showed getting worse, is worse than jac in planning too.
 - No in-distribution cost (50 pairs, CCEM-MLP 0.04 / 0.64 vs jac 0.06 / 0.58), and at jac's level or better under every photometric, sensor and dynamics shift. One training seed.
 
+## Can the too-big shifts be detected?
+
+Beyond some size every model's margin function calls every state safe (floor 0.5 and up for all six models, Table 3, Table 5), and CCEM degenerates to raw CEM. `reacher_detect.py` asks whether those failures announce themselves, with two label-free detectors that need only unlabeled in-distribution data. 1000 held-out states (half unsafe), each with the frame one action block (5 env steps, the recorded actions) later, both rendered under the shift; real+imag MLP margin function.
+
+- Support: mean distance from $z$ to its $k = 10$ nearest neighbours among 20000 training latents (dataset frames, episodes < 9000).
+- Surprise: the world model's own one-block prediction error, $\lVert \hat z_{t+5}(z_t, a_{t:t+5}) - z_{t+5} \rVert$, 1-frame history.
+
+Each detector's threshold is the 99th percentile on clean frames of a calibration half of the states; rates are on the other half (500 states), so the clean false-alarm rate is about 0.01 per detector. Caught = the fraction of the margin function's false-safe failures (unsafe frames with $h \ge 0$) that the detector flags; "-" = no false-safe failure.
+
+Table 33. Support detector: margin function bal acc / fraction of shifted frames flagged / fraction of false-safe failures caught.
+
+| Condition | sigreg | official | jac | jac+adv_h | adv_h varying radius | whole latent |
+|---|---|---|---|---|---|---|
+| clean | 0.992 / 0.010 / - | 0.992 / 0.018 / - | 0.990 / 0.012 / - | 0.994 / 0.006 / - | 0.994 / 0.014 / - | 0.996 / 0.016 / - |
+| floor 0.1 | 0.500 / 1.000 / 1.000 | 0.704 / 0.860 / 1.000 | 0.990 / 0.014 / - | 0.994 / 0.006 / - | 0.994 / 0.012 / - | 0.996 / 0.016 / - |
+| floor 0.2 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.994 / 0.084 / - | 0.996 / 0.046 / - | 0.994 / 0.018 / - | 0.996 / 0.012 / - |
+| floor 0.3 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.994 / 0.138 / - | 0.846 / 0.768 / 0.961 |
+| floor 0.4 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.632 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 |
+| floor 0.5 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 |
+| floor 0.75 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 |
+| floor 1 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.465 / 1.000 / 1.000 |
+| light | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.992 / 0.288 / - | 0.990 / 0.020 / - | 0.994 / 0.030 / - | 0.998 / 0.014 / - |
+| light dir | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.990 / 0.010 / - | 0.996 / 0.008 / - | 0.994 / 0.014 / - | 0.996 / 0.010 / - |
+| exposure | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.745 / 1.000 / 1.000 | 0.992 / 0.026 / - | 0.994 / 0.094 / - | 0.994 / 0.012 / 0.000 |
+| white balance | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.990 / 0.036 / - | 0.992 / 0.010 / - | 0.992 / 0.016 / - | 0.994 / 0.016 / - |
+| noise | 0.767 / 0.856 / 0.983 | 0.998 / 0.058 / - | 0.990 / 0.014 / - | 0.994 / 0.006 / - | 0.994 / 0.012 / - | 0.996 / 0.016 / - |
+| blur | 0.836 / 0.950 / 1.000 | 0.994 / 0.126 / 0.000 | 0.990 / 0.016 / - | 0.992 / 0.024 / - | 0.994 / 0.014 / - | 0.996 / 0.014 / - |
+| jpeg | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.990 / 0.018 / - | 0.992 / 0.016 / - | 0.994 / 0.018 / - | 0.996 / 0.014 / - |
+| occlusion | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.561 / 0.908 / 0.995 | 0.545 / 0.914 / 1.000 | 0.747 / 0.606 / 0.992 | 0.686 / 0.688 / 0.949 |
+| camera zoom | 0.500 / 1.000 / 1.000 | 0.656 / 0.978 / 1.000 | 0.899 / 0.106 / 0.040 | 0.897 / 0.144 / 0.176 | 0.905 / 0.092 / 0.021 | 0.901 / 0.018 / 0.000 |
+| camera shift | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.506 / 1.000 / 1.000 | 0.587 / 1.000 / 1.000 | 0.555 / 0.998 / 1.000 | 0.684 / 0.918 / 0.897 |
+| camera tilt | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.514 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 | 0.500 / 0.992 / 0.984 | 0.551 / 0.976 / 0.946 |
+
+Table 34. Surprise detector, same layout.
+
+| Condition | sigreg | official | jac | jac+adv_h | adv_h varying radius | whole latent |
+|---|---|---|---|---|---|---|
+| clean | 0.992 / 0.012 / - | 0.992 / 0.012 / - | 0.990 / 0.012 / - | 0.994 / 0.012 / - | 0.994 / 0.014 / - | 0.996 / 0.020 / - |
+| floor 0.1 | 0.500 / 0.374 / 0.372 | 0.704 / 0.014 / 0.000 | 0.990 / 0.018 / - | 0.994 / 0.012 / - | 0.994 / 0.014 / - | 0.996 / 0.020 / - |
+| floor 0.2 | 0.500 / 1.000 / 1.000 | 0.500 / 0.224 / 0.300 | 0.994 / 0.026 / - | 0.996 / 0.010 / - | 0.994 / 0.014 / - | 0.996 / 0.016 / - |
+| floor 0.3 | 0.500 / 1.000 / 1.000 | 0.500 / 0.134 / 0.166 | 0.500 / 0.262 / 0.296 | 0.500 / 0.032 / 0.012 | 0.994 / 0.010 / - | 0.846 / 0.230 / 0.329 |
+| floor 0.4 | 0.500 / 0.914 / 0.889 | 0.500 / 0.074 / 0.079 | 0.500 / 0.282 / 0.304 | 0.500 / 0.000 / 0.000 | 0.632 / 0.094 / 0.134 | 0.500 / 0.026 / 0.040 |
+| floor 0.5 | 0.500 / 0.750 / 0.723 | 0.500 / 0.056 / 0.059 | 0.500 / 0.182 / 0.209 | 0.500 / 0.000 / 0.000 | 0.500 / 0.000 / 0.000 | 0.500 / 0.012 / 0.024 |
+| floor 0.75 | 0.500 / 0.854 / 0.838 | 0.500 / 0.114 / 0.119 | 0.500 / 0.310 / 0.320 | 0.500 / 0.000 / 0.000 | 0.500 / 1.000 / 1.000 | 0.500 / 1.000 / 1.000 |
+| floor 1 | 0.500 / 0.638 / 0.605 | 0.500 / 0.184 / 0.186 | 0.500 / 0.962 / 0.980 | 0.500 / 0.140 / 0.119 | 0.500 / 1.000 / 1.000 | 0.465 / 1.000 / 1.000 |
+| light | 0.500 / 0.952 / 0.933 | 0.500 / 0.498 / 0.498 | 0.992 / 0.020 / - | 0.990 / 0.012 / - | 0.994 / 0.012 / - | 0.998 / 0.018 / - |
+| light dir | 0.500 / 0.990 / 1.000 | 0.500 / 0.042 / 0.012 | 0.990 / 0.016 / - | 0.996 / 0.016 / - | 0.994 / 0.016 / - | 0.996 / 0.018 / - |
+| exposure | 0.500 / 1.000 / 1.000 | 0.500 / 0.748 / 0.715 | 0.745 / 0.018 / 0.000 | 0.992 / 0.014 / - | 0.994 / 0.014 / - | 0.994 / 0.016 / 0.000 |
+| white balance | 0.500 / 0.912 / 0.893 | 0.500 / 0.368 / 0.387 | 0.990 / 0.020 / - | 0.992 / 0.012 / - | 0.992 / 0.014 / - | 0.994 / 0.018 / - |
+| noise | 0.767 / 0.020 / 0.009 | 0.998 / 0.012 / - | 0.990 / 0.012 / - | 0.994 / 0.012 / - | 0.994 / 0.014 / - | 0.996 / 0.022 / - |
+| blur | 0.836 / 0.010 / 0.000 | 0.994 / 0.010 / 0.000 | 0.990 / 0.014 / - | 0.992 / 0.012 / - | 0.994 / 0.012 / - | 0.996 / 0.022 / - |
+| jpeg | 0.500 / 0.948 / 0.964 | 0.500 / 0.134 / 0.146 | 0.990 / 0.014 / - | 0.992 / 0.012 / - | 0.994 / 0.012 / - | 0.996 / 0.018 / - |
+| occlusion | 0.500 / 0.882 / 0.870 | 0.500 / 0.428 / 0.462 | 0.561 / 0.162 / 0.189 | 0.545 / 0.110 / 0.087 | 0.747 / 0.162 / 0.323 | 0.686 / 0.120 / 0.166 |
+| camera zoom | 0.500 / 0.148 / 0.111 | 0.656 / 0.032 / 0.006 | 0.899 / 0.044 / 0.040 | 0.897 / 0.040 / 0.020 | 0.905 / 0.050 / 0.043 | 0.901 / 0.068 / 0.020 |
+| camera shift | 0.500 / 1.000 / 1.000 | 0.500 / 0.700 / 0.704 | 0.506 / 0.294 / 0.378 | 0.587 / 0.174 / 0.240 | 0.555 / 0.226 / 0.316 | 0.684 / 0.304 / 0.458 |
+| camera tilt | 0.500 / 1.000 / 1.000 | 0.500 / 0.616 / 0.613 | 0.514 / 0.432 / 0.498 | 0.500 / 0.262 / 0.356 | 0.500 / 0.322 / 0.399 | 0.551 / 0.258 / 0.336 |
+
+- The support detector catches the too-big shifts completely. At floor 0.5-1 every model is flagged on 100% of frames and 100% of its false-safe failures are caught, and the same holds for every other shift that drives a model to all-safe (bal acc 0.500-0.590): camera shift and tilt, occlusion, and the photometric shifts that break sigreg and the official model. Over all 66 (model, shift) cells with bal acc at most 0.85, the support detector catches at least 0.897 of the false-safe failures (mostly 1.000).
+- It stays quiet where the margin function still works: jac under floor 0.1, light direction, white balance, noise, blur and JPEG is flagged at 1-4% (clean: 1-2%). The robust models push the alarm out together with the failure (flags at floor 0.3: jac 1.000, varying-radius adv_h 0.138, where its bal acc is still 0.994), so the alarm is mildly early rather than late. The one sizeable false alarm is jac under light intensity 0.3 (0.288 flagged, bal acc 0.992).
+- One failure is not detected: camera zoom. Every jac-family model degrades moderately (bal acc 0.897-0.905, about 50 false-safe states of 253 unsafe) and the support detector catches only 0.000-0.176 of them (median kNN distance 1.2x clean): the zoomed frame lands among training latents of other poses, the in-support aliasing that was the dominant Dubins failure. On Reacher it is the exception: every other failure leaves the support.
+- The world model's own prediction error is a poor detector. It catches 0.000-0.500 of the failures of the jac-family models under every shift up to floor 0.5, and for jac+adv_h it falls to 0.000 at floor 0.4-0.75: the predictor stays self-consistent on the shifted latents (it maps a shifted frame to the shifted next frame), so a shift can be invisible to the dynamics while the encoder has left the support. It fires only on the extreme shifts (floor 0.75 / 1 for varying-radius adv_h and whole latent, median error 4-25x clean).
+- Consequence for the pipeline: a support check on the current frame, computed once per replan, can turn every too-big shift into an abstention (stop or hand over) instead of a silent all-safe planner; the residual risk is the moderate, in-support aliasing case (camera zoom), which only robustness training can address. Both detectors are per-frame and label-free; the threshold needs only clean in-distribution frames. One training seed, one margin-function seed.
+
 ## Prediction depth (in distribution)
 
 On Dubins, $h$ on predicted latents became more optimistic further into the rollout. `reacher_depth_diag.py` checks this on Reacher: 1000 held-out starts (half enter the box within 75 env steps), one CEM-style plan each, rolled out for 15 predicted blocks (75 env steps; the CEM horizon is 5 blocks), labels from replaying the plan in the simulator (13-15% unsafe per step). Base appearance.
