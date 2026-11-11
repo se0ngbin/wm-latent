@@ -1,6 +1,7 @@
 % Results section skeleton (2026-11-11). Bullets = what to cover; prose not written yet.
 % Sources: paper-summary.md (Claims 1-7, R1-R8), paper-results.tex, reacher-results.md (Tables 1-32),
-% cbf-results.md, /data/seongbin/lewm/reacher_cem/*.npz (50-pair table, recomputed here).
+% cbf-results.md, dreamerdino.md (SafeDreamer / DINO-WM), /data/seongbin/lewm/reacher_cem/*.npz (50-pair table, recomputed here).
+% Page budget (11 pages excl. references and appendix): intro+abstract 1.5, related 0.75, setup 1.5, results 5, discussion 0.75, conclusion 0.25.
 % Placeholders: \todo{...}. Blank cells / "--" = not run. No bolding in tables (house style).
 \documentclass{article}
 \usepackage[margin=0.8in]{geometry}
@@ -19,6 +20,7 @@
   \item jac+adv$_z$: + same adversary, but attack and penalty on the whole latent $\|f(x+\delta)-f(x)\|^2$ (no head).
   \item ``varying radius'': $\varepsilon$ log-uniform in $[4/255, 32/255]$ per training sequence.
   \item Pull variants (CBF section only): jac+pull (predictor action-separation, target 1), jac+pull+adv$_h$.
+  \item Other world models (comparison only, \texttt{dreamerdino.md}): SafeDreamer (RSSM; plain and + jac) and DINO-WM (frozen DINOv2 encoder), same data, margin functions and CCEM rule; Dubins and Reacher (SafeDreamer), Dubins (DINO-WM).
   \item Margin function $h$: MLP 192-512-512-1 or linear $w^\top z+b$, gradient-penalty margin loss, trained on frozen latents of real + imagined states (real-only is an ablation). $h\ge 0$ = safe.
 \end{itemize}
 
@@ -27,6 +29,7 @@
   \item Raw CEM = LeWM CEM (300 samples, 30 elites; Dubins 30 iters, Reacher 10 iters). CCEM = feasible iff $h>0$ on current + every imagined state; fallback = highest $\min_k h(\hat z_k)$.
   \item Dubins: goals $K$ steps out whose straight line crosses an obstacle; main $K=10$, secondary $K=15$; open loop; 50 eps/seed. OOD: purple obstacles, 90° rotation (test-only).
   \item Reacher: invisible joint-space box; held-out start/goal pairs 25 env steps apart whose recorded path enters the box; frameskip 5, 5-block horizon, replan every 5 blocks; 50 pairs (broad table) or 150 paired episodes (key comparisons, exact McNemar).
+  \item OGBench cube: CEM \todo{protocol, shifts}.
   \item Dubins CBF: frozen LeWM $\to$ $h$ $\to$ reachability critic (DDPG in imagination) $\to$ CBF-filtered diffusion policy, 1000 trajectories. Filter needs only current frame + 1 predicted step.
   \item \todo{state seeds per benchmark: Dubins sigreg/jac/jac+pull/jac+pull+adv$_h$ 3 seeds; Dubins jac+adv$_h$ 1 seed; all Reacher models 1 seed (jac s1, varying-radius s1 training)}
 \end{itemize}
@@ -34,11 +37,11 @@
 \figph{Example frames: Dubins red / purple / rot.\ 90°; Reacher clean / floor $\alpha$ 0.1--0.4 / camera shift / tilt / occlusion / exposure. (existing: \texttt{figs/ood\_frames\_dubins.png}; Reacher frames \todo{render})}{Train vs.\ test-only shifts.}
 
 %=====================================================================
-\subsection{The encoder-Jacobian regularizer makes a red-trained margin function transfer}
+\subsection{Q1: Does jac make the safety readout transfer?}
 \label{sec:r1}
 
 \begin{table}[t]\centering\small
-\caption{Dubins: real-frame AUC of $h$ (trained on red frames), 4000 uniform states per condition, mean $\pm$ std over world-model seeds.}
+\caption{Dubins: real-frame AUC of $h$ (trained on red frames), 4000 uniform states per condition, mean $\pm$ std over world-model seeds. $^\ddagger$ other world models (\texttt{dreamerdino.md}, final checkpoints, linear $h$ 5000 steps): SafeDreamer $\pm$ over 3 world-model seeds (MLP not reported there); DINO-WM encoder is frozen DINOv2, so $\pm$ is over 3 margin-function seeds. Shape (diamond) AUC, linear: SafeDreamer 0.993, DINO-WM 0.952 (sign acc 0.500), LeWM jac \todo{matched run; post-oct-21 reports 0.995--0.998}. Blank = not run.}
 \label{tab:dubins_auc}
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{llcccccc}
@@ -56,45 +59,58 @@ jac+adv$_z$, varying $\varepsilon$ & &  &  &  &  &  &  \\
 \midrule
 jac+pull & 3 & $0.997 \pm 0.000$ & $0.998 \pm 0.001$ & $0.574 \pm 0.362$ & $0.423 \pm 0.396$ & $0.983 \pm 0.004$ & $0.983 \pm 0.004$ \\
 jac+pull+adv$_h$ & 3 & $0.998 \pm 0.000$ & $0.999 \pm 0.000$ & $0.986 \pm 0.015$ & $0.925 \pm 0.030$ & $0.994 \pm 0.002$ & $0.994 \pm 0.001$ \\
+\midrule
+SafeDreamer$^\ddagger$ & 3 & $0.997 \pm 0.000$ &  & $0.436 \pm 0.134$ &  & $0.554 \pm 0.012$ &  \\
+SafeDreamer + jac$^\ddagger$ & 3 & $0.994 \pm 0.002$ &  & $0.496 \pm 0.112$ &  & $0.619 \pm 0.076$ &  \\
+DINO-WM$^\ddagger$ & frozen & $0.993 \pm 0.002$ & $0.998 \pm 0.001$ & $0.993 \pm 0.001$ & $0.956 \pm 0.008$ & $0.978 \pm 0.005$ & $0.976 \pm 0.015$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]\centering\small
-\caption{Reacher: balanced sign accuracy (AUC) of real+imag $h$ on 5000 held-out states, one world-model seed. 0.500 = every state called safe.}
+\caption{Reacher: balanced sign accuracy (AUC) of real+imag $h$ on 5000 held-out states, one world-model seed (SafeDreamer: mean of 3 seeds, 10-epoch-matched checkpoint, \texttt{dreamerdino.md}). 0.500 = every state called safe.}
 \label{tab:reacher_signacc}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-Shift & sigreg, MLP & jac, MLP & jac, linear \\
+Shift & sigreg, MLP & jac, MLP & jac, linear & SafeDreamer, MLP \\
 \midrule
-floor $\alpha=0.2$ & 0.500 (0.493) & 0.997 (0.999) & 0.990 (0.999) \\
-light direction & 0.500 (0.906) & 0.997 (1.000) & 0.992 (0.999) \\
-JPEG & 0.500 (0.802) & 0.996 (1.000) & 0.991 (0.999) \\
-exposure & 0.500 (0.583) & 0.735 (0.998) & 0.980 (0.998) \\
-white balance & 0.500 (0.498) & 0.997 (1.000) & 0.991 (0.999) \\
-floor $\alpha=0.3$ & 0.500 (0.499) & 0.500 (0.873) & 0.578 (0.952) \\
-camera shift & 0.500 (0.838) & 0.506 (0.935) & 0.860 (0.973) \\
-occlusion & 0.500 (0.691) & 0.592 (0.956) & 0.707 (0.955) \\
+floor $\alpha=0.2$ & 0.500 (0.493) & 0.997 (0.999) & 0.990 (0.999) & 0.995 (1.000) \\
+light direction & 0.500 (0.906) & 0.997 (1.000) & 0.992 (0.999) & 0.997 (1.000) \\
+JPEG & 0.500 (0.802) & 0.996 (1.000) & 0.991 (0.999) & 0.997 (1.000) \\
+exposure & 0.500 (0.583) & 0.735 (0.998) & 0.980 (0.998) & 0.989 (0.999) \\
+white balance & 0.500 (0.498) & 0.997 (1.000) & 0.991 (0.999) & 0.995 (1.000) \\
+floor $\alpha=0.3$ & 0.500 (0.499) & 0.500 (0.873) & 0.578 (0.952) & 0.613 (0.994) \\
+camera shift & 0.500 (0.838) & 0.506 (0.935) & 0.860 (0.973) & 0.628 (0.907) \\
+occlusion & 0.500 (0.691) & 0.592 (0.956) & 0.707 (0.955) & 0.701 (0.976) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
   \item Claim: jac keeps $h$'s ranking under appearance and geometric shift (Dubins purple linear 0.970 vs 0.543; rotation 0.984 vs 0.637) with no in-distribution cost; on Reacher jac keeps even the threshold under all photometric/sensor shifts.
-  \item Why it works: plain invariance. Jacobian pinned to 1 limits how far a pixel change can move the latent; Reacher latent moves 10--20$\times$ less than sigreg's under light / floor 0.2 / white balance. sigreg's damage is mostly a shared affine offset (Table~\ref{tab:bn_baseline}).
-  \item Thresholds: Dubins purple sign acc is 0.500 for every model (ranking survives, threshold does not); Reacher keeps it. Explain: on Dubins safety is drawn in colour, so recolouring moves exactly the safety feature; on Reacher the box is invisible, every intensity change is nuisance.
+  \item Why it works: plain invariance. Jacobian pinned to 1 limits how far a pixel change can move the latent; Reacher latent moves 10--20$\times$ less than sigreg's under light / floor 0.2 / white balance. sigreg's damage is mostly a shared affine offset (next paragraph).
+  \item Thresholds: Dubins purple sign acc is 0.500 for every model (ranking survives, threshold does not); Reacher keeps it. On Dubins safety is drawn in colour, so recolouring moves exactly the safety feature; on Reacher the box is invisible, every intensity change is nuisance.
   \item Linear $h$ is the more robust readout (Dubins purple jac 0.970 vs 0.648 MLP; Reacher camera shift 0.860 vs 0.506).
-  \item Where jac breaks (Reacher floor $\ge 0.3$, camera, occlusion; Dubins purple threshold): ranking survives longer than threshold; failure is by shift \emph{size}, not direction (sets up sec.~\ref{sec:adv}).
-  \item jac+adv$_h$ improves real-frame ranking further on Dubins (purple linear 0.991, jac+pull+adv$_h$ MLP $0.925\pm0.030$) --- but see sec.~\ref{sec:cem}: this does not reach planning.
-  \item \todo{Fig: Reacher floor-$\alpha$ sweep of sign acc / AUC per model (reacher-results Table 3 + Table 24 + varying radius); first threshold lost, then ranking.}
+  \item Where jac breaks (Reacher floor $\ge 0.3$, camera, occlusion; Dubins purple threshold): ranking survives longer than threshold; failure is by shift \emph{size} (sets up sec.~\ref{sec:adv}).
+  \item Other world models: each fails on some Dubins shift, jac on none (ranking). SafeDreamer loses colour and rotation (0.436 / 0.554) and keeps shape; jac on SafeDreamer does not fix it (0.496 / 0.619) --- the regularizer's effect is not architecture-free (target 1 does not transfer to the RSSM encoder; \texttt{dreamerdino.md}). DINO-WM (frozen foundation encoder) keeps colour and rotation (0.993 / 0.978) but its shape threshold collapses (sign acc 0.500); on imagined latents it holds colour better than jac (25-step AUC 0.91 vs.\ $\approx 0.5$).
+  \item Reacher: SafeDreamer's $h$ is at least as robust as jac's under every listed shift (floor 0.3 0.613 vs 0.500; exposure 0.989 vs 0.735); jac's advantage on Reacher is in planning (sec.~\ref{sec:cem}), not in reading the box.
+  \item \todo{Fig: Reacher floor-$\alpha$ sweep of sign acc / AUC per model; first threshold lost, then ranking.}
+\end{itemize}
+
+\paragraph{Baseline: test-time adaptation is not a substitute for jac.}
+Label-free BatchNorm adaptation (BN): re-estimate the running statistics of LeWM's two BatchNorm layers on unlabeled \emph{safe} frames of the shifted condition (Reacher 2000, Dubins 500); weights and $h$ unchanged. Table~\ref{tab:bn_baseline} (appendix).
+\begin{itemize}
+  \item BN brings sigreg to jac's level only under small photometric shifts (Reacher floor 0.1--0.3: CCEM 0.38 / 0.18 $\to$ 0.14 / 0.60 at floor 0.3): there sigreg's damage is mostly one shared per-dimension offset (about 0.55 of its floor shift vs.\ 0.13--0.22 for jac).
+  \item Elsewhere it does not close the gap: lighting / exposure / occlusion barely move, camera shift gets worse (0.16 $\to$ 0.50 collision), Dubins purple $K=15$ stays at 40--50\% vs.\ jac's 19--22\%.
+  \item BN gives jac nothing: jac's invariance already removed the shared offset during training. Framing: jac does what test-time adaptation does, without test-time data, and also where it cannot.
 \end{itemize}
 
 %=====================================================================
-\subsection{Transfer of $h$ is what makes constrained CEM safe out of distribution}
+\subsection{Q2: Does transfer make control safe out of distribution?}
 \label{sec:cem}
 
 \begin{table}[t]\centering\small
-\caption{Dubins CEM, goal distance $K=10$ (main). Success / collision (\%), 50 episodes per seed, mean over seeds (std \todo{add from per-seed logs}). Models with 1 seed marked $^\dagger$. Blank = not run.}
+\caption{Dubins CEM, goal distance $K=10$ (main). Success / collision (\%), 50 episodes per seed, mean over seeds (std \todo{add from per-seed logs}). Models with 1 seed marked $^\dagger$. $^\ddagger$ other world models, protocol-unmatched (\texttt{dreamerdino.md}: dangerous starts with clean-source goals, a different episode set, 50 (DINO-WM) / 200 (SafeDreamer) episodes per seed, 3 seeds, final checkpoints, linear $h$ on real + imagined latents) \todo{rerun on LeWM's episode set before comparing}. Blank = not run.}
 \label{tab:dubins_k10}
 \begin{tabular}{lccccccccc}
 \toprule
@@ -111,117 +127,104 @@ jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
 \midrule
 jac+pull & 93 / 13 & 81 / 30 & 69 / 39 & 86 / 12 & 74 / 15 & 61 / 32 & 92 / 10 & 83 / 19 & 71 / 29 \\
 jac+pull+adv$_h$ & 93 / 11 & 73 / 43 & 66 / 42 & 84 / 11 & 65 / 25 & 61 / 32 & 89 / 11 & 73 / 31 & 69 / 33 \\
+\midrule
+DINO-WM$^\ddagger$ & 100 / 17 & 97 / 28 & 72 / 39 &  &  &  & 83 / 13 & 81 / 13 & 73 / 23 \\
+SafeDreamer$^\ddagger$ & 87 / 20 & 58 / 51 & 63 / 49 &  &  &  & 82 / 10 & 72 / 20 & 73 / 20 \\
+SafeDreamer + jac$^\ddagger$ & 80 / 23 & 81 / 23 & 81 / 25 &  &  &  & 82 / 21 & 79 / 22 & 80 / 22 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]\centering\small
-\caption{Dubins CEM, goal distance $K=15$ (secondary), as Table~\ref{tab:dubins_k10}.}
-\label{tab:dubins_k15}
-\begin{tabular}{lccccccccc}
-\toprule
- & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & \multicolumn{3}{c}{CCEM, linear $h$} \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
-Model & red & purple & rot. & red & purple & rot. & red & purple & rot. \\
-\midrule
-sigreg & 88 / 25 & 39 / 69 & 45 / 56 & 87 / 25 & 40 / 71 & 45 / 56 & 85 / 27 & 40 / 67 & 43 / 57 \\
-jac & 93 / 12 & 22 / 74 & 46 / 69 & 87 / 13 & 43 / 32 & 50 / 33 & 90 / 7 & 49 / 31 & 53 / 37 \\
-jac+adv$_h^\dagger$ & 86 / 18 & 10 / 82 & 16 / 78 & 80 / 22 & 26 / 62 & 20 / 62 & 90 / 12 & 28 / 50 & 26 / 62 \\
-jac+adv$_z$ &  &  &  &  &  &  &  &  &  \\
-jac+adv$_h$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
-jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
-\midrule
-jac+pull & 83 / 33 & 29 / 55 & 39 / 41 & 77 / 25 & 24 / 42 & 29 / 36 & 87 / 17 & 33 / 37 & 41 / 31 \\
-jac+pull+adv$_h$ & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 73 / 31 & 30 / 55 & 32 / 48 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[t]\centering\small
-\caption{Reacher CEM, 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
+\caption{Reacher CEM, key shifts (all shifts incl.\ sensor and dynamics: Table~\ref{tab:reacher_cem50_full}), 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. $^\ddagger$ SafeDreamer (plain, mean of 2--3 seeds, \texttt{dreamerdino.md}, same 50 pairs and CCEM rule): collision (success), not safe success. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
 \label{tab:reacher_cem50}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} & \\
+\cmidrule(lr){6-7}
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ & SafeDreamer$^\ddagger$ \\
+\midrule
+in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & 0.10 / 0.72 & 0.14 (0.37) \\
+\midrule
+floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & 0.06 / 0.66 & 0.13 (0.42) \\
+floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & 0.08 / 0.70 & 0.47 (0.28) \\
+light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & 0.10 / 0.66 & 0.11 (0.43) \\
+white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & 0.06 / 0.68 & 0.19 (0.33) \\
+camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & 0.32 / 0.12 & 0.45 (0.19) \\
+camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & 0.18 / 0.18 & 0.34 (0.11) \\
+occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & 0.06 / 0.58 & 0.35 (0.33) \\
+\midrule
+raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & 0.46 / 0.46 & 0.57 (0.38) \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{Dubins CBF, in distribution: collision / success over 1000 trajectories, one world-model seed (3072), critic seed 0. Margin functions: buffer = MLP on Dreamer-buffer frames; gpfail = MLP on 8000 uniform renders; gpimag = gpfail + imagined latents; lin = linear on gpfail states. No filter $\approx$ 0.54 / 0.87. $^\ddagger$ SafeDreamer plain s0 with the same pipeline (gp margin on Dreamer-buffer frames; its own no-filter 0.550 / 0.893; \texttt{dreamerdino.md}).}
+\label{tab:cbf_id}
+\begin{tabular}{lcccc}
+\toprule
+Model & buffer & gpfail & gpimag & lin \\
+\midrule
+sigreg & 0.706 / 0.428 & 0.557 / 0.764 & 0.710 / 0.368 & 0.617 / 0.739 \\
+jac & 0.071 / 0.794 & 0.065 / 0.761 & 0.006 / 0.785 & 0.101 / 0.160 \\
+jac+adv$_h$ &  &  &  &  \\
+jac+adv$_z$ &  &  &  &  \\
+\midrule
+jac+pull & 0.016 / 0.821 & 0.024 / 0.819 & 0.008 / 0.794 & 0.111 / 0.521 \\
+jac+pull+adv$_h$ & -- & 0.100 / 0.733 & 0.021 / 0.489 & 0.289 / 0.190 \\
+\midrule
+SafeDreamer$^\ddagger$ & 0.031 / 0.914 &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{OGBench cube, CEM (running on another machine): success / collision. Shifts \todo{fill in}. Blank = not run.}
+\label{tab:cube}
 \begin{tabular}{lcccccc}
 \toprule
- & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
-\cmidrule(lr){6-7}
-Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+ & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Model & in dist. & shift 1 & shift 2 & in dist. & shift 1 & shift 2 \\
 \midrule
-in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & 0.10 / 0.72 \\
-\midrule
-floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & 0.06 / 0.66 \\
-floor 0.2 & 0.46 / 0.24 & 0.08 / 0.68 & 0.04 / 0.64 & 0.08 / 0.64 & 0.06 / 0.56 & 0.10 / 0.70 \\
-floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & 0.08 / 0.70 \\
-floor 0.4 & 0.42 / 0.18 & 0.24 / 0.28 & 0.20 / 0.10 & 0.36 / 0.20 & 0.04 / 0.56 & 0.22 / 0.34 \\
-light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & 0.10 / 0.66 \\
-exposure & 0.28 / 0.12 & 0.08 / 0.64 & 0.06 / 0.66 & 0.06 / 0.70 & 0.04 / 0.58 & 0.06 / 0.64 \\
-white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & 0.06 / 0.68 \\
-JPEG & 0.26 / 0.18 & 0.04 / 0.56 & 0.06 / 0.52 & 0.06 / 0.64 & 0.08 / 0.60 & 0.08 / 0.64 \\
-sensor noise & 0.12 / 0.60 & 0.06 / 0.66 & 0.06 / 0.60 & 0.08 / 0.66 & 0.06 / 0.64 & 0.10 / 0.70 \\
-blur & 0.04 / 0.72 & 0.08 / 0.62 & 0.06 / 0.66 & 0.08 / 0.54 & 0.06 / 0.66 & 0.08 / 0.66 \\
-camera zoom & 0.28 / 0.42 & 0.12 / 0.64 & 0.12 / 0.66 & 0.08 / 0.70 & 0.10 / 0.68 & 0.12 / 0.68 \\
-camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & 0.32 / 0.12 \\
-camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & 0.18 / 0.18 \\
-occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & 0.06 / 0.58 \\
-\midrule
-weaker motors (gear 0.7) & 0.04 / 0.48 & 0.04 / 0.38 & 0.06 / 0.38 & 0.04 / 0.42 & 0.04 / 0.40 & 0.04 / 0.48 \\
-damping $\times 10$ & 0.02 / 0.06 & 0.02 / 0.06 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.06 \\
-1-step latency & 0.08 / 0.52 & 0.12 / 0.48 & 0.10 / 0.48 & 0.16 / 0.52 & 0.08 / 0.46 & 0.16 / 0.52 \\
-actuation noise & 0.22 / 0.30 & 0.22 / 0.30 & 0.24 / 0.22 & 0.28 / 0.30 & 0.20 / 0.32 & 0.20 / 0.30 \\
-\midrule
-raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & 0.46 / 0.46 \\
+sigreg &  &  &  &  &  &  \\
+jac &  &  &  &  &  &  \\
+jac+adv$_h$ &  &  &  &  &  &  \\
+jac+adv$_z$ &  &  &  &  &  &  \\
+jac+adv$_h$, varying $\varepsilon$ &  &  &  &  &  &  \\
+jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\paragraph{Constrained CEM.}
 \begin{itemize}
   \item Claim (both benchmarks): without a safety term sigreg and jac collide about equally OOD; the red-trained $h$ cuts jac's OOD collisions and does nothing for sigreg.
-  \item Dubins $K=10$: CCEM-MLP purple collision jac 14\% vs sigreg 37\% (raw 40 / 37); rotation 14\% vs 48\%. $K=15$: 32 vs 71 (purple), 33 vs 56 (rot.). In distribution CCEM keeps jac at 7--13\%. \todo{paired McNemar at $K=10$; existing: $K=15$ jac beats sigreg on all 3 seed pairs, $p\le 0.024$}.
-  \item Reacher: sigreg's $h$ calls everything safe under any photometric shift, so its CCEM \emph{is} raw CEM (identical rows, reacher-results Table 5); jac stays at 0.04--0.08 under every photometric/sensor shift.
+  \item Dubins $K=10$: CCEM-MLP purple collision jac 14\% vs sigreg 37\% (raw 40 / 37); rotation 14\% vs 48\%. In distribution CCEM keeps jac at 7--8\%. $K=15$ in Table~\ref{tab:dubins_k15} (appendix): 32 vs 71 (purple), 33 vs 56 (rot.); jac beats sigreg on all 3 seed pairs ($p\le 0.024$). \todo{paired McNemar at $K=10$}.
+  \item Reacher: sigreg's $h$ calls everything safe under any photometric shift, so its CCEM \emph{is} raw CEM; jac stays at 0.04--0.08 under every photometric/sensor shift.
   \item Why: CCEM can only veto what $h$ flags. If the encoder moves OOD states across $h$'s boundary, the constraint becomes vacuous (sigreg). If invariance keeps states put, the in-distribution $h$ still applies (jac).
-  \item Dynamics shifts (bottom block): no model differs; safety is limited by the planner/world model, not perception. Brief mention only.
-  \item Dubins difficulty grows with $K$ (jac purple CCEM collision 14\% $\to$ 32\%); explain via sec.~\ref{sec:limits} (imagined OOD states lose distance information by $\approx 10$ env steps).
+  \item Other world models (Dubins $K=10$, protocol-unmatched): CCEM collisions are comparable (purple 13--20\%, rotation 20--23\% vs jac 17\% / 23\% with linear $h$); jac's edge is success (red 92\% vs 82--83\%) and cost (DINO-WM planning $\approx 2$ GPU-h per 50 episodes). SafeDreamer + jac is shift-invariant but at a worse operating point ($\approx 80$ / 22 everywhere). Claim to make: robust without a pretrained encoder, at a fraction of the planning cost --- not ``more robust than DINO-WM.
+  \item Other world models (Reacher): jac plans more safely than SafeDreamer under every photometric/sensor shift (CCEM collision 0.04--0.08 vs 0.09--0.21) and at floor 0.3 (0.10--0.14 vs 0.34--0.49), although SafeDreamer's $h$ is as robust (Q1): the gap is in the planner (goal cost, $h$ precision along plans).
+  \item Dynamics shifts: no model differs; safety is limited by the planner/world model, not perception. Brief mention only.
+  \item OGBench cube (Table~\ref{tab:cube}): \todo{results pending}.
   \item \todo{Fig: collision vs.\ goal distance $K\in\{10,15,20\}$ for sigreg / jac, red / purple / rot., raw vs.\ CCEM.}
 \end{itemize}
 
-\paragraph{Baseline: test-time adaptation is not a substitute for jac.}
-Label-free BatchNorm adaptation (BN): re-estimate the running statistics of LeWM's two BatchNorm layers (encoder projector, predictor output projection) on unlabeled \emph{safe} frames of the shifted condition (Reacher 2000, Dubins 500); weights and $h$ unchanged.
-
-\begin{table}[t]\centering\small
-\caption{Test-time adaptation baseline, CCEM. Reacher: 50 box-crossing pairs, MLP $h$, collision / safe success, one seed. Dubins purple: 100-episode protocol (same episodes for every row; not the 50-episode protocol of Tables~\ref{tab:dubins_k10}--\ref{tab:dubins_k15}), collision / safe success (\%), sigreg mean $\pm$ std over 3 seeds, jac seed 3072. Blank = not run.}
-\label{tab:bn_baseline}
-\begin{tabular}{llccc}
-\toprule
-Benchmark & Condition & sigreg & sigreg + BN & jac (no adaptation) \\
-\midrule
-Reacher & floor 0.1 & 0.48 / 0.30 & 0.06 / 0.68 & 0.06 / 0.66 \\
-Reacher & floor 0.3 & 0.38 / 0.18 & 0.14 / 0.60 & 0.14 / 0.44 \\
-Reacher & floor 0.4 & 0.42 / 0.18 & 0.28 / 0.44 & 0.24 / 0.28 \\
-Reacher & white balance & 0.60 / 0.10 & 0.24 / 0.38 & 0.06 / 0.56 \\
-Reacher & light 0.3 & 0.42 / 0.12 & 0.44 / 0.20 & 0.06 / 0.58 \\
-Reacher & exposure & 0.28 / 0.12 & 0.28 / 0.26 & 0.08 / 0.64 \\
-Reacher & occlusion & 0.28 / 0.18 & 0.22 / 0.26 & 0.24 / 0.44 \\
-Reacher & camera shift & 0.16 / 0.08 & 0.50 / 0.14 & 0.32 / 0.16 \\
-Reacher & camera tilt & 0.26 / 0.14 &  & 0.44 / 0.10 \\
-\midrule
-Dubins & purple, $K=10$, MLP $h$ &  &  & 13.0 / 72.0 \\
-Dubins & purple, $K=10$, linear $h$ &  &  & 14.0 / 70.0 \\
-Dubins & purple, $K=15$, MLP $h$ & $58.0 \pm 9.6$ / $24.3 \pm 3.8$ & $50.3 \pm 5.9$ / $27.3 \pm 7.0$ & 19.0 / 46.0 \\
-Dubins & purple, $K=15$, linear $h$ & $55.3 \pm 6.4$ / $24.7 \pm 2.5$ & $39.7 \pm 1.5$ / $29.3 \pm 2.5$ & 22.0 / 44.0 \\
-Dubins & rot.\ 90°, $K=10$, MLP $h$ &  &  &  \\
-Dubins & rot.\ 90°, $K=15$, MLP $h$ &  &  &  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
+\paragraph{CBF safety filter (Dubins).}
 \begin{itemize}
-  \item BN brings sigreg to jac's level only under small photometric shifts (Reacher floor 0.1--0.3): there sigreg's damage is mostly one shared per-dimension offset (about 0.55 of its floor shift vs.\ 0.13--0.22 for jac in the route decomposition), which re-estimating BatchNorm statistics removes.
-  \item Elsewhere it does not close the gap: lighting / exposure / occlusion barely move, camera shift gets worse (0.16 $\to$ 0.50 collision), Dubins purple $K=15$ stays at 40--50\% vs.\ jac's 19--22\%.
-  \item BN gives jac nothing on Reacher (CCEM within noise under every shift, reacher-results Table 23): jac's invariance already removed the shared offset during training. Framing: jac does what test-time adaptation does, without test-time data, and also where it cannot.
-  \item Everything else about BN (jac + BN on Dubins, adv$_h$ + BN, CBF + BN) in Appendix~\ref{app:bn}.
+  \item In distribution, jac-base filters work (jac gpimag 0.6\% collision, jac+pull 0.8\%, at $\approx$ 0.79 success); sigreg is at or above no-filter collision with every margin function. SafeDreamer's filter: 3.1\%.
+  \item Why sigreg fails even in distribution: $h$ is accurate on real frames (buffer AUC 0.983) but the critic is trained in imagination; on imagined latents sigreg's gpfail $h$ is false-safe 0.968 (jac+pull 0.240).
+  \item Imagined-state training (gpimag) is the best margin function on jac-base models: imagined false-safe gpfail $\to$ gpimag: jac+pull 0.240 $\to$ 0.093, sigreg 0.968 $\to$ 0.302.
+  \item Pull: jac+pull $\approx$ jac with MLP margins (buffer 1.6\% vs 7.1\%, gpimag 0.8\% vs 0.6\%). \todo{say whether pull is kept; pull target 1 was never tuned.}
+  \item Negative: adv$_h$ on top hurts the CBF in distribution with every margin (jac+pull+adv$_h$ gpfail 10.0\% vs 2.4\%, gpimag 2.1\% vs 0.8\% at lower success). Linear margins block the goal (success 0.16--0.52).
+  \item OOD (Table~\ref{tab:cbf_ood}, appendix) follows the same reach story as CEM: diamond (in reach) works for jac / jac+pull (3--4\%) and SafeDreamer (2.9\%), not sigreg (43\%); purple (out of reach) gives no-filter collision for every model incl.\ SafeDreamer (51\%). Label-free test-time adaptation halves jac's purple collision (Appendix~\ref{app:bn}).
+  \item \todo{Fig: example CBF trajectories, jac vs sigreg, red / diamond / purple.}
 \end{itemize}
 
 %=====================================================================
-\subsection{Adversarial invariance on top of jac: helps only where the shift is within reach and jac has headroom}
+\subsection{Q3: When does extra robustness training help?}
 \label{sec:adv}
 
 \begin{table}[t]\centering\small
@@ -246,88 +249,128 @@ occlusion & MLP &  & & & & \\
 \end{tabular}
 \end{table}
 
-\begin{table}[t]\centering\small
-\caption{Reach: median $|\Delta h|$ under the shift / safe--unsafe gap of $h$, jac $\to$ model (400 held-out states; ratio $<1$ = model is more robust). From \texttt{adv\_align.py} (reacher-results Table 31 and varying-radius section; whole-latent columns: \texttt{MODEL2=rc\_jac\_safeadv\_latent[\_epsmix]}, logs \texttt{reacher\_eval\_logs/adv\_align\_*.log}, 2026-11-11). Blank = not run.}
-\label{tab:reach}
-\begin{tabular}{llccccc}
-\toprule
- & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
-\cmidrule(lr){6-7}
-Benchmark & Shift & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
-\midrule
-Reacher & exposure & 0.078 & 0.003 & 0.005  &  & 0.003  \\
-Reacher & light & 0.015 & 0.003 & 0.003  &  & 0.003  \\
-Reacher & floor 0.2 & 0.010 & 0.004 & 0.003  &  & 0.003  \\
-Reacher & camera shift & 0.200 & 0.099 & 0.104  & 0.107 & 0.123  \\
-Reacher & floor 0.3 & 0.325 & 0.423 & 0.058  & 0.007 & 0.008  \\
-Reacher & floor 0.4 & 0.860 & 0.721 & 0.417  & 0.075 & 0.262  \\
-Reacher & occlusion & 0.086 & 0.121 & 0.093  & 0.022 & 0.019  \\
-Reacher & camera tilt & 0.340 & 0.337 & 0.407  & 0.505 & 0.309  \\
-Dubins & diamond & 0.040 & 0.007 & & & \\
-Dubins & purple & 0.343 & 0.446 & & & \\
-Dubins & rot.\ 90° & 0.145 & 0.149 & & & \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[t]\centering\small
-\caption{Reacher, camera tilt: where unsafe plans get vetoed. 200 safe starts near the box $\times$ 64 random CEM-style 5-block plans, labels from simulating each plan; veto = $h<0$ on the start frame or any predicted block (CCEM's rule, threshold 0). MLP $h$ except the last two columns. Script \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.py} (\texttt{reacher\_veto\_diag.py} + per-step output), log \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.log} (2026-11-11). One world-model seed.}
-\label{tab:tilt_perstep}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lccccccc}
-\toprule
- & \multicolumn{2}{c}{Unsafe plans caught by} & Unsafe with $h<0$ & Near / far-safe & CCEM collision & Linear $h$: unsafe / near / far & CCEM collision \\
-Model & start frame & prediction only & at block 3 & vetoed & (150 pairs) & vetoed & linear (150 pairs) \\
-\midrule
-jac & 0.06 & 0.37 & 0.35 & 0.30 / 0.14 & 0.373 & 0.58 / 0.53 / 0.31 & 0.293 \\
-jac+adv$_h$ & 0.00 & 0.66 & 0.53 & 0.33 / 0.14 & 0.313 & 0.74 / 0.61 / 0.30 & 0.220 \\
-jac+adv$_z$ & 0.17 & 0.43 & 0.45 & 0.29 / 0.10 & 0.240 & 0.69 / 0.46 / 0.18 & 0.227 \\
-jac+adv$_h$, varying $\varepsilon$ & 0.00 & 0.20 & 0.09 & 0.06 / 0.04 & 0.480 & 0.39 / 0.19 / 0.13 & 0.420 \\
-jac+adv$_z$, varying $\varepsilon$ & 0.15 & 0.39 & 0.43 & 0.28 / 0.13 & 0.280 & 0.68 / 0.46 / 0.35 & 0.140 \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\figph{Reach $\times$ headroom: x = jac's $|\Delta h|$/gap under each shift, y = CCEM collision gain of the adversarial model over jac; points per shift, both benchmarks; colour = fixed vs.\ varying $\varepsilon$, jac+adv$_h$ vs.\ jac+adv$_z$. Gains only in the middle band.}{When adversarial invariance pays off in planning.}
+\figph{Reach $\times$ headroom: x = jac's $|\Delta h|$/gap under each shift, y = CCEM collision gain of the adversarial model over jac; points per shift, both benchmarks; colour = fixed vs.\ varying $\varepsilon$, jac+adv$_h$ vs.\ jac+adv$_z$. Numbers: Tables~\ref{tab:reach}, \ref{tab:imag_reach}.}{When adversarial invariance pays off in planning.}
 
 \begin{itemize}
-  \item Dubins (negative): jac+adv$_h$ (1 seed) is worse than jac at $K=10$ and $K=15$ under every OOD condition (e.g.\ $K=10$ purple CCEM-MLP 38\% vs 14\%), despite better real-frame AUC (Table~\ref{tab:dubins_auc}). Same for jac+pull+adv$_h$ (3 seeds). Over the 21-model grid no model beats jac in paired CCEM. 200-paired-episode test: adv$_h$ encoder-only variants collide $2$--$4\times$ more than jac on red.
-  \item Why Dubins fails: (i) no Dubins shift is in the adversary's band --- purple moves jac's $h$ by 0.34 of the gap (out of reach), rotation is a viewpoint change (out of reach for the head-only adversary, $0.145 \to 0.149$), diamond is in reach but has no headroom; (ii) Dubins draws safety in colour, so intensity invariance overlaps the safety signal and costs the predictor $1.7$--$6\times$ prediction loss (vs.\ $\approx 1\%$ on Reacher); (iii) imagined OOD states lose distance info anyway (sec.~\ref{sec:limits}).
-  \item Reacher fixed radius: adv$_h$ halves camera-shift collision at equal safe success (0.427 $\to$ 0.207, $p<0.001$; linear $p=0.020$). Under floor shifts it is a more conservative operating point, not a better one (fewer collisions because less goal reaching; floor 0.4 progress 0.27 vs 0.57). Why: $h$ is invariant, the goal latent is not.
-  \item Whole latent (adv$_z$), fixed radius: penalizing the whole latent also protects the goal cost, and here that wins: camera shift 0.427 $\to$ 0.160 with higher safe success (0.313); floor 0.3 within reach (ratio 0.18). Also matches the earlier finding that the adversary must search the penalized quantity.
-  \item No fixed ordering of targets: the adversary's target trades reach on one shift against another. Fixed radius: whole latent $>$ head-only under camera shift. Varying radius: head-only $>$ whole latent at floor 0.4 (0.087 vs.\ 0.200 collision), whole latent $>$ head-only under camera tilt. Whole latent has a small in-distribution cost.
-  \item Varying radius: extends reach (floor 0.3 $|\Delta h|$ 0.325 $\to$ 0.007, floor 0.4 0.860 $\to$ 0.075, occlusion 0.086 $\to$ 0.022) and that predicts planning: floor 0.4 0.340 / 0.100 $\to$ 0.087 / 0.653 ($p<0.001$ both), floor 0.3 0.233 / 0.447 $\to$ 0.040 / 0.673, occlusion (50 pairs) 0.24 / 0.44 $\to$ 0.10 / 0.62. Gains on both axes because near-invariance to the floor also fixes the goal cost. No in-distribution or prediction-loss cost.
-  \item Where it does not work: camera tilt gets worse with varying-radius adv$_h$ (0.373 $\to$ 0.480; linear $p=0.018$) --- the reach analysis predicted this (0.340 $\to$ 0.505). Viewpoint change scrambles state info under jac (linear joint readout error 50--110° vs.\ 1° clean), and the head-only adversary does not bring it back.
-  \item Account: reach $\times$ headroom. Reach = how far the shift moves jac's $h$ relative to what the adversary covers ($\lesssim 0.2$ of the gap at 8/255; more with varying $\varepsilon$; which shifts depends on the adversary's target). Headroom = jac must be hurt enough to collide. Reach, measured per model, predicts the planning gains for every intensity-type shift (incl.\ the whole-latent models: floor 0.4 0.262 vs.\ 0.075 for varying adv$_h$ matches its weaker planning; occlusion 0.019 in reach and planning good). Viewpoint change stays out of reach for every adversary we trained (camera tilt ratio 0.91--1.48), but the whole-latent models still plan better under tilt (see below), which reach does not explain. Alignment of the shift with the adversary's directions does not predict gains either (0.17--0.43 for every shift).
-  \item Varying-radius whole latent (150 pairs, exact McNemar vs.\ jac): floor 0.3 matches varying-radius adv$_h$ (MLP 0.233 / 0.447 $\to$ 0.040 / 0.653; collision 0 / 29, $p<0.001$; safe success $p<0.001$); floor 0.4 only partly (MLP 0.200 / 0.333, collision $p=0.004$; varying adv$_h$ 0.087 / 0.653); camera shift lowers collision (MLP 0.427 $\to$ 0.233, $p<0.001$; linear 0.253 $\to$ 0.107, $p=0.001$) but not safe success (0.207 $\to$ 0.140, n.s.), weaker than fixed-radius whole latent (0.160 / 0.313).
-  \item Camera tilt is the exception to the reach account. Both whole-latent models plan better than jac under tilt (varying $\varepsilon$: linear 0.293 $\to$ 0.140, $p=0.001$, safe success $p=0.043$; MLP 0.373 $\to$ 0.280, $p=0.087$; fixed radius: MLP 0.373 $\to$ 0.240, 39 / 19, $p=0.012$; linear 0.293 $\to$ 0.227, $p=0.184$; reacher-results Table 35), yet neither brings tilt within reach on real frames ($|\Delta h|$/gap 0.340 $\to$ 0.407 fixed, 0.309 varying; latent shift ratio 0.92--0.98). So real-frame reach does not see the tilt gain.
-  \item The gain is a ranking gain in imagination plus a mildly pessimistic current frame (Table~\ref{tab:tilt_perstep}). Split of the whole-latent gain over jac in unsafe plans vetoed (MLP): fixed $+0.17 = +0.11$ start frame $+ 0.06$ predicted-only; varying $+0.12 = +0.09 + 0.02$. The start-frame part is not discrimination: near-safe vetoes rise equally there (0.18 / 0.15 vs.\ 0.07 for jac), a uniform pessimistic shift. The discrimination is in imagination: at predicted block 3, unsafe $h<0$ 0.45 / 0.43 vs.\ 0.35 for jac while near-safe vetoes fall (0.08 / 0.11 vs.\ 0.15) --- the predictor pulls the tilted latent back toward the right state. jac+adv$_h$ vetoes the most unsafe plans (0.66) but also the most near-safe ones (0.19 at block 3), hence no significant gain (0.313); varying-radius adv$_h$ stays optimistic (block 3: 0.09 unsafe / 0.03 near) and collides most (0.480). Real-frame reach sees neither the pessimistic shift (it is unsigned) nor the imagined ranking (it reads the current frame only). Outcome attribution: collisions are ``fooled'' (returned plan looked safe) in 0.91--1.00 for every model, no fallback; whole-latent models reach as far with shorter paths, so not stalling.
-  \item Consequence for the account: reach should be measured where the planner reads $h$ --- on predicted states, not the current frame. Re-grounding (sec.~\ref{sec:limits}) can recover a shift the encoder lost, and whether it does depends on the model. \todo{imagined reach: \texttt{adv\_align.py} metric on predicted block 3 for all shifts, to check it predicts every planning gain; random plans here, not CCEM plans; one training seed.}
-  \item Cost: in distribution (50 pairs) CCEM-MLP 0.10 / 0.72 vs.\ jac 0.06 / 0.58; linear safe success 0.38 vs.\ 0.44 (per-shift table). \todo{prediction loss at epoch 10.} One training seed.
-  \item \todo{seeds: Reacher jac s1 (ETA $\approx$ 5 PM PST Nov 11), jac+adv$_h$ varying s1 (ETA $\approx$ 6 AM PST Nov 12); camera-shift and floor claims need these.}
-  \item Scope: the positive adversarial result is Reacher-only. On Dubins only fixed-radius head-only variants (jac+adv$_h$, jac+pull+adv$_h$) were trained, so Dubins is the case where the conditions are not met, not a test of extended reach. \todo{Dubins: decide whether to train jac+adv$_z$ / varying-$\varepsilon$ on Dubins (prediction: larger radius may bring purple within reach but at higher predictor cost since colour carries safety).}
+  \item Account: reach $\times$ headroom. Reach = how much the shift moves $h$ (median $|\Delta h|$ / safe--unsafe gap) for that model; headroom = jac must be hurt enough to collide. Alignment of the shift with the adversary's directions does not predict gains (0.17--0.43 for every shift).
+  \item Reacher fixed radius: adv$_h$ halves camera-shift collision at equal safe success (0.427 $\to$ 0.207, $p<0.001$). Under floor shifts it is a more conservative operating point (less goal reaching): $h$ is invariant, the goal latent is not. Whole latent (adv$_z$) also protects the goal cost: camera shift 0.427 $\to$ 0.160 with higher safe success.
+  \item Varying radius extends reach and that predicts planning: varying adv$_h$ floor 0.4 0.340 / 0.100 $\to$ 0.087 / 0.653 ($p<0.001$ both), floor 0.3 $\to$ 0.040 / 0.673, occlusion (50 pairs) 0.24 / 0.44 $\to$ 0.10 / 0.62; no in-distribution cost. Varying whole latent matches it at floor 0.3, only partly at floor 0.4 (reach 0.262 vs 0.075).
+  \item No fixed ordering of targets: head-only $>$ whole latent at floor 0.4, whole latent $>$ head-only under camera shift and tilt; whole latent has a small in-distribution cost.
+  \item Camera tilt: both whole-latent models beat jac (fixed MLP 0.373 $\to$ 0.240, $p=0.012$; varying linear 0.293 $\to$ 0.140, $p=0.001$) although current-frame reach is unchanged (0.407 / 0.309 vs 0.340). The gain is a ranking gain in imagination plus a less optimistic current frame (Table~\ref{tab:tilt_perstep}, appendix): at predicted block 3, unsafe $h<0$ 0.45 / 0.43 vs 0.35 for jac with fewer near-safe vetoes; varying adv$_h$ stays optimistic (signed current-frame shift $+0.436$) and collides most (0.480).
+  \item Which reach measure (Table~\ref{tab:imag_reach}; 5 models $\times$ 4 shifts, 150-pair MLP collision, one seed): pooled Spearman $\rho$ with collision 0.65 for current-frame reach, 0.76--0.77 on predicted blocks 2--3. Within a shift, unsigned reach ranks the models for floor and camera shift ($\rho$ 0.60--1.00 at any depth) but not tilt (0.10--0.40); the signed current-frame shift does (0.90). So: measure reach where the planner reads $h$, and keep the sign. (\texttt{reach\_corr.py} numbers, not yet a paper claim: 5 points per shift.)
+  \item Dubins (negative): jac+adv$_h$ (1 seed) and jac+pull+adv$_h$ (3 seeds) are worse than jac at $K=10$ under every OOD condition despite better real-frame AUC. Why: no Dubins shift has both reach and headroom (purple moves jac's $h$ by 0.34 of the gap; rotation 0.145 $\to$ 0.149; diamond in reach, no headroom); colour carries safety, so intensity invariance costs the predictor $1.7$--$6\times$ prediction loss (vs.\ $\approx 1\%$ on Reacher). Scope: extended-reach variants (adv$_z$, varying $\varepsilon$) were not trained on Dubins.
+  \item \todo{seeds: Reacher jac s1 (ETA $\approx$ 5 PM PST Nov 11), jac+adv$_h$ varying s1 (ETA $\approx$ 6 AM PST Nov 12).}
 \end{itemize}
 
 %=====================================================================
-\subsection{Dubins CBF safety filter}
-\label{sec:cbf}
+\subsection{Q4: Beyond reach: failure and detection}
+\label{sec:limits}\label{sec:detect}
+
+\figph{Per-step AUC of $h$ on imagined latents vs.\ prediction step (1--25), Dubins jac: red MLP vs.\ purple linear / MLP vs.\ rot.\ 90° linear (numbers: Table~\ref{tab:imag_decay}, appendix).}{Out of distribution, Dubins imagined states lose distance information within $\approx 10$ env steps.}
 
 \begin{table}[t]\centering\small
-\caption{Dubins CBF, in distribution: collision / success over 1000 trajectories, one world-model seed (3072), critic seed 0. Margin functions: buffer = MLP on Dreamer-buffer frames; gpfail = MLP on 8000 uniform renders; gpimag = gpfail + imagined latents; lin = linear on gpfail states. No filter $\approx$ 0.54 / 0.87.}
-\label{tab:cbf_id}
-\begin{tabular}{lcccc}
+\caption{Reacher, label-free support detector (kNN distance to 20000 training latents, clean 99th-percentile threshold): $h$ balanced accuracy / fraction of shifted frames flagged / fraction of $h$'s false-safe failures caught (``-- = none). Selected rows of Table~\ref{tab:detect_support} (all six models, all shifts).}
+\label{tab:detect_compact}
+\begin{tabular}{lcc}
 \toprule
-Model & buffer & gpfail & gpimag & lin \\
+Shift & jac & jac+adv$_h$, varying $\varepsilon$ \\
 \midrule
-sigreg & 0.706 / 0.428 & 0.557 / 0.764 & 0.710 / 0.368 & 0.617 / 0.739 \\
-jac & 0.071 / 0.794 & 0.065 / 0.761 & 0.006 / 0.785 & 0.101 / 0.160 \\
-jac+adv$_h$ &  &  &  &  \\
-jac+adv$_z$ &  &  &  &  \\
-\midrule
-jac+pull & 0.016 / 0.821 & 0.024 / 0.819 & 0.008 / 0.794 & 0.111 / 0.521 \\
-jac+pull+adv$_h$ & -- & 0.100 / 0.733 & 0.021 / 0.489 & 0.289 / 0.190 \\
+\multicolumn{3}{l}{\emph{Within reach ($h$ works): no alarm}} \\
+floor 0.1 & 0.990 / 0.014 / -- & 0.994 / 0.012 / -- \\
+white balance & 0.990 / 0.036 / -- & 0.992 / 0.016 / -- \\
+noise & 0.990 / 0.014 / -- & 0.994 / 0.012 / -- \\
+\multicolumn{3}{l}{\emph{Moved by robustness training}} \\
+floor 0.3 & 0.500 / 1.000 / 1.000 & 0.994 / 0.138 / -- \\
+floor 0.4 & 0.500 / 1.000 / 1.000 & 0.632 / 1.000 / 1.000 \\
+\multicolumn{3}{l}{\emph{Beyond reach ($h$ fails): detected}} \\
+floor 0.5 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 \\
+camera tilt & 0.514 / 1.000 / 1.000 & 0.500 / 0.992 / 0.984 \\
+occlusion & 0.561 / 0.908 / 0.995 & 0.747 / 0.606 / 0.992 \\
+\multicolumn{3}{l}{\emph{In-support aliasing ($h$ degrades): missed}} \\
+camera zoom & 0.899 / 0.106 / 0.040 & 0.905 / 0.092 / 0.021 \\
 \bottomrule
 \end{tabular}
+\end{table}
+
+\begin{itemize}
+  \item Dubins: OOD, $h$ loses its distance information within $\approx 10$ env steps of imagination (all 14 models screened: best step-10 OOD AUC 0.60). Predictor tracks purple as well as red, but $h$'s safe/unsafe gap in the purple region is $\approx 30\times$ smaller, so prediction noise erases the ranking. Consequence: jac's purple CCEM flags almost every plan unsafe and stalls; explains the growth of collision with $K$.
+  \item Reacher differs: OOD the latent blurs near the boundary (50\% veto point 0.05--0.1 rad $\to$ 0.25 rad for jac at floor 0.3) but imagined plans keep a usable ranking; $h$ errs optimistic, so CCEM degrades to raw CEM. Information is missing from the latent, not the readout (an oracle distance regressor is identical under shift); planner-side fixes (threshold calibration, threshold-free rules) only move along the safety--progress trade-off.
+  \item Detection (Table~\ref{tab:detect_compact}): once a shift is beyond every model's reach, the latent leaves the training support and a label-free kNN check catches it ($\ge 0.897$ of false-safe failures in all 66 failing model--shift cells), with no false alarms where $h$ still works; the alarm moves out with robustness training (floor 0.3). World-model prediction surprise is a poor detector (Appendix~\ref{app:surprise}).
+  \item The gap: camera zoom aliases inside the support (caught 0.02--0.18), the Dubins-colour failure mode; only robustness training addresses it. \todo{Dubins detection on corrected frames (Table~\ref{tab:detect_dubins}).}
+  \item Pipeline: robustness training within reach, abstention beyond it (closed-loop abstention not run; future work).
+\end{itemize}
+
+%=====================================================================
+\section{Discussion (bullets)}
+\begin{itemize}
+  \item jac: needed for any safety constraint (CEM or CBF) to survive appearance shift on LeWM; robust across all three Dubins shifts where SafeDreamer and DINO-WM each fail one; matches DINO-WM's planning safety without a pretrained encoder. Fails when the shift is large.
+  \item Adversarial on top: helps planning only with reach $\times$ headroom; varying $\varepsilon$ extends reach; the adversary's target shifts which shifts are in reach. Reach must be read where the planner reads $h$.
+  \item Test-time BN adaptation: a baseline that matches jac only under small photometric shifts; not a substitute.
+  \item Detection covers what robustness cannot reach; in-support aliasing remains.
+  \item \todo{Limitations: single WM seed on Reacher and for Dubins jac+adv$_h$; CBF single seed; cross-model Dubins CEM protocol-unmatched; purple beyond reach of every training-time method.}
+\end{itemize}
+
+%=====================================================================
+\appendix
+\section{Additional planning tables}
+\label{app:planning}
+\begin{table}[t]\centering\small
+\caption{Dubins CEM, goal distance $K=15$ (secondary), as Table~\ref{tab:dubins_k10}.}
+\label{tab:dubins_k15}
+\begin{tabular}{lccccccccc}
+\toprule
+ & \multicolumn{3}{c}{Raw CEM} & \multicolumn{3}{c}{CCEM, MLP $h$} & \multicolumn{3}{c}{CCEM, linear $h$} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+Model & red & purple & rot. & red & purple & rot. & red & purple & rot. \\
+\midrule
+sigreg & 88 / 25 & 39 / 69 & 45 / 56 & 87 / 25 & 40 / 71 & 45 / 56 & 85 / 27 & 40 / 67 & 43 / 57 \\
+jac & 93 / 12 & 22 / 74 & 46 / 69 & 87 / 13 & 43 / 32 & 50 / 33 & 90 / 7 & 49 / 31 & 53 / 37 \\
+jac+adv$_h^\dagger$ & 86 / 18 & 10 / 82 & 16 / 78 & 80 / 22 & 26 / 62 & 20 / 62 & 90 / 12 & 28 / 50 & 26 / 62 \\
+jac+adv$_z$ &  &  &  &  &  &  &  &  &  \\
+jac+adv$_h$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
+jac+adv$_z$, varying $\varepsilon$ &  &  &  &  &  &  &  &  &  \\
+\midrule
+jac+pull & 83 / 33 & 29 / 55 & 39 / 41 & 77 / 25 & 24 / 42 & 29 / 36 & 87 / 17 & 33 / 37 & 41 / 31 \\
+jac+pull+adv$_h$ & 79 / 27 & 32 / 68 & 31 / 55 & 73 / 32 & 29 / 52 & 29 / 51 & 73 / 31 & 30 / 55 & 32 / 48 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{Reacher CEM, all shifts, 50 box-crossing pairs, CCEM with MLP $h$ (linear in \todo{appendix}): collision / safe success. One world-model seed; s.e.\ $\approx 0.07$ per rate. $^\ddagger$ SafeDreamer (plain, mean of 2--3 seeds, \texttt{dreamerdino.md}, same 50 pairs and CCEM rule): collision (success), not safe success. Recomputed from \texttt{reacher\_cem/*\_mlp\_ccemminh\_data\_imag*.npz}. Last column: \texttt{rc\_jac\_safeadv\_latent\_epsmix}, recomputed from its npz (not yet in reacher-results.md).}
+\label{tab:reacher_cem50_full}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} & \\
+\cmidrule(lr){6-7}
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ & SafeDreamer$^\ddagger$ \\
+\midrule
+in distribution & 0.04 / 0.60 & 0.06 / 0.58 & 0.04 / 0.52 & 0.08 / 0.58 & 0.04 / 0.64 & 0.10 / 0.72 & 0.14 (0.37) \\
+\midrule
+floor 0.1 & 0.48 / 0.30 & 0.06 / 0.66 & 0.06 / 0.62 & 0.10 / 0.54 & 0.04 / 0.62 & 0.06 / 0.66 & 0.13 (0.42) \\
+floor 0.2 & 0.46 / 0.24 & 0.08 / 0.68 & 0.04 / 0.64 & 0.08 / 0.64 & 0.06 / 0.56 & 0.10 / 0.70 & 0.20 (0.37) \\
+floor 0.3 & 0.38 / 0.18 & 0.14 / 0.44 & 0.14 / 0.36 & 0.18 / 0.48 & 0.06 / 0.62 & 0.08 / 0.70 & 0.47 (0.28) \\
+floor 0.4 & 0.42 / 0.18 & 0.24 / 0.28 & 0.20 / 0.10 & 0.36 / 0.20 & 0.04 / 0.56 & 0.22 / 0.34 & 0.45 (0.09) \\
+light direction & 0.56 / 0.12 & 0.06 / 0.62 & 0.06 / 0.60 & 0.06 / 0.68 & 0.04 / 0.60 & 0.10 / 0.66 & 0.11 (0.43) \\
+exposure & 0.28 / 0.12 & 0.08 / 0.64 & 0.06 / 0.66 & 0.06 / 0.70 & 0.04 / 0.58 & 0.06 / 0.64 & 0.19 (0.34) \\
+white balance & 0.60 / 0.10 & 0.06 / 0.56 & 0.04 / 0.60 & 0.08 / 0.68 & 0.04 / 0.60 & 0.06 / 0.68 & 0.19 (0.33) \\
+JPEG & 0.26 / 0.18 & 0.04 / 0.56 & 0.06 / 0.52 & 0.06 / 0.64 & 0.08 / 0.60 & 0.08 / 0.64 & 0.14 (0.35) \\
+sensor noise & 0.12 / 0.60 & 0.06 / 0.66 & 0.06 / 0.60 & 0.08 / 0.66 & 0.06 / 0.64 & 0.10 / 0.70 & 0.15 (0.37) \\
+blur & 0.04 / 0.72 & 0.08 / 0.62 & 0.06 / 0.66 & 0.08 / 0.54 & 0.06 / 0.66 & 0.08 / 0.66 & 0.13 (0.39) \\
+camera zoom & 0.28 / 0.42 & 0.12 / 0.64 & 0.12 / 0.66 & 0.08 / 0.70 & 0.10 / 0.68 & 0.12 / 0.68 & 0.19 (0.46) \\
+camera shift & 0.16 / 0.08 & 0.32 / 0.16 & 0.16 / 0.22 & 0.18 / 0.20 & 0.20 / 0.20 & 0.32 / 0.12 & 0.45 (0.19) \\
+camera tilt & 0.26 / 0.14 & 0.44 / 0.10 & 0.26 / 0.12 & 0.22 / 0.18 & 0.54 / 0.08 & 0.18 / 0.18 & 0.34 (0.11) \\
+occlusion & 0.28 / 0.18 & 0.24 / 0.44 & 0.24 / 0.42 & 0.20 / 0.44 & 0.10 / 0.62 & 0.06 / 0.58 & 0.35 (0.33) \\
+\midrule
+weaker motors (gear 0.7) & 0.04 / 0.48 & 0.04 / 0.38 & 0.06 / 0.38 & 0.04 / 0.42 & 0.04 / 0.40 & 0.04 / 0.48 & 0.10 (0.33) \\
+damping $\times 10$ & 0.02 / 0.06 & 0.02 / 0.06 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.04 & 0.02 / 0.06 & 0.03 (0.04) \\
+1-step latency & 0.08 / 0.52 & 0.12 / 0.48 & 0.10 / 0.48 & 0.16 / 0.52 & 0.08 / 0.46 & 0.16 / 0.52 & 0.18 (0.40) \\
+actuation noise & 0.22 / 0.30 & 0.22 / 0.30 & 0.24 / 0.22 & 0.28 / 0.30 & 0.20 / 0.32 & 0.20 / 0.30 & 0.27 (0.33) \\
+\midrule
+raw CEM, in distribution & 0.54 / 0.34 & 0.58 / 0.36 & 0.58 / 0.36 & 0.44 / 0.46 & 0.56 / 0.32 & 0.46 / 0.46 & 0.57 (0.38) \\
+\bottomrule
+\end{tabular}}
 \end{table}
 
 \begin{table}[t]\centering\small
@@ -356,25 +399,85 @@ jac+pull & lin &  &  &  \\
 jac+pull+adv$_h$ & gpfail &  &  &  \\
 jac+pull+adv$_h$ & gpimag &  &  &  \\
 jac+pull+adv$_h$ & lin &  &  &  \\
+\midrule
+SafeDreamer$^\ddagger$ & buffer & 0.510 & 0.029 & 0.402 (policy fails: 3.0\% success) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{itemize}
-  \item In distribution, jac-base filters work (jac gpimag 0.6\% collision, jac+pull 0.8\%, at $\approx$ 0.79 success); sigreg is at or above no-filter collision with every margin function.
-  \item Why sigreg fails even in distribution: $h$ is accurate on real frames (buffer AUC 0.983) but the critic is trained in imagination; on imagined latents sigreg's gpfail $h$ is false-safe 0.968 (jac+pull 0.240). Critic inherits it. Link to memory/rollout-fidelity result (jac's rollouts stay readable).
-  \item Imagined-state training (gpimag) is the best margin function on jac-base models: false-safe on imagined latents gpfail $\to$ gpimag: jac+pull 0.240 $\to$ 0.093, sigreg 0.968 $\to$ 0.302.
-  \item Pull: jac+pull $\approx$ jac with MLP margins (buffer 1.6\% vs 7.1\%, gpimag 0.8\% vs 0.6\%). \todo{say whether pull is kept; pull target 1 was never tuned and halves control authority at full context.}
-  \item Negative: adv$_h$ on top hurts the CBF in distribution with every margin (jac+pull+adv$_h$ gpfail 10.0\% vs 2.4\%, gpimag 2.1\% vs 0.8\% at lower success). Linear margins block the goal (success 0.16--0.52): the critic needs a graded value, a linear head on a nonlinear boundary gives a poor one.
-  \item OOD follows the same reach story as CEM: diamond (in reach, jac's $h$ moves 0.04 of the gap) works for jac / jac+pull (3--4\% collision) and not for sigreg (43\%); purple (out of reach, 0.34 of the gap) gives no-filter collision for every model --- the red-trained critic reads purple states as safe.
-  \item Limitations pointer (one sentence): label-free test-time adaptation partly rescues the purple CBF (collision halved, safe success held; Appendix~\ref{app:bn}), suggesting short-horizon filters plus adaptation for shifts beyond training-time reach.
-  \item \todo{Fig: example CBF trajectories, jac vs sigreg, red / diamond / purple.}
-\end{itemize}
+\section{Reach diagnostics}
+\label{app:reach}
+\begin{table}[t]\centering\small
+\caption{Reach: median $|\Delta h|$ under the shift / safe--unsafe gap of $h$, jac $\to$ model (400 held-out states; ratio $<1$ = model is more robust). From \texttt{adv\_align.py} (reacher-results Table 31 and varying-radius section; whole-latent columns: \texttt{MODEL2=rc\_jac\_safeadv\_latent[\_epsmix]}, logs \texttt{reacher\_eval\_logs/adv\_align\_*.log}, 2026-11-11). Blank = not run.}
+\label{tab:reach}
+\begin{tabular}{llccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){6-7}
+Benchmark & Shift & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+\midrule
+Reacher & exposure & 0.078 & 0.003 & 0.005  &  & 0.003  \\
+Reacher & light & 0.015 & 0.003 & 0.003  &  & 0.003  \\
+Reacher & floor 0.2 & 0.010 & 0.004 & 0.003  &  & 0.003  \\
+Reacher & camera shift & 0.200 & 0.099 & 0.104  & 0.107 & 0.123  \\
+Reacher & floor 0.3 & 0.325 & 0.423 & 0.058  & 0.007 & 0.008  \\
+Reacher & floor 0.4 & 0.860 & 0.721 & 0.417  & 0.075 & 0.262  \\
+Reacher & occlusion & 0.086 & 0.121 & 0.093  & 0.022 & 0.019  \\
+Reacher & camera tilt & 0.340 & 0.337 & 0.407  & 0.505 & 0.309  \\
+Dubins & diamond & 0.040 & 0.007 & & & \\
+Dubins & purple & 0.343 & 0.446 & & & \\
+Dubins & rot.\ 90° & 0.145 & 0.149 & & & \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-%=====================================================================
-\subsection{Limits: what invariance cannot fix}
-\label{sec:limits}
+\begin{table}[t]\centering\small
+\caption{Reacher reach on the current frame vs.\ on predicted states: median $|\Delta h|$/gap at the encoded start frame (k0) / at predicted block 3 (k3) / signed median $\Delta h$/gap at k0 ($+$ = shift makes $h$ more optimistic). 400 held-out states (half unsafe), one fixed random CEM-style plan per state, MLP real+imag $h$, gap from clean real frames. Script and log \texttt{reacher\_eval\_logs/imag\_reach.\{py,log\}} (2026-11-11). One world-model seed.}
+\label{tab:imag_reach}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+ & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){5-6}
+Shift & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+\midrule
+floor 0.1 & 0.002 / 0.000 / $+0.001$ & 0.001 / 0.000 / $+0.000$ & 0.001 / 0.000 / $-0.001$ & 0.001 / 0.000 / $+0.000$ & 0.001 / 0.000 / $-0.001$ \\
+floor 0.2 & 0.010 / 0.002 / $+0.009$ & 0.004 / 0.001 / $+0.003$ & 0.003 / 0.001 / $-0.002$ & 0.002 / 0.000 / $+0.002$ & 0.003 / 0.000 / $-0.002$ \\
+floor 0.3 & 0.325 / 0.028 / $+0.321$ & 0.423 / 0.026 / $+0.423$ & 0.058 / 0.008 / $+0.003$ & 0.007 / 0.001 / $+0.006$ & 0.008 / 0.001 / $-0.006$ \\
+floor 0.4 & 0.860 / 0.074 / $+0.860$ & 0.721 / 0.261 / $+0.721$ & 0.417 / 0.093 / $+0.417$ & 0.075 / 0.007 / $+0.057$ & 0.262 / 0.036 / $+0.052$ \\
+light 0.3 & 0.015 / 0.001 / $+0.003$ & 0.003 / 0.001 / $+0.002$ & 0.003 / 0.001 / $-0.001$ & 0.003 / 0.001 / $+0.002$ & 0.003 / 0.001 / $+0.000$ \\
+exposure & 0.078 / 0.004 / $+0.066$ & 0.003 / 0.001 / $+0.003$ & 0.005 / 0.001 / $+0.004$ & 0.005 / 0.001 / $+0.004$ & 0.003 / 0.001 / $+0.001$ \\
+white balance & 0.004 / 0.001 / $+0.003$ & 0.002 / 0.000 / $+0.001$ & 0.002 / 0.000 / $-0.001$ & 0.002 / 0.000 / $+0.002$ & 0.002 / 0.000 / $-0.000$ \\
+noise & 0.001 / 0.000 / $+0.000$ & 0.000 / 0.000 / $+0.000$ & 0.000 / 0.000 / $-0.000$ & 0.000 / 0.000 / $+0.000$ & 0.000 / 0.000 / $-0.000$ \\
+blur & 0.003 / 0.001 / $-0.000$ & 0.004 / 0.001 / $+0.003$ & 0.003 / 0.001 / $-0.003$ & 0.003 / 0.001 / $+0.002$ & 0.003 / 0.001 / $-0.002$ \\
+camera zoom & 0.011 / 0.005 / $+0.005$ & 0.010 / 0.004 / $+0.006$ & 0.019 / 0.004 / $+0.016$ & 0.010 / 0.004 / $+0.007$ & 0.017 / 0.003 / $+0.012$ \\
+camera shift & 0.200 / 0.043 / $+0.137$ & 0.099 / 0.015 / $+0.029$ & 0.104 / 0.025 / $-0.003$ & 0.107 / 0.031 / $+0.054$ & 0.123 / 0.023 / $-0.033$ \\
+camera tilt & 0.340 / 0.090 / $+0.106$ & 0.337 / 0.101 / $+0.185$ & 0.407 / 0.104 / $+0.036$ & 0.505 / 0.147 / $+0.436$ & 0.309 / 0.091 / $+0.048$ \\
+occlusion & 0.086 / 0.024 / $+0.067$ & 0.121 / 0.031 / $+0.048$ & 0.093 / 0.017 / $+0.006$ & 0.022 / 0.005 / $+0.013$ & 0.019 / 0.003 / $+0.000$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
 
+\begin{table}[t]\centering\small
+\caption{Reacher, camera tilt: where unsafe plans get vetoed. 200 safe starts near the box $\times$ 64 random CEM-style 5-block plans, labels from simulating each plan; veto = $h<0$ on the start frame or any predicted block (CCEM's rule, threshold 0). MLP $h$ except the last two columns. Script \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.py} (\texttt{reacher\_veto\_diag.py} + per-step output), log \texttt{reacher\_eval\_logs/veto\_tilt\_perstep.log} (2026-11-11). One world-model seed.}
+\label{tab:tilt_perstep}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+ & \multicolumn{2}{c}{Unsafe plans caught by} & Unsafe with $h<0$ & Near / far-safe & CCEM collision & Linear $h$: unsafe / near / far & CCEM collision \\
+Model & start frame & prediction only & at block 3 & vetoed & (150 pairs) & vetoed & linear (150 pairs) \\
+\midrule
+jac & 0.06 & 0.37 & 0.35 & 0.30 / 0.14 & 0.373 & 0.58 / 0.53 / 0.31 & 0.293 \\
+jac+adv$_h$ & 0.00 & 0.66 & 0.53 & 0.33 / 0.14 & 0.313 & 0.74 / 0.61 / 0.30 & 0.220 \\
+jac+adv$_z$ & 0.17 & 0.43 & 0.45 & 0.29 / 0.10 & 0.240 & 0.69 / 0.46 / 0.18 & 0.227 \\
+jac+adv$_h$, varying $\varepsilon$ & 0.00 & 0.20 & 0.09 & 0.06 / 0.04 & 0.480 & 0.39 / 0.19 / 0.13 & 0.420 \\
+jac+adv$_z$, varying $\varepsilon$ & 0.15 & 0.39 & 0.43 & 0.28 / 0.13 & 0.280 & 0.68 / 0.46 / 0.35 & 0.140 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\section{Imagined-state AUC (Dubins)}
+\label{app:imag}
 \begin{table}[t]\centering\small
 \caption{Dubins, jac: per-step AUC of $h$ on imagined latents (600 held-out starts, CEM-style plans, simulator labels).}
 \label{tab:imag_decay}
@@ -390,22 +493,8 @@ rot.\ 90°, linear & 0.97 & 0.76 & 0.49 & 0.46 & 0.42 \\
 \end{tabular}
 \end{table}
 
-\figph{Veto-vs-distance curves: fraction of truly safe plans vetoed (threshold at 90\% of unsafe caught), binned by the plan's closest true distance to the obstacle/box. Dubins red (falls 0.76 $\to$ 0.12) vs.\ purple (flat 0.87--0.92); Reacher in-dist vs.\ floor 0.3 for jac / jac+adv$_h$ / varying $\varepsilon$ (blur).}{Dubins OOD: no distance information in imagined plans; Reacher OOD: a blur near the boundary.}
-
-\begin{itemize}
-  \item Dubins: OOD, $h$ loses its distance information within $\approx 10$ env steps of imagination (all 14 models screened: best step-10 OOD AUC 0.60). Predictor tracks purple as well as red (error 0.57 vs 0.53), but $h$'s safe/unsafe gap in the purple region is $\approx 30\times$ smaller, so prediction noise erases the ranking. Follows env time, not predictor steps (frameskip-5 model decays at the same env step).
-  \item Consequence: jac's purple CCEM flags almost every plan unsafe and falls back to ``safest-looking'' plans --- pessimistic, stalls. Explains the growth of collision with $K$.
-  \item Reacher differs: OOD the latent blurs near the boundary (50\% veto point 0.05--0.1 rad $\to$ 0.25 rad for jac at floor 0.3, matching its nearest-neighbour state error) but imagined plans keep a usable ranking (within-start AUC 0.90). $h$ errs optimistic, so CCEM degrades to raw CEM. Predictor damps perturbations (change in $h$ shrinks $3$--$20\times$ by predicted step 5) --- re-grounding.
-  \item Information is missing from the latent, not the readout: an oracle $h$ regressing signed distance is identical to the classifier under shift.
-  \item Planner-side fixes do not recover it (both benchmarks): per-step threshold calibration, safe-only quantile offsets, threshold-free elite rules, $h$ trained on predicted latents --- each only moves along the safety--progress trade-off. \todo{one summary table or appendix.}
-\end{itemize}
-
-%=====================================================================
-\subsection{Shifts beyond reach can be detected from the latent's support}
-\label{sec:detect}
-
-Two label-free detectors, thresholds at the clean 99th percentile (clean false-alarm rate $\approx 0.01$), need only unlabeled in-distribution data. Support: mean distance from $z$ to its 10 nearest neighbours among 20000 training latents. Surprise: the world model's own one-block prediction error $\|\hat z_{t+5}(z_t, a_{t:t+5}) - z_{t+5}\|$. 1000 held-out states (half unsafe), 500 for rates; real+imag MLP $h$.
-
+\section{OOD detection, full tables}
+\label{app:surprise}
 \begin{table}[t]\centering\small
 \caption{Reacher, support detector: $h$ balanced accuracy / fraction of shifted frames flagged / fraction of $h$'s false-safe failures caught (``--'' = no false-safe failure). One world-model seed (reacher-results Table 33). Blank = not run.}
 \label{tab:detect_support}
@@ -440,6 +529,39 @@ camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 1.000 / 1.000 & 0.500 / 1.000 / 1.
 \end{table}
 
 \begin{table}[t]\centering\small
+\caption{Reacher, surprise detector (world model's one-block prediction error), layout as Table~\ref{tab:detect_support} (reacher-results Table 34). Blank = not run.}
+\label{tab:detect_surprise}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){6-7}
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+\midrule
+clean & 0.992 / 0.012 / -- & 0.990 / 0.012 / -- & 0.994 / 0.012 / -- & 0.996 / 0.020 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.1 & 0.500 / 0.374 / 0.372 & 0.990 / 0.018 / -- & 0.994 / 0.012 / -- & 0.996 / 0.020 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.2 & 0.500 / 1.000 / 1.000 & 0.994 / 0.026 / -- & 0.996 / 0.010 / -- & 0.996 / 0.016 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.3 & 0.500 / 1.000 / 1.000 & 0.500 / 0.262 / 0.296 & 0.500 / 0.032 / 0.012 & 0.846 / 0.230 / 0.329 & 0.994 / 0.010 / -- &  \\
+floor $\alpha=$0.4 & 0.500 / 0.914 / 0.889 & 0.500 / 0.282 / 0.304 & 0.500 / 0.000 / 0.000 & 0.500 / 0.026 / 0.040 & 0.632 / 0.094 / 0.134 &  \\
+floor $\alpha=$0.5 & 0.500 / 0.750 / 0.723 & 0.500 / 0.182 / 0.209 & 0.500 / 0.000 / 0.000 & 0.500 / 0.012 / 0.024 & 0.500 / 0.000 / 0.000 &  \\
+floor $\alpha=$0.75 & 0.500 / 0.854 / 0.838 & 0.500 / 0.310 / 0.320 & 0.500 / 0.000 / 0.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+floor $\alpha=$1 & 0.500 / 0.638 / 0.605 & 0.500 / 0.962 / 0.980 & 0.500 / 0.140 / 0.119 & 0.465 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+light & 0.500 / 0.952 / 0.933 & 0.992 / 0.020 / -- & 0.990 / 0.012 / -- & 0.998 / 0.018 / -- & 0.994 / 0.012 / -- &  \\
+light dir & 0.500 / 0.990 / 1.000 & 0.990 / 0.016 / -- & 0.996 / 0.016 / -- & 0.996 / 0.018 / -- & 0.994 / 0.016 / -- &  \\
+exposure & 0.500 / 1.000 / 1.000 & 0.745 / 0.018 / 0.000 & 0.992 / 0.014 / -- & 0.994 / 0.016 / 0.000 & 0.994 / 0.014 / -- &  \\
+white balance & 0.500 / 0.912 / 0.893 & 0.990 / 0.020 / -- & 0.992 / 0.012 / -- & 0.994 / 0.018 / -- & 0.992 / 0.014 / -- &  \\
+noise & 0.767 / 0.020 / 0.009 & 0.990 / 0.012 / -- & 0.994 / 0.012 / -- & 0.996 / 0.022 / -- & 0.994 / 0.014 / -- &  \\
+blur & 0.836 / 0.010 / 0.000 & 0.990 / 0.014 / -- & 0.992 / 0.012 / -- & 0.996 / 0.022 / -- & 0.994 / 0.012 / -- &  \\
+jpeg & 0.500 / 0.948 / 0.964 & 0.990 / 0.014 / -- & 0.992 / 0.012 / -- & 0.996 / 0.018 / -- & 0.994 / 0.012 / -- &  \\
+occlusion & 0.500 / 0.882 / 0.870 & 0.561 / 0.162 / 0.189 & 0.545 / 0.110 / 0.087 & 0.686 / 0.120 / 0.166 & 0.747 / 0.162 / 0.323 &  \\
+camera zoom & 0.500 / 0.148 / 0.111 & 0.899 / 0.044 / 0.040 & 0.897 / 0.040 / 0.020 & 0.901 / 0.068 / 0.020 & 0.905 / 0.050 / 0.043 &  \\
+camera shift & 0.500 / 1.000 / 1.000 & 0.506 / 0.294 / 0.378 & 0.587 / 0.174 / 0.240 & 0.684 / 0.304 / 0.458 & 0.555 / 0.226 / 0.316 &  \\
+camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 0.432 / 0.498 & 0.500 / 0.262 / 0.356 & 0.551 / 0.258 / 0.336 & 0.500 / 0.322 / 0.399 &  \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[t]\centering\small
 \caption{Dubins, support detector (same layout), corrected (non-transposed) frames. Blank = not run; the earlier Dubins kNN aliasing analysis used transposed frames and must be rerun.}
 \label{tab:detect_dubins}
 \begin{tabular}{lcccccc}
@@ -454,33 +576,34 @@ rot.\ 90° &  &  &  &  &  &  \\
 \end{tabular}
 \end{table}
 
-
-\begin{itemize}
-  \item Claim: once a shift is too big for every model (floor $\ge 0.5$: $h$ calls everything safe and CCEM silently becomes raw CEM), it announces itself. Support flags 100\% of frames and catches all false-safe failures; over all 66 (model, shift) cells with bal acc $\le 0.85$ (six models incl.\ the official checkpoint) it catches $\ge 0.897$ of them, mostly 1.000.
-  \item No false alarms where $h$ still works: jac under floor 0.1, noise, blur, white balance, JPEG stays at the clean 1--4\% flag rate. On robust models the alarm moves out with the failure (varying-$\varepsilon$ adv$_h$: floor 0.3 flagged 0.138 with $h$ fine; floor 0.4 flagged 1.000 with $h$ failing).
-  \item Why: large shifts push the encoder off the training support, even for jac (invariance is local); the readout then extrapolates (all-safe). Detection and robustness are two sides of the same reach: within reach the latent stays put and $h$ works; beyond it the latent leaves and the detector fires.
-  \item Prediction surprise is a poor detector (Appendix~\ref{app:surprise}): catch 0.000--0.500 for the jac family up to floor 0.5, 0.000 for jac+adv$_h$ at floor 0.4--0.75. The predictor stays self-consistent on shifted latents (maps the shifted frame to the shifted next frame), so dynamics error does not reveal an encoder shift.
-  \item The undetected case: camera zoom. Every jac-family model degrades moderately (bal acc 0.897--0.905) and support catches 0.000--0.176 of failures: the zoomed frame lands among training latents of other poses (in-support aliasing, the Dubins colour failure mode). This is the regime only robustness training addresses.
-  \item Pipeline: robustness training for shifts within reach; a support check once per replan could turn shifts beyond reach into an abstention instead of a silent all-safe planner; residual risk = moderate in-support aliasing. Closed-loop CCEM with abstention not run (future work).
-  \item Contrast with test-time BN adaptation (Table~\ref{tab:bn_baseline}): BN tries to repair beyond-reach shifts and mostly cannot; detection only needs to notice them.
-\end{itemize}
-
-%=====================================================================
-\subsection{Summary of when things work}
-\begin{itemize}
-  \item jac: always helps OOD perception of safety; needed for any safety constraint (CEM or CBF) to survive appearance shift. Fails when the shift is large (incl.\ viewpoint changes).
-  \item Adversarial on top: helps planning only with reach $\times$ headroom; varying $\varepsilon$ extends reach; the adversary's target (head vs.\ whole latent) shifts which shifts are in reach, with no uniform winner. On Dubins the fixed-radius head-only variants never help (colour = safety; no shift in band); extended-reach variants untested there.
-  \item Pull: neutral in CEM, roughly neutral-to-helpful in the CBF; untuned target.
-  \item Detection: shifts beyond reach leave the latent's support and are caught label-free (kNN, clean 99th-percentile threshold); moderate in-support aliasing (camera zoom) is not. Robustness within reach, abstention beyond it.
-  \item Test-time BN adaptation: a baseline that matches jac only under small photometric shifts (shared offset, which jac already removes during training); not a substitute.
-  \item Imagination depth is the binding limit OOD on Dubins: imagined OOD states lose distance information within $\approx 10$ env steps.
-  \item \todo{Limitations: single WM seed on Reacher and for Dubins jac+adv$_h$; CBF single seed; Dubins diamond only in CBF; purple beyond reach of every training-time method (adaptation partly rescues the short-horizon CBF, Appendix~\ref{app:bn}).}
-\end{itemize}
-
-%=====================================================================
-\appendix
-\section{Test-time BatchNorm adaptation: full results}
+\section{Test-time BatchNorm adaptation}
 \label{app:bn}
+\begin{table}[t]\centering\small
+\caption{Test-time adaptation baseline, CCEM. Reacher: 50 box-crossing pairs, MLP $h$, collision / safe success, one seed. Dubins purple: 100-episode protocol (same episodes for every row; not the 50-episode protocol of Tables~\ref{tab:dubins_k10}--\ref{tab:dubins_k15}), collision / safe success (\%), sigreg mean $\pm$ std over 3 seeds, jac seed 3072. Blank = not run.}
+\label{tab:bn_baseline}
+\begin{tabular}{llccc}
+\toprule
+Benchmark & Condition & sigreg & sigreg + BN & jac (no adaptation) \\
+\midrule
+Reacher & floor 0.1 & 0.48 / 0.30 & 0.06 / 0.68 & 0.06 / 0.66 \\
+Reacher & floor 0.3 & 0.38 / 0.18 & 0.14 / 0.60 & 0.14 / 0.44 \\
+Reacher & floor 0.4 & 0.42 / 0.18 & 0.28 / 0.44 & 0.24 / 0.28 \\
+Reacher & white balance & 0.60 / 0.10 & 0.24 / 0.38 & 0.06 / 0.56 \\
+Reacher & light 0.3 & 0.42 / 0.12 & 0.44 / 0.20 & 0.06 / 0.58 \\
+Reacher & exposure & 0.28 / 0.12 & 0.28 / 0.26 & 0.08 / 0.64 \\
+Reacher & occlusion & 0.28 / 0.18 & 0.22 / 0.26 & 0.24 / 0.44 \\
+Reacher & camera shift & 0.16 / 0.08 & 0.50 / 0.14 & 0.32 / 0.16 \\
+Reacher & camera tilt & 0.26 / 0.14 &  & 0.44 / 0.10 \\
+\midrule
+Dubins & purple, $K=10$, MLP $h$ &  &  & 13.0 / 72.0 \\
+Dubins & purple, $K=10$, linear $h$ &  &  & 14.0 / 70.0 \\
+Dubins & purple, $K=15$, MLP $h$ & $58.0 \pm 9.6$ / $24.3 \pm 3.8$ & $50.3 \pm 5.9$ / $27.3 \pm 7.0$ & 19.0 / 46.0 \\
+Dubins & purple, $K=15$, linear $h$ & $55.3 \pm 6.4$ / $24.7 \pm 2.5$ & $39.7 \pm 1.5$ / $29.3 \pm 2.5$ & 22.0 / 44.0 \\
+Dubins & rot.\ 90°, $K=10$, MLP $h$ &  &  &  \\
+Dubins & rot.\ 90°, $K=15$, MLP $h$ &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[t]\centering\small
 \caption{Dubins CBF under purple, red-trained $h$ and critic unchanged, world model unadapted vs.\ BN-adapted on 500 safe purple frames. Collision / success / safe success, 1000 trajectories, seed 3072; paired McNemar on the same starts. Blank = not run.}
@@ -521,41 +644,5 @@ $K$ & $h$ & Unadapted & BN-adapted \\
   \item Reacher jac+adv$_h$ + BN: repairs goal reaching under floor shifts (raw CEM progress at floor 0.4: 0.28 $\to$ 0.64) but blurs adv$_h$'s sharper $h$ (projector BatchNorm carries both effects); split planner (adapted goal cost, unadapted $h$) keeps progress (reacher-results Tables 27--30).
   \item \todo{CBF + BN on jac seeds 1, 100 (proposed, $\approx$ 9--10 h per critic).}
 \end{itemize}
-
-
-\section{Prediction-surprise detector}
-\label{app:surprise}
-\begin{table}[t]\centering\small
-\caption{Reacher, surprise detector (world model's one-block prediction error), layout as Table~\ref{tab:detect_support} (reacher-results Table 34). Blank = not run.}
-\label{tab:detect_surprise}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lcccccc}
-\toprule
- & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
-\cmidrule(lr){6-7}
-Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
-\midrule
-clean & 0.992 / 0.012 / -- & 0.990 / 0.012 / -- & 0.994 / 0.012 / -- & 0.996 / 0.020 / -- & 0.994 / 0.014 / -- &  \\
-floor $\alpha=$0.1 & 0.500 / 0.374 / 0.372 & 0.990 / 0.018 / -- & 0.994 / 0.012 / -- & 0.996 / 0.020 / -- & 0.994 / 0.014 / -- &  \\
-floor $\alpha=$0.2 & 0.500 / 1.000 / 1.000 & 0.994 / 0.026 / -- & 0.996 / 0.010 / -- & 0.996 / 0.016 / -- & 0.994 / 0.014 / -- &  \\
-floor $\alpha=$0.3 & 0.500 / 1.000 / 1.000 & 0.500 / 0.262 / 0.296 & 0.500 / 0.032 / 0.012 & 0.846 / 0.230 / 0.329 & 0.994 / 0.010 / -- &  \\
-floor $\alpha=$0.4 & 0.500 / 0.914 / 0.889 & 0.500 / 0.282 / 0.304 & 0.500 / 0.000 / 0.000 & 0.500 / 0.026 / 0.040 & 0.632 / 0.094 / 0.134 &  \\
-floor $\alpha=$0.5 & 0.500 / 0.750 / 0.723 & 0.500 / 0.182 / 0.209 & 0.500 / 0.000 / 0.000 & 0.500 / 0.012 / 0.024 & 0.500 / 0.000 / 0.000 &  \\
-floor $\alpha=$0.75 & 0.500 / 0.854 / 0.838 & 0.500 / 0.310 / 0.320 & 0.500 / 0.000 / 0.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
-floor $\alpha=$1 & 0.500 / 0.638 / 0.605 & 0.500 / 0.962 / 0.980 & 0.500 / 0.140 / 0.119 & 0.465 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
-light & 0.500 / 0.952 / 0.933 & 0.992 / 0.020 / -- & 0.990 / 0.012 / -- & 0.998 / 0.018 / -- & 0.994 / 0.012 / -- &  \\
-light dir & 0.500 / 0.990 / 1.000 & 0.990 / 0.016 / -- & 0.996 / 0.016 / -- & 0.996 / 0.018 / -- & 0.994 / 0.016 / -- &  \\
-exposure & 0.500 / 1.000 / 1.000 & 0.745 / 0.018 / 0.000 & 0.992 / 0.014 / -- & 0.994 / 0.016 / 0.000 & 0.994 / 0.014 / -- &  \\
-white balance & 0.500 / 0.912 / 0.893 & 0.990 / 0.020 / -- & 0.992 / 0.012 / -- & 0.994 / 0.018 / -- & 0.992 / 0.014 / -- &  \\
-noise & 0.767 / 0.020 / 0.009 & 0.990 / 0.012 / -- & 0.994 / 0.012 / -- & 0.996 / 0.022 / -- & 0.994 / 0.014 / -- &  \\
-blur & 0.836 / 0.010 / 0.000 & 0.990 / 0.014 / -- & 0.992 / 0.012 / -- & 0.996 / 0.022 / -- & 0.994 / 0.012 / -- &  \\
-jpeg & 0.500 / 0.948 / 0.964 & 0.990 / 0.014 / -- & 0.992 / 0.012 / -- & 0.996 / 0.018 / -- & 0.994 / 0.012 / -- &  \\
-occlusion & 0.500 / 0.882 / 0.870 & 0.561 / 0.162 / 0.189 & 0.545 / 0.110 / 0.087 & 0.686 / 0.120 / 0.166 & 0.747 / 0.162 / 0.323 &  \\
-camera zoom & 0.500 / 0.148 / 0.111 & 0.899 / 0.044 / 0.040 & 0.897 / 0.040 / 0.020 & 0.901 / 0.068 / 0.020 & 0.905 / 0.050 / 0.043 &  \\
-camera shift & 0.500 / 1.000 / 1.000 & 0.506 / 0.294 / 0.378 & 0.587 / 0.174 / 0.240 & 0.684 / 0.304 / 0.458 & 0.555 / 0.226 / 0.316 &  \\
-camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 0.432 / 0.498 & 0.500 / 0.262 / 0.356 & 0.551 / 0.258 / 0.336 & 0.500 / 0.322 / 0.399 &  \\
-\bottomrule
-\end{tabular}}
-\end{table}
 
 \end{document}
