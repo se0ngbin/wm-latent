@@ -373,7 +373,86 @@ rot.\ 90°, linear & 0.97 & 0.76 & 0.49 & 0.46 & 0.42 \\
   \item Reacher differs: OOD the latent blurs near the boundary (50\% veto point 0.05--0.1 rad $\to$ 0.25 rad for jac at floor 0.3, matching its nearest-neighbour state error) but imagined plans keep a usable ranking (within-start AUC 0.90). $h$ errs optimistic, so CCEM degrades to raw CEM. Predictor damps perturbations (change in $h$ shrinks $3$--$20\times$ by predicted step 5) --- re-grounding.
   \item Information is missing from the latent, not the readout: an oracle $h$ regressing signed distance is identical to the classifier under shift.
   \item Planner-side fixes do not recover it (both benchmarks): per-step threshold calibration, safe-only quantile offsets, threshold-free elite rules, $h$ trained on predicted latents --- each only moves along the safety--progress trade-off. \todo{one summary table or appendix.}
-  \item \todo{OOD detection (in progress, \texttt{reacher\_detect.py}): on Reacher too-large shifts push jac off support (kNN / prediction surprise flag 74--100\%), unlike Dubins colour where jac aliases in-support (memory: support vs aliasing). Possible ``when to abstain'' paragraph.}
+\end{itemize}
+
+%=====================================================================
+\subsection{Shifts beyond reach can be detected from the latent's support}
+\label{sec:detect}
+
+Two label-free detectors, thresholds at the clean 99th percentile (clean false-alarm rate $\approx 0.01$), need only unlabeled in-distribution data. Support: mean distance from $z$ to its 10 nearest neighbours among 20000 training latents. Surprise: the world model's own one-block prediction error $\|\hat z_{t+5}(z_t, a_{t:t+5}) - z_{t+5}\|$. 1000 held-out states (half unsafe), 500 for rates; real+imag MLP $h$.
+
+\begin{table}[t]\centering\small
+\caption{Reacher, support detector: $h$ balanced accuracy / fraction of shifted frames flagged / fraction of $h$'s false-safe failures caught (``--'' = no false-safe failure). One world-model seed (reacher-results Table 33). Blank = not run.}
+\label{tab:detect_support}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){6-7}
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+\midrule
+clean & 0.992 / 0.010 / -- & 0.990 / 0.012 / -- & 0.994 / 0.006 / -- & 0.996 / 0.016 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.1 & 0.500 / 1.000 / 1.000 & 0.990 / 0.014 / -- & 0.994 / 0.006 / -- & 0.996 / 0.016 / -- & 0.994 / 0.012 / -- &  \\
+floor $\alpha=$0.2 & 0.500 / 1.000 / 1.000 & 0.994 / 0.084 / -- & 0.996 / 0.046 / -- & 0.996 / 0.012 / -- & 0.994 / 0.018 / -- &  \\
+floor $\alpha=$0.3 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.846 / 0.768 / 0.961 & 0.994 / 0.138 / -- &  \\
+floor $\alpha=$0.4 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.632 / 1.000 / 1.000 &  \\
+floor $\alpha=$0.5 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+floor $\alpha=$0.75 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+floor $\alpha=$1 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.465 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+light & 0.500 / 1.000 / 1.000 & 0.992 / 0.288 / -- & 0.990 / 0.020 / -- & 0.998 / 0.014 / -- & 0.994 / 0.030 / -- &  \\
+light dir & 0.500 / 1.000 / 1.000 & 0.990 / 0.010 / -- & 0.996 / 0.008 / -- & 0.996 / 0.010 / -- & 0.994 / 0.014 / -- &  \\
+exposure & 0.500 / 1.000 / 1.000 & 0.745 / 1.000 / 1.000 & 0.992 / 0.026 / -- & 0.994 / 0.012 / 0.000 & 0.994 / 0.094 / -- &  \\
+white balance & 0.500 / 1.000 / 1.000 & 0.990 / 0.036 / -- & 0.992 / 0.010 / -- & 0.994 / 0.016 / -- & 0.992 / 0.016 / -- &  \\
+noise & 0.767 / 0.856 / 0.983 & 0.990 / 0.014 / -- & 0.994 / 0.006 / -- & 0.996 / 0.016 / -- & 0.994 / 0.012 / -- &  \\
+blur & 0.836 / 0.950 / 1.000 & 0.990 / 0.016 / -- & 0.992 / 0.024 / -- & 0.996 / 0.014 / -- & 0.994 / 0.014 / -- &  \\
+jpeg & 0.500 / 1.000 / 1.000 & 0.990 / 0.018 / -- & 0.992 / 0.016 / -- & 0.996 / 0.014 / -- & 0.994 / 0.018 / -- &  \\
+occlusion & 0.500 / 1.000 / 1.000 & 0.561 / 0.908 / 0.995 & 0.545 / 0.914 / 1.000 & 0.686 / 0.688 / 0.949 & 0.747 / 0.606 / 0.992 &  \\
+camera zoom & 0.500 / 1.000 / 1.000 & 0.899 / 0.106 / 0.040 & 0.897 / 0.144 / 0.176 & 0.901 / 0.018 / 0.000 & 0.905 / 0.092 / 0.021 &  \\
+camera shift & 0.500 / 1.000 / 1.000 & 0.506 / 1.000 / 1.000 & 0.587 / 1.000 / 1.000 & 0.684 / 0.918 / 0.897 & 0.555 / 0.998 / 1.000 &  \\
+camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 & 0.551 / 0.976 / 0.946 & 0.500 / 0.992 / 0.984 &  \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{Dubins, support detector (same layout), corrected (non-transposed) frames. Blank = not run; the earlier Dubins kNN aliasing analysis used transposed frames and must be rerun.}
+\label{tab:detect_dubins}
+\begin{tabular}{lcccccc}
+\toprule
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+pull & jac+pull+adv$_h$ \\
+\midrule
+clean &  &  &  &  &  &  \\
+purple &  &  &  &  &  &  \\
+diamond &  &  &  &  &  &  \\
+rot.\ 90° &  &  &  &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{Reacher CCEM with abstention (stop when the support detector fires on the current frame at a replan), 150 paired episodes, MLP $h$: collision / safe success / abstained. Blank = not run.}
+\label{tab:abstain}
+\begin{tabular}{lcccc}
+\toprule
+Condition & jac & jac + abstain & jac+adv$_h$, varying $\varepsilon$ & + abstain \\
+\midrule
+floor 0.5 &  &  &  &  \\
+floor 1 &  &  &  &  \\
+camera tilt &  &  &  &  \\
+camera zoom &  &  &  &  \\
+occlusion &  &  &  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+  \item Claim: once a shift is too big for every model (floor $\ge 0.5$: $h$ calls everything safe and CCEM silently becomes raw CEM), it announces itself. Support flags 100\% of frames and catches all false-safe failures; over all 66 (model, shift) cells with bal acc $\le 0.85$ (six models incl.\ the official checkpoint) it catches $\ge 0.897$ of them, mostly 1.000.
+  \item No false alarms where $h$ still works: jac under floor 0.1, noise, blur, white balance, JPEG stays at the clean 1--4\% flag rate. On robust models the alarm moves out with the failure (varying-$\varepsilon$ adv$_h$: floor 0.3 flagged 0.138 with $h$ fine; floor 0.4 flagged 1.000 with $h$ failing).
+  \item Why: large shifts push the encoder off the training support, even for jac (invariance is local); the readout then extrapolates (all-safe). Detection and robustness are two sides of the same reach: within reach the latent stays put and $h$ works; beyond it the latent leaves and the detector fires.
+  \item Prediction surprise is a poor detector (Appendix~\ref{app:surprise}): catch 0.000--0.500 for the jac family up to floor 0.5, 0.000 for jac+adv$_h$ at floor 0.4--0.75. The predictor stays self-consistent on shifted latents (maps the shifted frame to the shifted next frame), so dynamics error does not reveal an encoder shift.
+  \item The undetected case: camera zoom. Every jac-family model degrades moderately (bal acc 0.897--0.905) and support catches 0.000--0.176 of failures: the zoomed frame lands among training latents of other poses (in-support aliasing, the Dubins colour failure mode). This is the regime only robustness training addresses.
+  \item Pipeline: robustness training for shifts within reach; a support check once per replan turns shifts beyond reach into an abstention instead of a silent all-safe planner; residual risk = moderate in-support aliasing.
+  \item Contrast with test-time BN adaptation (Table~\ref{tab:bn_baseline}): BN tries to repair beyond-reach shifts and mostly cannot; detection only needs to notice them.
 \end{itemize}
 
 %=====================================================================
@@ -382,6 +461,7 @@ rot.\ 90°, linear & 0.97 & 0.76 & 0.49 & 0.46 & 0.42 \\
   \item jac: always helps OOD perception of safety; needed for any safety constraint (CEM or CBF) to survive appearance shift. Fails when the shift is large or a viewpoint change.
   \item Adversarial on top: helps planning only with reach $\times$ headroom $\times$ right perturbation type; whole latent $>$ head-only because it also protects the goal cost; varying $\varepsilon$ extends reach. Never helps on Dubins (colour = safety; no shift in band).
   \item Pull: neutral in CEM, roughly neutral-to-helpful in the CBF; untuned target.
+  \item Detection: shifts beyond reach leave the latent's support and are caught label-free (kNN, clean 99th-percentile threshold); moderate in-support aliasing (camera zoom) is not. Robustness within reach, abstention beyond it.
   \item Test-time BN adaptation: a baseline that matches jac only under small photometric shifts (shared offset, which jac already removes during training); not a substitute.
   \item Imagination depth is the binding limit OOD on Dubins: imagined OOD states lose distance information within $\approx 10$ env steps.
   \item \todo{Limitations: single WM seed on Reacher and for Dubins jac+adv$_h$; CBF single seed; Dubins diamond only in CBF; purple beyond reach of every training-time method (adaptation partly rescues the short-horizon CBF, Appendix~\ref{app:bn}).}
@@ -431,5 +511,41 @@ $K$ & $h$ & Unadapted & BN-adapted \\
   \item Reacher jac+adv$_h$ + BN: repairs goal reaching under floor shifts (raw CEM progress at floor 0.4: 0.28 $\to$ 0.64) but blurs adv$_h$'s sharper $h$ (projector BatchNorm carries both effects); split planner (adapted goal cost, unadapted $h$) keeps progress (reacher-results Tables 27--30).
   \item \todo{CBF + BN on jac seeds 1, 100 (proposed, $\approx$ 9--10 h per critic).}
 \end{itemize}
+
+
+\section{Prediction-surprise detector}
+\label{app:surprise}
+\begin{table}[t]\centering\small
+\caption{Reacher, surprise detector (world model's one-block prediction error), layout as Table~\ref{tab:detect_support} (reacher-results Table 34). Blank = not run.}
+\label{tab:detect_surprise}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+ & & & & & \multicolumn{2}{c}{varying $\varepsilon$} \\
+\cmidrule(lr){6-7}
+Condition & sigreg & jac & jac+adv$_h$ & jac+adv$_z$ & jac+adv$_h$ & jac+adv$_z$ \\
+\midrule
+clean & 0.992 / 0.012 / -- & 0.990 / 0.012 / -- & 0.994 / 0.012 / -- & 0.996 / 0.020 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.1 & 0.500 / 0.374 / 0.372 & 0.990 / 0.018 / -- & 0.994 / 0.012 / -- & 0.996 / 0.020 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.2 & 0.500 / 1.000 / 1.000 & 0.994 / 0.026 / -- & 0.996 / 0.010 / -- & 0.996 / 0.016 / -- & 0.994 / 0.014 / -- &  \\
+floor $\alpha=$0.3 & 0.500 / 1.000 / 1.000 & 0.500 / 0.262 / 0.296 & 0.500 / 0.032 / 0.012 & 0.846 / 0.230 / 0.329 & 0.994 / 0.010 / -- &  \\
+floor $\alpha=$0.4 & 0.500 / 0.914 / 0.889 & 0.500 / 0.282 / 0.304 & 0.500 / 0.000 / 0.000 & 0.500 / 0.026 / 0.040 & 0.632 / 0.094 / 0.134 &  \\
+floor $\alpha=$0.5 & 0.500 / 0.750 / 0.723 & 0.500 / 0.182 / 0.209 & 0.500 / 0.000 / 0.000 & 0.500 / 0.012 / 0.024 & 0.500 / 0.000 / 0.000 &  \\
+floor $\alpha=$0.75 & 0.500 / 0.854 / 0.838 & 0.500 / 0.310 / 0.320 & 0.500 / 0.000 / 0.000 & 0.500 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+floor $\alpha=$1 & 0.500 / 0.638 / 0.605 & 0.500 / 0.962 / 0.980 & 0.500 / 0.140 / 0.119 & 0.465 / 1.000 / 1.000 & 0.500 / 1.000 / 1.000 &  \\
+light & 0.500 / 0.952 / 0.933 & 0.992 / 0.020 / -- & 0.990 / 0.012 / -- & 0.998 / 0.018 / -- & 0.994 / 0.012 / -- &  \\
+light dir & 0.500 / 0.990 / 1.000 & 0.990 / 0.016 / -- & 0.996 / 0.016 / -- & 0.996 / 0.018 / -- & 0.994 / 0.016 / -- &  \\
+exposure & 0.500 / 1.000 / 1.000 & 0.745 / 0.018 / 0.000 & 0.992 / 0.014 / -- & 0.994 / 0.016 / 0.000 & 0.994 / 0.014 / -- &  \\
+white balance & 0.500 / 0.912 / 0.893 & 0.990 / 0.020 / -- & 0.992 / 0.012 / -- & 0.994 / 0.018 / -- & 0.992 / 0.014 / -- &  \\
+noise & 0.767 / 0.020 / 0.009 & 0.990 / 0.012 / -- & 0.994 / 0.012 / -- & 0.996 / 0.022 / -- & 0.994 / 0.014 / -- &  \\
+blur & 0.836 / 0.010 / 0.000 & 0.990 / 0.014 / -- & 0.992 / 0.012 / -- & 0.996 / 0.022 / -- & 0.994 / 0.012 / -- &  \\
+jpeg & 0.500 / 0.948 / 0.964 & 0.990 / 0.014 / -- & 0.992 / 0.012 / -- & 0.996 / 0.018 / -- & 0.994 / 0.012 / -- &  \\
+occlusion & 0.500 / 0.882 / 0.870 & 0.561 / 0.162 / 0.189 & 0.545 / 0.110 / 0.087 & 0.686 / 0.120 / 0.166 & 0.747 / 0.162 / 0.323 &  \\
+camera zoom & 0.500 / 0.148 / 0.111 & 0.899 / 0.044 / 0.040 & 0.897 / 0.040 / 0.020 & 0.901 / 0.068 / 0.020 & 0.905 / 0.050 / 0.043 &  \\
+camera shift & 0.500 / 1.000 / 1.000 & 0.506 / 0.294 / 0.378 & 0.587 / 0.174 / 0.240 & 0.684 / 0.304 / 0.458 & 0.555 / 0.226 / 0.316 &  \\
+camera tilt & 0.500 / 1.000 / 1.000 & 0.514 / 0.432 / 0.498 & 0.500 / 0.262 / 0.356 & 0.551 / 0.258 / 0.336 & 0.500 / 0.322 / 0.399 &  \\
+\bottomrule
+\end{tabular}}
+\end{table}
 
 \end{document}
