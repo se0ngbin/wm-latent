@@ -28,7 +28,7 @@ FS=${FS:-1}; [ "$FS" != 1 ] && SUF=${SUF}_fs${FS}   # FS env: WM frameskip; plan
 [ -n "${HREL:-}" ] && SUF=${SUF}_hrel   # HREL=true: solver.h_rel (margin = h of the current frame, threshold-free)
 [ -n "${MARGIN:-}" ] && SUF=${SUF}_m${MTAG:?MTAG names the MARGIN schedule}   # MARGIN env: unsafe_margin, scalar or "[e_1,...,e_T]" per imagined step
 [ -n "${HOFFS:-}" ] && SUF=${SUF}_cal${CTAG:?CTAG names the HOFFS calibration}   # HOFFS env: "[c_0,...,c_K]" per-position CCEM offsets (calib_pred_dubins.py)
-declare -A ENVS=([red]= [purple]=DUBINS_OBST_COLOR=purple [diamond]=DUBINS_OBST_SHAPE=square [fullrot90]=DUBINS_ROT_DEG=90)
+declare -A ENVS=([red]= [purple]=DUBINS_OBST_COLOR=purple [diamond]=DUBINS_OBST_SHAPE=square [fullrot90]=DUBINS_ROT_DEG=90 [a03]=DUBINS_OBST_COLOR=#d90026 [a04]=DUBINS_OBST_COLOR=#cc0033)   # a03/a04: red->purple colour sweep alpha 0.3 / 0.4
 for scen in "${@:-red}"; do
   lg="$LOG/softcem_${TAG}_${SUF}_${scen}.log"
   [ -n "${TRACE:-}" ] && export SOFTCEM_TRACE="$TRACE/${TAG}_${SUF}_${scen}"   # TRACE=<dir>: per-episode plan h + outcomes
