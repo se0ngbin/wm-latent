@@ -11,7 +11,7 @@ SPECS=(sigreg_only_dubins:sigreg sigreg_only_dubins_s1:sigreg_s1 sigreg_only_dub
 GPUS=(${GPUS:-0 0 0 1 0 0 1})
 for i in "${!SPECS[@]}"; do
   IFS=: read -r ck t <<< "${SPECS[$i]}"
-  NEVAL=100 GOALCOST=final CROSS=1 CCEM=1 CCEMRULE=minh GOALK=10 \
+  NEVAL=100 GOALCOST=final CROSS=1 CCEM=1 CCEMRULE=minh GOALK=${K:-10} \
     ./soft_cem.sh ${GPUS[$i]} $ck $M/$ck/margin_gp_imag_red_s0.pt ${t}_gpimag_gr 1000 ${SCENS:-a03 a04} &
   sleep 20
 done
