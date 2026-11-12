@@ -21,6 +21,8 @@ train () {   # train <seed> <gpu>
     echo "$(date +%H:%M) FAILED $name (gpu $2, see $LOG/train_$name.log)"
   fi
 }
-train 1 "${G1:-0}" &
-train 2 "${G2:-1}" &
+for s in ${SEEDS:-1 2}; do   # SEEDS env: which seeds (default both)
+  [ $s = 1 ] && train 1 "${G1:-0}" &
+  [ $s = 2 ] && train 2 "${G2:-1}" &
+done
 wait; echo JACADVH_SEEDS_DONE
